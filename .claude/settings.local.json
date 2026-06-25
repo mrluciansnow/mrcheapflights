@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la \"C:\\\\Users\\\\scath\\\\MrCheapFlights\" 2>&1; echo \"---\"; ls -la \"C:\\\\Users\\\\scath\\\\Downloads\\\\Site\" 2>&1)",
+      "Bash(cp \"C:\\\\Users\\\\scath\\\\Downloads\\\\Site\\\\index.html\" \"C:\\\\Users\\\\scath\\\\MrCheapFlights\\\\index.html\")",
+      "Bash(cp \"C:\\\\Users\\\\scath\\\\Downloads\\\\Site\\\\mascot.png\" \"C:\\\\Users\\\\scath\\\\MrCheapFlights\\\\mascot.png\")"
+    ]
+  }
+}

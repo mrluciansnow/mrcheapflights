@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="canonical" href="https://mrcheapflights.ie" id="canonical-link">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title id="page-title">Mr Cheap Flights – Ridiculous Flight Deals, Direct to You</title>
+<meta name="description" id="meta-desc" content="Mr Cheap Flights finds insane flight deals from Irish airports. Join 12,400+ members saving big on every trip.">
+<meta property="og:title" id="og-title" content="Mr Cheap Flights – Ridiculous Flight Deals">
+<meta property="og:description" id="og-desc" content="Ridiculous flight deals from Irish airports, delivered straight to you.">
+<meta property="og:type" content="website">
+<meta property="og:url" id="og-url" content="https://mrcheapflights.ie">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" crossorigin>
+<script src="https://js.stripe.com/v3/" defer></script>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23FFD200'/><text y='78' x='50' text-anchor='middle' font-size='68'>✈</text></svg>">
+
+<!-- ═══════════════════════════════════════════════════════════
+     GOOGLE ANALYTICS 4
+     Replace G-M49S3C6SZR with your Measurement ID from:
+     Google Analytics → Admin → Data Streams → Web stream details
+     ═══════════════════════════════════════════════════════════ -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-M49S3C6SZR"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  // Main GA4 config — swap G-M49S3C6SZR with your real ID
+  gtag('config', 'G-M49S3C6SZR', {
+    // Enhance measurement: send page_view automatically
+    send_page_view: true,
+    // Useful custom dimensions for Mr Cheap Flights
+    custom_map: {
+      dimension1: 'deal_route',
+      dimension2: 'deal_price',
+      dimension3: 'deal_badge',
+      dimension4: 'user_tier'
+    }
+  });
+
+  // ── MCF Analytics Helper ──────────────────────────────────
+  // Wraps gtag so it silently no-ops if GA hasn't loaded yet
+  // and adds the user_tier dimension automatically.
+  window.mcfTrack = function(eventName, params) {
+    try {
+      var tier = (typeof isPremium === 'function' && isPremium()) ? 'premium' : 'free';
+      gtag('event', eventName, Object.assign({ user_tier: tier }, params || {}));
+    } catch(e) {}
+  };
+</script>
+<!-- ─────────────────────────────────────────────────────────── -->
+
+<style>
+:root{--yellow:#FFD200;--hot-pink:#FF2D6B;--navy:#0A1628;--sky:#00AAFF;--white:#FFF;--yellow-glow:rgba(255,210,0,.35);--ease-spring:cubic-bezier(.34,1.56,.64,1);--ease-out:cubic-bezier(.22,1,.36,1);--card-dark:#0e2040;--card-darker:#091828}
+*{margin:0;padding:0;box-sizing:border-box;scrollbar-width:thin;scrollbar-color:rgba(255,210,0,.4) transparent}
+html{scroll-behavior:smooth;overflow-x:hidden}
+body{font-family:'Nunito','Segoe UI',Arial,sans-serif;background:var(--navy);color:var(--white);overflow-x:hidden;animation:pageFadeIn .5s ease both}
+@keyframes pageFadeIn{from{opacity:0}to{opacity:1}}
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.028;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");background-size:200px 200px}
+
+/* NAV */
+nav{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;align-items:center;justify-content:space-between;padding:0 5vw;height:64px;background:rgba(6,14,28,.88);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid rgba(255,210,0,.18);transition:background .3s,box-shadow .3s}
+nav.scrolled{background:rgba(6,14,28,.97);box-shadow:0 1px 0 rgba(255,210,0,.12),0 8px 32px rgba(0,0,0,.4)}
+.nav-logo{font-family:'Bebas Neue',sans-serif;font-size:1.7rem;color:var(--yellow);text-decoration:none}
+.nav-logo span{color:var(--hot-pink)}
+.nav-links{display:flex;gap:2rem;list-style:none;align-items:center}
+.nav-links a{color:#fff;text-decoration:none;font-weight:700;font-size:.9rem;transition:color .2s}
+.nav-links a:hover{color:var(--yellow)}
+.nav-region-switcher{color:#fff;text-decoration:none;font-weight:700;font-size:.9rem;padding:7px 14px;border-radius:50px;border:1px solid rgba(255,210,0,.3);transition:all .2s;margin-left:1rem}
+.nav-region-switcher:hover{color:var(--yellow);border-color:var(--yellow)}
+
+/* HERO */
+.hero{min-height:100vh;padding:80px 5vw 60px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;z-index:0;background:radial-gradient(ellipse 60% 40% at 75% 30%,rgba(0,170,255,.05) 0%,transparent 50%),radial-gradient(ellipse 50% 40% at 25% 70%,rgba(255,45,107,.04) 0%,transparent 50%),linear-gradient(165deg,#060e1c 0%,#0a1628 40%,#0d1e38 70%,#08121f 100%)}
+.hero-inner{position:relative;z-index:0;display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:4rem;max-width:1200px;width:100%}
+.hero-left{display:flex;flex-direction:column;justify-content:center;animation:fadeUp .7s ease .1s both}
+.hero-right{display:flex;justify-content:center;align-items:center;animation:fadeUp .9s ease .2s both}
+.hero-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(255,255,255,.06)!important;border:1.5px solid rgba(255,210,0,.3)!important;color:var(--yellow)!important;font-size:.78rem!important;font-weight:800;letter-spacing:.14em!important;padding:9px 22px!important;border-radius:50px;margin-bottom:1.2rem;animation:fadeUp .6s ease .05s both;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.hero-sub{font-size:1.2rem;font-weight:600;line-height:1.6;color:rgba(255,255,255,.85);max-width:520px;margin-bottom:2rem;animation:fadeUp .7s ease .2s both}
+.hero-form{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.5rem;animation:fadeUp .7s ease .3s both}
+.hero-form input{flex:1;min-width:220px;padding:14px 20px;border-radius:50px;border:2px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#fff;font-family:'Nunito',sans-serif;font-size:1rem;font-weight:600;outline:none;transition:border-color .2s}
+.hero-form input::placeholder{color:rgba(255,255,255,.35)}
+.hero-form input:focus{border-color:var(--yellow)}
+.hero-trust{font-size:.82rem;color:rgba(255,255,255,.35);font-weight:600;animation:fadeUp .7s ease .4s both}
+.hero-trust strong{color:var(--yellow)}
+.hero-stats{display:flex;gap:1.5rem;margin-bottom:1.5rem;flex-wrap:wrap;animation:fadeUp .7s ease .35s both}
+.stat-pill{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:50px;padding:8px 18px;display:flex;align-items:center;gap:.5rem}
+.stat-pill .stat-num{font-family:'Bebas Neue',sans-serif;font-size:1.3rem;color:var(--yellow);line-height:1}
+.stat-pill .stat-num.pink{color:var(--hot-pink)}
+.stat-pill-label{font-size:.7rem;color:rgba(255,255,255,.5);line-height:1.2}
+.signup-success{display:none;text-align:center;padding:1rem 0;animation:fadeUp .5s ease both}
+.signup-success .success-icon{font-size:2.5rem;margin-bottom:.5rem}
+.signup-success p{font-weight:800;font-size:1rem;color:var(--yellow)}
+.signup-success-heading{font-weight:800;font-size:1.05rem;margin:0 0 .5rem}
+.signup-success-sub{font-size:.88rem;color:rgba(255,255,255,.65);margin:0 0 1rem}
+.signup-success-btn{font-size:.85rem;padding:10px 22px}
+
+/* ══ HERO HEADLINE V2 — "RIDICULOUS DEALS." ══ */
+.hero-headline-v2{font-family:'Bebas Neue',sans-serif!important;font-size:clamp(4.5rem,11vw,9rem)!important;line-height:.85!important;margin-bottom:1.2rem;letter-spacing:-.02em;animation:fadeUp .7s ease .1s both}
+.hero-headline-v2 .hl-ridic{color:var(--yellow);font-style:italic;display:inline-block;transform:skewX(-5deg);text-shadow:4px 4px 0 rgba(0,0,0,.35)}
+.hero-headline-v2 .hl-ulous{color:var(--hot-pink);font-style:italic;display:inline-block;transform:skewX(-5deg);text-shadow:4px 4px 0 rgba(0,0,0,.35)}
+.hero-headline-v2 .hl-deals{color:var(--sky);font-style:italic;display:inline-block;transform:skewX(-5deg);text-shadow:4px 4px 0 rgba(0,0,0,.35)}
+
+/* ══ MASCOT HERO ══ */
+.mascot-hero-wrap{position:relative;width:100%;max-width:480px;aspect-ratio:1;display:flex;align-items:center;justify-content:center;margin:0 auto}
+.mascot-neon-ring{position:absolute;inset:5%;border-radius:50%;background:radial-gradient(circle,rgba(10,22,40,.92) 50%,rgba(10,22,40,.5) 68%,transparent 75%);box-shadow:0 0 80px 15px rgba(0,170,255,.15),0 0 160px 40px rgba(180,0,255,.08),inset 0 0 60px 10px rgba(0,170,255,.06);z-index:0}
+.mascot-neon-ring::before{content:'';position:absolute;inset:-3px;border-radius:50%;background:conic-gradient(from 180deg,rgba(180,0,255,.7),rgba(0,170,255,.9),rgba(0,255,200,.5),rgba(0,170,255,.9),rgba(180,0,255,.7));-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px));mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px));animation:neon-spin 8s linear infinite}
+@keyframes neon-spin{to{transform:rotate(360deg)}}
+.mascot-hero-img{position:relative;z-index:1;width:82%;height:82%;object-fit:contain;filter:drop-shadow(0 10px 50px rgba(0,0,0,.6));animation:mascot-float 4.5s ease-in-out infinite;clip-path:circle(48% at 50% 50%)}
+@keyframes mascot-float{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-16px) scale(1.02)}}
+.floating-badge{position:absolute;z-index:2;padding:10px 22px;border-radius:50px;font-family:'Bebas Neue',sans-serif;font-size:1.05rem;letter-spacing:.1em;font-weight:900;white-space:nowrap;cursor:pointer;box-shadow:0 8px 32px rgba(0,0,0,.45);transition:transform .2s var(--ease-spring),box-shadow .2s;user-select:none}
+.floating-badge:hover{transform:scale(1.1)!important;box-shadow:0 14px 44px rgba(0,0,0,.55)}
+.fb-hot{top:10%;right:-4%;background:var(--hot-pink);color:#fff;animation:fb-bob-1 3.5s ease-in-out infinite}
+.fb-flash{top:46%;right:-8%;background:var(--yellow);color:var(--navy);animation:fb-bob-2 4s ease-in-out infinite .5s}
+.fb-price{bottom:16%;left:-6%;background:var(--sky);color:#fff;animation:fb-bob-3 3.8s ease-in-out infinite 1s}
+@keyframes fb-bob-1{0%,100%{transform:translateY(0) rotate(2deg)}50%{transform:translateY(-12px) rotate(-1deg)}}
+@keyframes fb-bob-2{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-14px) rotate(2deg)}}
+@keyframes fb-bob-3{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-10px) rotate(1deg)}}
+
+/* BUTTONS */
+.btn-primary{background:linear-gradient(135deg,#FFD200,#ffb800)!important;color:var(--navy);border:none;cursor:pointer;padding:14px 30px;border-radius:50px;font-family:'Nunito',sans-serif;font-size:1rem;font-weight:900;transition:transform .15s,box-shadow .15s;white-space:nowrap;box-shadow:0 4px 16px rgba(255,210,0,.3)!important;position:relative;overflow:hidden}
+.btn-primary:hover{transform:translateY(-3px) scale(1.03)!important;box-shadow:0 10px 32px rgba(255,210,0,.45)!important}
+.btn-white{background:#fff;color:var(--hot-pink);border:none;cursor:pointer;padding:16px 36px;border-radius:50px;font-family:'Nunito',sans-serif;font-size:1.2rem;font-weight:900;transition:transform .15s}
+.btn-white:hover{transform:scale(1.04)}
+
+/* TICKER */
+.ticker{background:var(--yellow);padding:10px 0;min-height:56px;overflow:hidden;white-space:nowrap;position:relative}
+.ticker-inner{display:inline-flex;align-items:center;gap:0;animation:ticker 26s linear infinite}
+@keyframes ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.ticker-item{display:inline-flex;align-items:center;gap:.5rem;background:#fff;border:2px solid rgba(10,22,40,.15);border-radius:50px;padding:7px 16px 7px 10px;margin:0 5px;font-family:'Nunito',sans-serif;font-weight:900;font-size:.82rem;color:var(--navy);white-space:nowrap;cursor:pointer;transition:background .18s,transform .18s;text-decoration:none;-webkit-tap-highlight-color:transparent}
+.ticker-item .ti-flag{font-size:1rem;line-height:1}
+.ticker-item .ti-route{font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:.06em;color:var(--navy)}
+.ticker-item .ti-price{background:var(--yellow);color:var(--navy);border-radius:50px;padding:2px 10px;font-size:.85rem;font-weight:900;font-family:'Bebas Neue',sans-serif;margin-left:.2rem}
+
+/* SECTIONS */
+.section{padding:80px max(5vw,20px);max-width:1200px;margin:0 auto;box-sizing:border-box}
+.section-title{font-family:'Bebas Neue',sans-serif;font-size:clamp(2.5rem,5vw,4rem);line-height:1;margin-bottom:1.5rem}
+.section-title span{color:var(--yellow)}
+.section-label{display:block;font-size:.75rem;font-weight:900;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.6);margin-bottom:.6rem}
+.section-wave{display:block;width:100%;margin-bottom:-2px;line-height:0}
+@keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+
+/* STEPS */
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1.5rem;max-width:1100px;margin:0 auto}
+.step{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.06);border-radius:20px;padding:2rem;transition:border-color .2s,transform .2s}
+.step:hover{border-color:var(--yellow)}
+.step-num{font-family:'Bebas Neue',sans-serif;font-size:2.8rem;color:var(--yellow);line-height:1;margin-bottom:.75rem}
+.step h3{font-size:1.2rem;font-weight:800;margin-bottom:.6rem;line-height:1.2}
+.step p{font-size:.9rem;color:rgba(255,255,255,.6);line-height:1.6}
+
+/* DEALS */
+.deals-section{background:var(--navy);color:#fff;padding:80px 5vw;max-width:none}
+.deals-section .section-label{display:block;color:var(--yellow);font-size:.75rem;font-weight:900;letter-spacing:.18em;text-transform:uppercase;margin-bottom:.6rem}
+.deals-section .section-title{color:#fff!important;margin-top:0;margin-bottom:1.5rem;line-height:1}
+.deals-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.2rem}
+.deal-tile{background:linear-gradient(145deg,rgba(255,210,0,.07),rgba(255,210,0,.03))!important;border:1px solid rgba(255,210,0,.25)!important;border-radius:20px!important;transition:transform .25s,box-shadow .25s,border-color .25s!important;animation:card-rise .5s var(--ease-out) both;position:relative;overflow:hidden;cursor:pointer}
+@keyframes card-rise{from{opacity:0;transform:translateY(28px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+.deal-tile:nth-child(1){animation-delay:.05s}.deal-tile:nth-child(2){animation-delay:.1s}.deal-tile:nth-child(3){animation-delay:.15s}.deal-tile:nth-child(4){animation-delay:.2s}
+.deal-tile:hover{transform:translateY(-8px) scale(1.01)!important;border-color:rgba(255,210,0,.4)!important;box-shadow:0 20px 48px rgba(0,0,0,.5)!important}
+.deal-tile-header{padding:1.2rem 1.4rem .8rem!important;background:linear-gradient(135deg,rgba(255,210,0,.15),rgba(255,45,107,.06))!important;border-bottom:1px solid rgba(255,255,255,.06)!important;display:flex;align-items:center;justify-content:space-between}
+.deal-tile-flag{font-size:1.8rem;transition:transform .2s}
+.deal-tile:hover .deal-tile-flag{transform:scale(1.2) rotate(-5deg)}
+.deal-tile-badge{font-size:.75rem;font-weight:900;letter-spacing:.5px;padding:4px 10px;border-radius:50px;text-transform:uppercase}
+.deal-tile-body{padding:0 1.4rem 1.4rem}
+.deal-tile-route{font-size:1rem;font-weight:900!important;color:#fff!important;margin:.8rem 0 .2rem}
+.deal-tile-dates{color:rgba(255,255,255,.6)!important;font-size:.85rem;margin-bottom:.8rem}
+.deal-tile-footer{display:flex;justify-content:space-between;align-items:center}
+.deal-tile-price{background:linear-gradient(135deg,var(--yellow),#ffaa00)!important;-webkit-background-clip:text!important;background-clip:text!important;-webkit-text-fill-color:transparent!important;font-size:1.55rem!important;font-weight:900!important;line-height:1!important;font-family:'Bebas Neue',sans-serif}
+.deal-tile-price small{-webkit-text-fill-color:rgba(255,255,255,.35)!important;font-family:'Nunito',sans-serif;font-size:.65em!important;display:block}
+.deal-tile-btn{background:rgba(255,210,0,.1)!important;border:1px solid rgba(255,210,0,.25)!important;color:var(--yellow)!important;font-weight:900!important;border-radius:50px!important;padding:7px 16px!important;font-size:.85rem;white-space:nowrap;cursor:pointer;font-family:'Nunito',sans-serif}
+
+/* TAGS */
+.tag{display:inline-block;padding:3px 10px;border-radius:50px;font-size:.75rem;font-weight:900;letter-spacing:.5px;text-transform:uppercase}
+.tag-hot{background:rgba(255,45,107,.18)!important;color:#ff6b96!important;border:1px solid rgba(255,45,107,.3)!important}
+.tag-flash{background:rgba(255,210,0,.15)!important;color:var(--yellow)!important;border:1px solid rgba(255,210,0,.3)!important}
+.tag-longhaul{background:rgba(0,170,255,.15)!important;color:#5ecfff!important;border:1px solid rgba(0,170,255,.3)!important}
+.tag-feat{background:rgba(255,210,0,.15);color:var(--yellow)}
+.expiry-chip{display:inline-block;font-size:.75rem;font-weight:800;padding:2px 9px;border-radius:50px;margin-left:.4rem;vertical-align:middle}
+.expiry-urgent{background:rgba(255,45,107,.2)!important;color:#ff7096!important}
+.expiry-soon{background:rgba(255,140,0,.15)!important;color:#ffaa44!important}
+.expiry-ok{background:rgba(0,200,100,.12)!important;color:#44d980!important}
+
+/* FILTER BAR */
+.deals-filter-bar{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:1.8rem;max-width:1200px;padding-bottom:1.5rem}
+.filter-chip{padding:8px 16px;border-radius:50px;background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.12);color:rgba(255,255,255,.6);font-family:'Nunito',sans-serif;font-size:.82rem;font-weight:800;cursor:pointer;transition:all .18s;white-space:nowrap}
+.filter-chip.active{background:rgba(255,210,0,.12)!important;border-color:rgba(255,210,0,.45)!important;color:var(--yellow)!important}
+.filter-sep{width:1px;height:24px;background:rgba(255,255,255,.12);margin:0 .2rem}
+.sort-select{padding:8px 14px;border-radius:50px;background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.12);color:rgba(255,255,255,.6);font-family:'Nunito',sans-serif;font-size:.82rem;font-weight:800;cursor:pointer;outline:none}
+.sort-select option{background:#0a1628;color:#fff}
+.chip-count{display:inline-block;background:rgba(255,255,255,.12);border-radius:20px;padding:1px 7px;font-size:.75rem;font-weight:900;margin-left:3px;min-width:16px;text-align:center}
+.filter-chip.active .chip-count{background:rgba(255,210,0,.25);color:var(--yellow)}
+.prefs-trigger-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;margin-bottom:2rem;max-width:1200px}
+.btn-personalise{display:flex;align-items:center;gap:.5rem;background:rgba(255,210,0,.1);border:1.5px solid rgba(255,210,0,.25);color:var(--yellow);padding:9px 18px;border-radius:50px;cursor:pointer;font-family:'Nunito',sans-serif;font-size:.85rem;font-weight:800;white-space:nowrap}
+.premium-section-banner{background:linear-gradient(90deg,rgba(255,45,107,.12),rgba(255,45,107,.06));border:1.5px solid rgba(255,45,107,.25);border-radius:16px;padding:1rem 1.4rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem;max-width:1200px}
+.premium-section-banner strong{display:block;font-weight:900;color:var(--hot-pink);font-size:1rem}
+.premium-section-banner span{font-size:.82rem;color:rgba(255,255,255,.35);font-weight:600}
+.btn-go-premium{background:var(--hot-pink);color:#fff;border:none;padding:9px 20px;border-radius:50px;font-family:'Nunito',sans-serif;font-size:.85rem;font-weight:900;cursor:pointer;white-space:nowrap}
+#prefs-banner{display:none;background:linear-gradient(90deg,#112040,#0d2a4a);border:1.5px solid rgba(255,210,0,.2);border-radius:18px;padding:1rem 1.4rem;margin-bottom:2rem;max-width:1200px}
+.prefs-banner-text{flex:1;min-width:180px}
+.prefs-banner-text strong{display:block;font-size:1rem;font-weight:900;color:var(--yellow)}
+.prefs-banner-text span{font-size:.82rem;color:rgba(255,255,255,.6);font-weight:600}
+.btn-edit-prefs{background:rgba(255,210,0,.1);border:1.5px solid rgba(255,210,0,.3);color:var(--yellow);padding:7px 16px;border-radius:50px;cursor:pointer;font-family:'Nunito',sans-serif;font-size:.85rem;font-weight:800}
+.empty-deals-state{max-width:400px;margin:3rem auto;text-align:center;background:rgba(255,255,255,.06);border:1.5px dashed rgba(255,255,255,.12);border-radius:24px;padding:3rem 2rem}
+.empty-deals-state .eds-icon{font-size:3.5rem;margin-bottom:1rem;display:block}
+.empty-deals-state h3{font-family:'Bebas Neue',sans-serif;font-size:1.8rem;color:var(--yellow);margin-bottom:.5rem}
+.empty-deals-state p{font-size:.9rem;color:rgba(255,255,255,.35);font-weight:600;line-height:1.6}
+.deal-tile.gated{position:relative;cursor:pointer}
+.deal-tile.gated .deal-tile-body{filter:blur(4px);user-select:none;pointer-events:none}
+.deal-tile-lock{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.6rem;background:rgba(10,22,40,.55);backdrop-filter:blur(2px);border-radius:inherit;padding:1.2rem}
+.deal-tile-lock span{font-family:'Bebas Neue',sans-serif;font-size:1.2rem;color:var(--yellow);text-shadow:0 2px 12px rgba(0,0,0,.6)}
+.deal-tile-lock button{padding:8px 20px;border-radius:50px;border:none;cursor:pointer;background:var(--yellow);color:var(--navy);font-family:'Nunito',sans-serif;font-size:.82rem;font-weight:900}
+.deal-foryou-ring{position:absolute;inset:-2px;border-radius:inherit;border:2.5px solid var(--yellow);box-shadow:0 0 18px rgba(255,210,0,.35);pointer-events:none;z-index:2}
+.deal-foryou-tag{position:absolute;top:.55rem;left:.65rem;z-index:4;background:var(--yellow);color:var(--navy);font-size:.75rem;font-weight:900;letter-spacing:.8px;padding:3px 9px;border-radius:50px;text-transform:uppercase;box-shadow:0 3px 10px rgba(0,0,0,.3)}
+
+/* COUNTER BAR */
+.deal-counter-bar{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:0;background:linear-gradient(135deg,#0d1f3c,#0a1628);border-top:1px solid rgba(255,210,0,.15);border-bottom:1px solid rgba(255,210,0,.15);padding:1.1rem 1rem}
+.dcb-item{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 .8rem;text-align:center}
+.dcb-num{background:linear-gradient(135deg,var(--yellow),#ffaa00);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;font-size:clamp(1.6rem,3.5vw,2.4rem)!important;font-weight:900!important;font-family:'Bebas Neue',sans-serif}
+.dcb-num.pink{color:var(--hot-pink);-webkit-text-fill-color:var(--hot-pink)}
+.dcb-num.sky{color:var(--sky);-webkit-text-fill-color:var(--sky)}
+.dcb-label{font-size:.75rem;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.35);margin-top:.25rem;white-space:nowrap}
+.dcb-divider{width:1px;height:2.8rem;background:rgba(255,255,255,.12);flex-shrink:0}
+.dcb-pulse{width:10px;height:10px;background:#22c55e;border-radius:50%;box-shadow:0 0 0 0 rgba(34,197,94,.4);animation:pulse-green 1.8s infinite;margin-bottom:.3rem}
+@keyframes pulse-green{0%{box-shadow:0 0 0 0 rgba(34,197,94,.5)}70%{box-shadow:0 0 0 8px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
+
+/* PRICING */
+.pricing-toggle-row{display:flex;align-items:center;justify-content:center;gap:1rem;margin-bottom:2.5rem}
+.pricing-toggle-label{font-size:.9rem;font-weight:800;color:rgba(255,255,255,.6);transition:color .2s}
+.pricing-toggle-label.active{color:#fff}
+.pricing-toggle{position:relative;width:52px;height:28px;background:rgba(255,255,255,.12);border-radius:50px;cursor:pointer;border:none;transition:background .25s}
+.pricing-toggle.annual{background:var(--hot-pink)}
+.pricing-toggle::after{content:'';position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform .25s var(--ease-spring)}
+.pricing-toggle.annual::after{transform:translateX(24px)}
+.annual-badge{background:linear-gradient(90deg,var(--hot-pink),#c4005a);color:#fff;font-size:.75rem;font-weight:900;padding:3px 10px;border-radius:50px}
+.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1.5rem;max-width:900px;margin:0 auto}
+.plan{padding:2rem!important;position:relative;background:linear-gradient(160deg,#0d1e38,#090f1e)!important;border:1px solid rgba(255,255,255,.12)!important;border-radius:24px!important;transition:transform .25s,box-shadow .25s!important}
+.plan:hover{transform:translateY(-6px)!important;box-shadow:0 24px 56px rgba(0,0,0,.5)!important}
+.plan.featured{background:linear-gradient(155deg,#1a3060,#0f1e40,#091525)!important;border:1px solid rgba(255,210,0,.35)!important;box-shadow:0 24px 64px rgba(0,0,0,.5)!important}
+.plan-badge{position:absolute;top:-1px;left:50%;transform:translateX(-50%);background:linear-gradient(90deg,var(--yellow),#ffc200);color:var(--navy);font-size:.75rem;font-weight:900;letter-spacing:1.5px;padding:5px 18px;border-radius:0 0 14px 14px;text-transform:uppercase;white-space:nowrap}
+.plan-name{font-family:'Bebas Neue',sans-serif;font-size:2rem;margin-bottom:.2rem}
+.plan-price{font-family:'Bebas Neue',sans-serif;font-size:4rem;line-height:1;color:var(--yellow);margin-bottom:.4rem;display:flex;align-items:baseline;gap:.15em}
+.plan-price .plan-price-currency{font-size:1.6rem;align-self:flex-start}
+.plan-price span{font-size:1.2rem;color:rgba(255,255,255,.6);font-family:'Nunito',sans-serif;font-weight:700;align-self:flex-end;margin-bottom:.3rem}
+.plan-price-annual{display:none;font-size:.82rem;color:rgba(255,255,255,.6);font-weight:700;margin-bottom:.4rem}
+.plan-saving-tag{display:none;background:rgba(255,45,107,.15);border:1px solid rgba(255,45,107,.25);color:var(--hot-pink);font-size:.75rem;font-weight:900;padding:3px 10px;border-radius:50px;margin-bottom:1rem}
+body.annual-mode .plan-price-annual{display:block}
+body.annual-mode .plan-saving-tag{display:inline-block}
+.plan-desc{font-size:.9rem;color:rgba(255,255,255,.35);margin-bottom:1.5rem;line-height:1.5}
+.plan-features{list-style:none;margin-bottom:2rem}
+.plan-features li{font-size:.9rem;font-weight:700;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);color:rgba(255,255,255,.85);display:flex;align-items:center;gap:.6rem;line-height:1.5}
+.plan-features li::before{content:"✓";color:var(--yellow);font-weight:900;flex-shrink:0}
+.plan-features li.locked::before{content:"🔒";font-size:.75rem}
+.plan-features li.locked{color:rgba(255,255,255,.35)}
+.btn-plan{width:100%;padding:15px;border-radius:50px;font-family:'Nunito',sans-serif;font-size:1rem;font-weight:900;cursor:pointer;border:none;transition:transform .18s,box-shadow .18s}
+.btn-plan.primary{background:linear-gradient(90deg,var(--yellow),#ffc200);color:var(--navy);box-shadow:0 6px 24px rgba(255,210,0,.3)}
+.btn-plan.primary:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(255,210,0,.45)}
+.btn-plan.secondary{background:rgba(255,255,255,.06);color:#fff;border:2px solid rgba(255,255,255,.12)}
+.btn-plan.secondary:hover{background:rgba(255,255,255,.12);transform:translateY(-2px)}
+
+/* TESTIMONIALS */
+.testi-section{background:#040d1a;max-width:none;padding:80px max(5vw,20px)}
+.testi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.2rem;max-width:1100px;margin:0 auto}
+.testi-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.06);border-radius:20px;padding:1.8rem;transition:border-color .2s;display:flex;flex-direction:column;justify-content:space-between}
+.testi-card:hover{border-color:rgba(255,210,0,.3)}
+.testi-stars{color:var(--yellow);font-size:.9rem;margin-bottom:.75rem}
+.testi-text{font-size:.9rem;line-height:1.6;color:rgba(255,255,255,.85);margin-bottom:1rem}
+.testi-author{font-weight:800;font-size:.85rem;color:rgba(255,255,255,.6)}
+.testi-author span{color:rgba(255,255,255,.35);font-weight:600}
+
+/* CTA BANNER */
+.cta-banner{background:radial-gradient(ellipse 70% 80% at 30% 50%,rgba(255,80,120,.15),transparent),var(--hot-pink)!important;padding:60px 5vw;text-align:center;position:relative;overflow:hidden}
+.cta-banner::before{content:'✈';position:absolute;font-size:20rem;opacity:.05;top:-3rem;right:-3rem}
+.cta-banner h2{font-family:'Bebas Neue',sans-serif;font-size:clamp(2rem,5vw,4rem);line-height:1;margin-bottom:1rem}
+.cta-banner p{font-size:1.2rem;font-weight:600;opacity:.85;margin-bottom:2rem}
+
+/* WHATSAPP */
+.wa-fab{position:fixed;bottom:2rem;left:2rem;z-index:500;display:flex;align-items:center;gap:.6rem;background:#25D366;color:#fff;border:none;cursor:pointer;padding:13px 22px;border-radius:50px;font-family:'Nunito',sans-serif;font-size:.9rem;font-weight:900;box-shadow:0 8px 28px rgba(37,211,102,.45);transition:transform .2s;text-decoration:none}
+.wa-fab:hover{transform:translateY(-3px) scale(1.04)}
+.wa-fab svg{flex-shrink:0}
+.wa-fab-label{white-space:nowrap}
+.wa-section{background:linear-gradient(135deg,#0a1628,#0d1f38);padding:60px 5vw;display:flex;align-items:center;justify-content:center}
+.wa-inner{display:flex;align-items:center;gap:3rem;max-width:900px;width:100%;flex-wrap:wrap;margin:0 auto;padding:0 max(5vw,20px)}
+.wa-icon-big{font-size:5rem;flex-shrink:0}
+.wa-text h2{font-family:'Bebas Neue',sans-serif;font-size:clamp(2rem,4vw,3rem);margin-bottom:.5rem;color:#fff}
+.wa-text p{font-size:1rem;font-weight:600;color:rgba(255,255,255,.6);margin-bottom:1.5rem;max-width:480px}
+.btn-wa{display:inline-flex;align-items:center;gap:.6rem;background:#fff;color:#075E54;border:none;cursor:pointer;padding:14px 28px;border-radius:50px;font-family:'Nunito',sans-serif;font-size:1rem;font-weight:900;text-decoration:none}
+
+/* FOOTER */
+footer{background:linear-gradient(180deg,#04090f,#020608)!important;padding:48px 5vw 24px;position:relative;overflow:hidden}
+footer::before{content:'';position:absolute;inset:0;background-image:radial-gradient(circle,rgba(255,210,0,.03) 1px,transparent 1px);background-size:28px 28px;pointer-events:none}
+.footer-top{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:3rem;margin-bottom:3rem;align-items:start}
+.footer-brand p{font-size:.85rem;color:rgba(255,255,255,.35);max-width:260px;line-height:1.6;margin-top:.5rem}
+.footer-col{display:flex;flex-direction:column;gap:.5rem}
+.footer-col h4{font-size:.85rem;font-weight:900;letter-spacing:2px;text-transform:uppercase;color:var(--yellow);margin-bottom:1rem}
+.footer-col a{display:block;font-size:.875rem;color:rgba(255,255,255,.6);text-decoration:none;margin-bottom:.5rem;line-height:1.6;padding:2px 0}
+.footer-col a:hover{color:#fff}
+.footer-social-icons{display:flex;gap:.75rem;margin-top:.75rem;flex-wrap:wrap}
+.footer-social-icon{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-size:.9rem;text-decoration:none;color:rgba(255,255,255,.6)}
+.footer-social-icon:hover{background:rgba(255,210,0,.15);border-color:rgba(255,210,0,.4);color:var(--yellow);transform:translateY(-2px)}
+.footer-bottom{border-top:1px solid rgba(255,255,255,.06);padding-top:1.5rem;display:flex;justify-content:space-between;flex-wrap:wrap;gap:1rem}
+.footer-bottom p{font-size:.85rem;color:rgba(255,255,255,.35)}
+.footer-bottom-brand{font-family:'Bebas Neue',sans-serif;font-size:5rem;color:rgba(255,255,255,.06);letter-spacing:4px;text-align:center;line-height:1;margin-top:1rem;pointer-events:none}
+.footer-social-icon[aria-disabled="true"],.footer-col a[aria-disabled="true"]{opacity:.25;pointer-events:none}
+
+/* REVEAL */
+.reveal{opacity:0;transform:translateY(32px);transition:opacity .65s var(--ease-out),transform .65s var(--ease-out)}
+.reveal.visible{opacity:1;transform:translateY(0)}
+.reveal-left{opacity:0;transform:translateX(-32px);transition:opacity .65s var(--ease-out),transform .65s var(--ease-out)}
+.reveal-left.visible{opacity:1;transform:translateX(0)}
+.reveal-right{opacity:0;transform:translateX(32px);transition:opacity .65s var(--ease-out),transform .65s var(--ease-out)}
+.reveal-right.visible{opacity:1;transform:translateX(0)}
+.reveal-delay-1{transition-delay:.1s}.reveal-delay-2{transition-delay:.2s}.reveal-delay-3{transition-delay:.3s}
+
+/* MODALS */
+.modal-box{background:linear-gradient(160deg,#0f2244,#090f1e,#0a1830)!important;border:1px solid rgba(255,210,0,.2)!important;border-radius:24px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;box-shadow:0 48px 96px rgba(0,0,0,.8)!important;animation:modalIn .35s var(--ease-spring)}
+@keyframes modalIn{from{opacity:0;transform:translateY(24px) scale(.96)}to{opacity:1;transform:none}}
+.modal-header{display:flex;align-items:center;justify-content:space-between;padding:1.4rem 1.6rem 1rem;gap:1rem;border-bottom:1px solid rgba(255,255,255,.06)}
+.modal-flag{font-size:3rem;line-height:1;flex-shrink:0}
+.modal-close{background:rgba(255,255,255,.06);border:none;color:rgba(255,255,255,.6);width:36px;height:36px;border-radius:50%;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.modal-body{padding:1.4rem 1.6rem 1.8rem}
+.modal-route{font-family:'Bebas Neue',sans-serif;font-size:1.9rem;color:#fff;line-height:1.1;margin-bottom:.3rem}
+.modal-dates{font-size:.85rem;font-weight:700;color:rgba(255,255,255,.6);margin-bottom:.8rem}
+.modal-price{background:linear-gradient(135deg,var(--yellow),#ffaa00);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;font-size:2.4rem!important;font-weight:900!important;font-family:'Bebas Neue',sans-serif}
+.modal-price-from{font-size:.85rem;font-weight:700;color:rgba(255,255,255,.6)}
+.modal-badge-big{font-size:.75rem;font-weight:900;letter-spacing:.8px;padding:5px 13px;border-radius:50px;text-transform:uppercase}
+.modal-expiry{font-size:.85rem;font-weight:700;color:rgba(255,255,255,.35);margin-bottom:1.2rem}
+.modal-tips-heading{font-size:.75rem;font-weight:900;letter-spacing:1.4px;text-transform:uppercase;color:var(--yellow);margin:1.2rem 0 .6rem}
+.modal-tips{padding-left:1.1rem;margin:0 0 1.2rem}
+.modal-tips li{font-size:.82rem;font-weight:600;color:rgba(255,255,255,.6);margin-bottom:.45rem;line-height:1.4}
+.modal-book-btn{display:block;width:100%;padding:14px;border-radius:50px;background:linear-gradient(135deg,#FFD200,#ffb800)!important;color:var(--navy);border:none;cursor:pointer;font-family:'Nunito',sans-serif;font-size:1rem;font-weight:900;text-align:center;text-decoration:none;margin-bottom:.6rem;box-shadow:0 6px 24px rgba(255,210,0,.4)!important}
+.modal-book-btn:hover{transform:translateY(-2px)!important;box-shadow:0 12px 40px rgba(255,210,0,.55)!important}
+.modal-disclaimer{font-size:.75rem;color:rgba(255,255,255,.35);text-align:center;font-weight:600;margin-bottom:1rem}
+.modal-fullpage-btn{display:block;width:100%;padding:10px;border-radius:50px;background:transparent;color:rgba(255,255,255,.35);border:1.5px solid rgba(255,255,255,.12);cursor:pointer;font-family:'Nunito',sans-serif;font-size:.82rem;font-weight:700;text-align:center}
+.modal-share-row{display:flex;gap:.5rem;flex-wrap:wrap}
+.modal-share-btn{flex:1;min-width:80px;display:flex;align-items:center;justify-content:center;gap:.4rem;padding:9px 12px;border-radius:50px;font-family:'Nunito',sans-serif;font-size:.85rem;font-weight:900;cursor:pointer;border:none;text-decoration:none}
+#deal-modal{display:none;position:fixed;inset:0;z-index:800;background:rgba(4,9,15,1);align-items:center;justify-content:center;padding:1rem}
+#deal-modal.open{display:flex}
+
+/* MISC UI */
+#toast{position:fixed;bottom:2rem;right:2rem;z-index:9999;background:linear-gradient(135deg,#0f2244,#091828)!important;border:1px solid rgba(255,210,0,.25)!important;color:#fff;padding:14px 22px;border-radius:14px;font-weight:800;font-size:.9rem;transform:translateY(100px);opacity:0;transition:all .35s var(--ease-spring);box-shadow:0 16px 48px rgba(0,0,0,.5)!important;pointer-events:none}
+#toast.show{transform:translateY(0);opacity:1}
+#back-to-top{position:fixed;bottom:8rem;right:2rem;z-index:580;width:44px;height:44px;border-radius:50%;background:rgba(10,22,40,.9);border:1.5px solid rgba(255,210,0,.25);color:var(--yellow);font-size:1.2rem;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .3s}
+#back-to-top.visible{opacity:1;pointer-events:all}
+@keyframes ripple-out{to{transform:scale(2.2);opacity:0}}
+
+/* ADMIN */
+#admin-overlay{display:none;position:fixed;inset:0;z-index:999;background:rgba(4,9,15,.97);backdrop-filter:blur(8px);overflow-y:auto}
+#admin-overlay.open{display:block}
+#login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:2rem}
+.login-box{background:linear-gradient(145deg,#112040,#0d2e56);border:2px solid rgba(255,210,0,.3);border-radius:24px;padding:2.5rem;width:100%;max-width:400px}
+.login-box h2{font-family:'Bebas Neue',sans-serif;font-size:2.2rem;color:var(--yellow);margin-bottom:.25rem}
+.login-box p{font-size:.85rem;color:rgba(255,255,255,.35);margin-bottom:2rem}
+.field-label{font-size:.75rem;font-weight:900;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.35);display:block;margin-bottom:.4rem}
+.field-input{width:100%;padding:11px 14px;border-radius:12px;border:2px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#fff;font-family:'Nunito',sans-serif;font-size:1rem;font-weight:600;outline:none;margin-bottom:1.2rem}
+.field-input:focus{border-color:var(--yellow)}
+.btn-login{width:100%;padding:14px;border-radius:50px;background:var(--yellow);color:var(--navy);border:none;cursor:pointer;font-family:'Nunito',sans-serif;font-size:1rem;font-weight:900}
+.login-error{color:var(--hot-pink);font-size:.85rem;font-weight:700;margin-top:-.5rem;margin-bottom:1rem;display:none}
+#admin-dashboard{display:none;padding:2rem 4vw 4rem;max-width:1100px;margin:0 auto}
+.admin-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;margin-bottom:2.5rem;padding-bottom:1.5rem;border-bottom:2px solid rgba(255,210,0,.15)}
+.admin-header h1{font-family:'Bebas Neue',sans-serif;font-size:2.5rem;color:var(--yellow)}
+.admin-header p{font-size:.85rem;color:rgba(255,255,255,.35)}
+.btn-logout{background:transparent;border:2px solid rgba(255,255,255,.12);color:rgba(255,255,255,.6);padding:8px 18px;border-radius:50px;cursor:pointer;font-family:'Nunito',sans-serif;font-weight:700;font-size:.85rem}
+.admin-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.06);border-radius:20px;padding:2rem;margin-bottom:2rem}
+.admin-card h3{font-family:'Bebas Neue',sans-serif;font-size:1.6rem;color:#fff;margin-bottom:1.5rem}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem}
+.form-group{display:flex;flex-direction:column;gap:.4rem}
+.form-group label{font-size:.75rem;font-weight:900;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.35)}
+.form-group input,.form-group select{padding:11px 14px;border-radius:12px;border:2px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#fff;font-family:'Nunito',sans-serif;font-size:1rem;font-weight:600;outline:none}
+.form-group select option{background:#0d2244}
+.form-actions{display:flex;gap:1rem;margin-top:1.5rem;flex-wrap:wrap}
+.btn-add{background:var(--yellow);color:var(--navy);border:none;cursor:pointer;padding:12px 28px;border-radius:50px;font-family:'Nunito',sans-serif;font-size:1rem;font-weight:900}
+.btn-clear-form{background:transparent;border:2px solid rgba(255,255,255,.12);color:rgba(255,255,255,.6);padding:12px 24px;border-radius:50px;cursor:pointer;font-family:'Nunito',sans-serif;font-weight:700;font-size:.9rem}
+.deals-table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+thead th{text-align:left;font-size:.75rem;font-weight:900;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.35);padding:.75rem 1rem;border-bottom:1px solid rgba(255,255,255,.06)}
+tbody tr{border-bottom:1px solid rgba(255,255,255,.06)}
+tbody tr:hover{background:rgba(255,255,255,.06)}
+tbody td{padding:.9rem 1rem;font-size:.9rem;font-weight:600;vertical-align:middle}
+.price-col{font-family:'Bebas Neue',sans-serif;font-size:1.4rem;color:var(--hot-pink)}
+.btn-delete{background:rgba(255,45,107,.1);border:1px solid rgba(255,45,107,.3);color:var(--hot-pink);padding:5px 12px;border-radius:50px;cursor:pointer;font-family:'Nunito',sans-serif;font-size:.85rem;font-weight:800}
+.btn-edit-row{background:rgba(255,210,0,.1);border:1px solid rgba(255,210,0,.3);color:var(--yellow);padding:5px 12px;border-radius:50px;cursor:pointer;font-family:'Nunito',sans-serif;font-size:.85rem;font-weight:800;margin-right:.4rem}
+.empty-state{text-align:center;padding:3rem;color:rgba(255,255,255,.35);font-size:1rem;font-weight:700}
+.settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem}
+.settings-section-title{font-size:.75rem;font-weight:900;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.35);margin:1.2rem 0 .6rem;grid-column:1/-1}
+.pw-strength{font-size:.75rem;font-weight:700;margin-top:.3rem;height:1rem}
+.pw-weak{color:var(--hot-pink)}.pw-medium{color:#FF8C00}.pw-strong{color:#00c864}
+.expiry-hint{font-size:.75rem;color:rgba(255,255,255,.35);margin-top:.2rem}
+.admin-date--none{color:rgba(255,255,255,.2);font-size:.78rem}
+.label-hint{font-weight:400;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.3)}
+.stripe-admin-hint{font-size:.75rem;color:rgba(255,255,255,.35);font-weight:600;margin-top:.3rem;line-height:1.5}
+.stripe-admin-hint a{color:var(--yellow);text-decoration:none}
+
+/* SIGNUP */
+#signup-modal{display:none;position:fixed;inset:0;z-index:900;background:rgba(4,9,15,.9);backdrop-filter:blur(8px);align-items:center;justify-content:center;padding:1.5rem}
+#signup-modal.open{display:flex}
+.signup-modal-box{background:linear-gradient(145deg,var(--card-dark),var(--card-darker));border:2px solid rgba(255,210,0,.25);border-radius:28px;width:100%;max-width:460px;overflow:hidden;box-shadow:0 40px 80px rgba(0,0,0,.7);animation:modalIn .35s var(--ease-spring);padding:2rem}
+.signup-modal-header{background:var(--hot-pink);padding:1.5rem 2rem;display:flex;justify-content:space-between;align-items:flex-start}
+.signup-modal-header h2{font-family:'Bebas Neue',sans-serif;font-size:2rem}
+.signup-modal-header p{font-size:.82rem;opacity:.85;font-weight:600;margin-top:.2rem}
+.signup-tabs{display:flex;gap:.5rem;margin-bottom:1.5rem}
+.signup-tab{flex:1;padding:9px;border-radius:50px;font-family:'Nunito',sans-serif;font-size:.85rem;font-weight:800;cursor:pointer;border:1.5px solid rgba(255,255,255,.12);background:transparent;color:rgba(255,255,255,.6)}
+.signup-tab.active{background:rgba(255,210,0,.12)!important;border-color:rgba(255,210,0,.4)!important;color:var(--yellow)!important}
+.signup-tab-pane{display:none}
+.signup-tab-pane.active{display:block}
+.signup-field{width:100%;padding:12px 16px;border-radius:12px;border:1.5px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#fff;font-family:'Nunito',sans-serif;font-size:1rem;font-weight:600;outline:none;margin-bottom:.8rem}
+.btn-signup-submit{width:100%;padding:13px;border-radius:50px;background:var(--yellow);color:var(--navy);border:none;cursor:pointer;font-family:'Nunito',sans-serif;font-size:1rem;font-weight:900}
+.signup-small{font-size:.75rem;color:rgba(255,255,255,.35);text-align:center;margin-top:.6rem;font-weight:600}
+.signup-plan-features{font-size:.85rem;color:rgba(255,255,255,.6);font-weight:600;line-height:1.8}
+.signup-plan-features li{list-style:none}
+.signup-plan-features li::before{content:'✓ ';color:var(--yellow);font-weight:900}
+#details-step{display:block}
+#details-step.hidden{display:none}
+#stripe-step{display:none}
+#stripe-step.visible{display:block}
+#payment-success{display:none;text-align:center;padding:1rem 0}
+#payment-success.visible{display:block}
+.success-icon{font-size:4rem;margin-bottom:.75rem}
+.success-title{font-family:'Bebas Neue',sans-serif;font-size:2rem;color:var(--yellow);margin-bottom:.4rem}
+.success-sub{font-size:.9rem;color:rgba(255,255,255,.6);font-weight:600}
+.stripe-link-btn{display:flex;align-items:center;justify-content:center;gap:.6rem;width:100%;padding:15px;border-radius:50px;background:linear-gradient(90deg,#635bff,#7b73ff);color:#fff;border:none;cursor:pointer;text-decoration:none;font-family:'Nunito',sans-serif;font-size:1rem;font-weight:900}
+.stripe-setup-notice{background:rgba(255,210,0,.08);border:1.5px solid rgba(255,210,0,.2);border-radius:12px;padding:.9rem 1.1rem;margin-bottom:1rem;font-size:.85rem;font-weight:700;color:rgba(255,255,255,.6)}
+.stripe-setup-notice strong{color:var(--yellow);display:block;margin-bottom:.2rem}
+.stripe-security-row{display:flex;align-items:center;justify-content:center;gap:.5rem}
+.stripe-security-row span{font-size:.75rem;color:rgba(255,255,255,.35);font-weight:700}
+.stripe-badges{display:flex;gap:.4rem;align-items:center}
+.stripe-badge{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:3px 8px;font-size:.75rem;font-weight:900;color:rgba(255,255,255,.35)}
+.btn-back-details{background:none;border:none;color:rgba(255,255,255,.35);font-family:'Nunito',sans-serif;font-size:.82rem;font-weight:700;cursor:pointer;padding:0 0 .6rem;display:flex;align-items:center;gap:.3rem}
+
+/* GDPR */
+#gdpr-banner{position:fixed;bottom:0;left:0;right:0;z-index:99999;background:linear-gradient(135deg,#0f2244,#091525)!important;border-top:1px solid rgba(255,210,0,.2)!important;padding:1rem 5vw;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;transform:translateY(100%);transition:transform .4s ease}
+body.gdpr-active .wa-fab,body.gdpr-active #ai-fab,body.gdpr-active #back-to-top{display:none!important}
+.gdpr-text{font-size:.82rem;color:rgba(255,255,255,.6);font-weight:600;max-width:700px;line-height:1.5}
+.gdpr-text a{color:var(--yellow);text-decoration:none}
+.gdpr-btns{display:flex;gap:.6rem;flex-shrink:0}
+.btn-gdpr-accept{background:var(--yellow);color:var(--navy);border:none;padding:9px 22px;border-radius:50px;font-family:'Nunito',sans-serif;font-size:.85rem;font-weight:900;cursor:pointer}
+.btn-gdpr-decline{background:transparent;border:1.5px solid rgba(255,255,255,.12);color:rgba(255,255,255,.35);padding:9px 18px;border-radius:50px;font-family:'Nunito',sans-serif;font-size:.85rem;font-weight:700;cursor:pointer}
+
+/* CONTACT */
+#contact-modal{display:none;position:fixed;inset:0;z-index:900;background:rgba(4,9,15,.9);backdrop-filter:blur(8px);align-items:center;justify-content:center;padding:1.5rem}
+#contact-modal.open{display:flex}
+.contact-box{background:linear-gradient(145deg,var(--card-dark),var(--card-darker));border:2px solid rgba(0,170,255,.2);border-radius:28px;width:100%;max-width:480px;overflow:hidden;box-shadow:0 40px 80px rgba(0,0,0,.7);animation:modalIn .35s var(--ease-spring);padding:2rem}
+.contact-header{background:linear-gradient(90deg,#0a3060,#0d4080);padding:1.5rem 2rem;border-bottom:1px solid rgba(0,170,255,.15);display:flex;justify-content:space-between;align-items:flex-start}
+.contact-header h2{font-family:'Bebas Neue',sans-serif;font-size:2rem;color:var(--sky)}
+.contact-header p{font-size:.82rem;color:rgba(255,255,255,.35);font-weight:600;margin-top:.2rem}
+.contact-email-row{display:flex;align-items:center;gap:.75rem;background:rgba(0,170,255,.07);border:1.5px solid rgba(0,170,255,.15);border-radius:12px;padding:.9rem 1.1rem;margin-bottom:1.2rem}
+.contact-email-row span{font-size:.85rem;font-weight:800;color:var(--sky)}
+
+/* AI */
+#ai-fab{position:fixed;bottom:2rem;right:2rem;z-index:600;width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,#FF2D6B,#e02060)!important;border:none;cursor:pointer;box-shadow:0 8px 28px rgba(255,45,107,.45)!important;display:flex;align-items:center;justify-content:center;font-size:1.6rem;transition:transform .2s var(--ease-spring);animation:fabPop .5s var(--ease-spring) 1.5s both}
+@keyframes fabPop{from{opacity:0;transform:scale(0)}to{opacity:1;transform:scale(1)}}
+#ai-fab .fab-badge{position:absolute;top:-4px;right:-4px;background:var(--yellow);color:var(--navy);font-family:'Nunito',sans-serif;font-size:.75rem;font-weight:900;padding:2px 6px;border-radius:50px;white-space:nowrap}
+#ai-panel{position:fixed;bottom:6rem;right:2rem;z-index:600;width:370px;max-width:calc(100vw - 2rem);background:linear-gradient(160deg,#0f2244,#07111e)!important;border:1px solid rgba(255,45,107,.25)!important;border-radius:24px;box-shadow:0 32px 72px rgba(0,0,0,.7)!important;display:flex;flex-direction:column;overflow:hidden;transform:translateY(20px) scale(.95);opacity:0;pointer-events:none;transition:all .3s var(--ease-spring);max-height:520px}
+#ai-panel.open{transform:translateY(0) scale(1);opacity:1;pointer-events:all}
+.ai-panel-header{background:linear-gradient(135deg,rgba(255,45,107,.08),transparent)!important;padding:1rem 1.2rem;display:flex;align-items:center;gap:.75rem;border-bottom:1px solid rgba(255,255,255,.06)!important}
+.ai-avatar{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0}
+.ai-header-text{flex:1}
+.ai-header-text strong{display:block;font-size:1rem;font-weight:900}
+.ai-header-text span{font-size:.75rem;opacity:.8;font-weight:600}
+.ai-status{width:8px;height:8px;border-radius:50%;background:#7fff7f;box-shadow:0 0 6px #7fff7f;flex-shrink:0}
+.ai-close-btn{background:rgba(255,255,255,.12);border:none;color:#fff;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:.9rem;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ai-messages{flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:.75rem;min-height:200px;max-height:320px}
+.ai-msg{display:flex;gap:.5rem;align-items:flex-end;animation:msgIn .3s ease}
+@keyframes msgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.ai-msg.user{flex-direction:row-reverse}
+.ai-msg.bot .ai-bubble{background:rgba(255,255,255,.06);color:#fff}
+.ai-msg.user .ai-bubble{background:var(--hot-pink);color:#fff}
+.ai-deal-chip{display:inline-flex;align-items:center;gap:.4rem;background:var(--yellow);color:var(--navy);padding:5px 12px;border-radius:50px;font-size:.85rem;font-weight:900;cursor:pointer;border:none}
+.ai-suggestions{display:flex;gap:.4rem;padding:.5rem 1rem;overflow-x:auto;flex-wrap:wrap}
+.ai-suggestion{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.6);padding:5px 12px;border-radius:50px;font-size:.75rem;font-weight:700;cursor:pointer;white-space:nowrap;font-family:'Nunito',sans-serif}
+.ai-suggestion:hover{background:rgba(255,210,0,.12);border-color:var(--yellow);color:var(--yellow)}
+.ai-input-row{display:flex;gap:.5rem;padding:.8rem 1rem 1rem;border-top:1px solid rgba(255,255,255,.06)}
+.ai-input{flex:1;background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.12);color:#fff;padding:9px 14px;border-radius:50px;font-family:'Nunito',sans-serif;font-size:.9rem;font-weight:600;outline:none}
+.ai-input::placeholder{color:rgba(255,255,255,.35)}
+.ai-input:focus{border-color:var(--hot-pink)}
+.ai-send{background:var(--hot-pink);color:#fff;border:none;cursor:pointer;width:38px;height:38px;border-radius:50%;font-size:1rem;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+
+/* PREFS MODAL */
+#prefs-modal{display:none;position:fixed;inset:0;z-index:850;background:rgba(4,9,15,.97);backdrop-filter:blur(8px);align-items:center;justify-content:center;padding:1.5rem}
+#prefs-modal.open{display:flex}
+.prefs-box{background:linear-gradient(145deg,var(--card-dark),var(--card-darker));border:2px solid rgba(255,210,0,.2);border-radius:28px;width:100%;max-width:540px;overflow:hidden;box-shadow:0 40px 80px rgba(0,0,0,.7);animation:modalIn .35s var(--ease-spring);padding:0 2rem 2rem}
+.prefs-header{padding:1.5rem 2rem;border-bottom:1px solid rgba(255,210,0,.1);display:flex;justify-content:space-between;align-items:center}
+.prefs-header h2{font-family:'Bebas Neue',sans-serif;font-size:1.8rem;color:var(--yellow)}
+.prefs-header p{font-size:.85rem;color:rgba(255,255,255,.35);font-weight:600;margin-top:.1rem}
+.prefs-body{padding:1.5rem 2rem 2rem;overflow-y:auto;max-height:60vh}
+.prefs-section{margin-bottom:1.8rem}
+.prefs-section-label{font-size:.75rem;font-weight:900;letter-spacing:2px;text-transform:uppercase;color:var(--yellow);margin-bottom:.8rem;display:block}
+.airport-grid,.interest-grid{display:flex;flex-wrap:wrap;gap:.5rem}
+.airport-chip,.interest-tag{background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.12);color:rgba(255,255,255,.6);padding:7px 14px;border-radius:50px;font-size:.82rem;font-weight:800;cursor:pointer;user-select:none}
+.airport-chip.active{background:rgba(255,210,0,.15);border-color:var(--yellow);color:var(--yellow)}
+.interest-tag.active{background:rgba(255,45,107,.15);border-color:var(--hot-pink);color:var(--hot-pink)}
+.budget-row{display:flex;align-items:center;gap:1rem}
+.budget-slider{flex:1;-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;background:rgba(255,255,255,.12);outline:none}
+.budget-slider::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--yellow);cursor:pointer}
+.budget-val{font-family:'Bebas Neue',sans-serif;font-size:1.5rem;color:var(--yellow);min-width:60px}
+.months-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:.4rem}
+.month-chip{background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.06);color:rgba(255,255,255,.6);padding:6px 4px;border-radius:10px;font-size:.75rem;font-weight:800;cursor:pointer;text-align:center;user-select:none}
+.month-chip.active{background:rgba(0,170,255,.15);border-color:var(--sky);color:var(--sky)}
+.prefs-footer{display:flex;gap:.75rem;padding:0 2rem 1.5rem}
+.btn-save-prefs{flex:1;background:var(--yellow);color:var(--navy);border:none;cursor:pointer;padding:13px;border-radius:50px;font-family:'Nunito',sans-serif;font-size:1rem;font-weight:900}
+.btn-clear-prefs{background:transparent;border:1.5px solid rgba(255,255,255,.12);color:rgba(255,255,255,.35);padding:13px 20px;border-radius:50px;cursor:pointer;font-family:'Nunito',sans-serif;font-size:.9rem;font-weight:700}
+
+/* DEAL PAGE */
+#deal-page{display:none;position:fixed;inset:0;z-index:1000;background:var(--navy);overflow-y:auto;animation:pageIn .3s ease}
+@keyframes pageIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.dp-nav{position:sticky;top:0;z-index:10;background:rgba(10,22,40,.97);backdrop-filter:blur(12px);border-bottom:2px solid var(--yellow);display:flex;align-items:center;justify-content:space-between;padding:0 5vw;height:60px}
+.dp-back{display:flex;align-items:center;gap:.5rem;color:var(--yellow);text-decoration:none;font-weight:800;font-size:.9rem;background:none;border:none;cursor:pointer}
+.dp-share-nav{display:flex;gap:.5rem}
+.dp-hero{background:linear-gradient(135deg,#0a1628,#0d2a4a,#0a1628);padding:60px 5vw 48px;position:relative;overflow:hidden}
+.dp-hero::before{content:'✈';position:absolute;font-size:18rem;opacity:.04;right:-2rem;top:-3rem;pointer-events:none}
+.dp-hero-inner{max-width:900px;margin:0 auto;padding:2rem max(5vw,20px)}
+.dp-breadcrumb{font-size:.85rem;font-weight:700;color:rgba(255,255,255,.35);margin-bottom:1rem}
+.dp-breadcrumb a{color:rgba(255,255,255,.35);text-decoration:none}
+.dp-flag-big{font-size:5rem;line-height:1;margin-bottom:.75rem;display:block}
+.dp-title{font-family:'Bebas Neue',sans-serif;font-size:clamp(2.5rem,6vw,4.5rem);line-height:.95;margin-bottom:.5rem}
+.dp-title .accent{color:var(--yellow)}
+.dp-subtitle{font-size:1rem;color:rgba(255,255,255,.6);font-weight:600;margin-bottom:1.5rem}
+.dp-meta-row{display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:2rem}
+.dp-price-big{font-family:'Bebas Neue',sans-serif;font-size:5rem;color:var(--hot-pink);line-height:1}
+.dp-price-big small{font-family:'Nunito',sans-serif;font-size:.85rem;color:rgba(255,255,255,.35);font-weight:700;display:block}
+.dp-body{max-width:900px;margin:0 auto;padding:40px 5vw 80px;display:grid;grid-template-columns:1fr 320px;gap:2.5rem}
+.dp-section{margin-bottom:2rem}
+.dp-section h2{font-family:'Bebas Neue',sans-serif;font-size:1.6rem;color:var(--yellow);margin-bottom:.8rem}
+.dp-section p{font-size:1rem;color:rgba(255,255,255,.6);line-height:1.7;margin-bottom:.6rem}
+.dp-tips-list{list-style:none;display:flex;flex-direction:column;gap:.6rem}
+.dp-tips-list li{font-size:.9rem;color:rgba(255,255,255,.6);line-height:1.6;padding:.7rem 1rem .7rem 1.8rem;background:rgba(255,255,255,.06);border-left:3px solid var(--yellow);border-radius:0 10px 10px 0}
+.dp-share-grid{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
+.dp-share-btn{display:flex;align-items:center;justify-content:center;gap:.5rem;padding:12px 16px;border-radius:14px;font-family:'Nunito',sans-serif;font-size:.9rem;font-weight:900;cursor:pointer;border:none;text-decoration:none}
+.share-wa{background:#25D366;color:#fff}.share-tw{background:#1DA1F2;color:#fff}.share-fb{background:#1877F2;color:#fff}
+.share-copy{background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.12)!important;color:#fff}
+.dp-book-card{background:linear-gradient(145deg,#112040,#0d2e56);border:2px solid rgba(255,210,0,.25);border-radius:24px;padding:1.8rem;position:sticky;top:80px;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.dp-book-card .price-label{font-size:.75rem;font-weight:900;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.35);margin-bottom:.25rem}
+.dp-book-card .price-num{font-family:'Bebas Neue',sans-serif;font-size:3.5rem;color:var(--hot-pink);line-height:1;margin-bottom:.25rem}
+.dp-book-card .price-sub{font-size:.85rem;color:rgba(255,255,255,.35);font-weight:600;margin-bottom:1.2rem}
+.dp-book-card .expiry-note{font-size:.85rem;font-weight:700;margin-bottom:1.2rem;padding:.6rem .9rem;border-radius:10px;background:rgba(255,45,107,.1);color:var(--hot-pink)}
+.dp-book-card .btn-book-big{display:block;width:100%;padding:15px;border-radius:50px;background:var(--yellow);color:var(--navy);border:none;cursor:pointer;font-family:'Nunito',sans-serif;font-size:1rem;font-weight:900;text-align:center;text-decoration:none;margin-bottom:.75rem}
+.dp-book-card .disclaimer{font-size:.75rem;color:rgba(255,255,255,.35);text-align:center;font-weight:600}
+
+/* HAMBURGER */
+.hamburger{display:none;flex-direction:column;justify-content:center;align-items:center;gap:5px;width:40px;height:40px;background:none;border:none;cursor:pointer;z-index:201;position:relative}
+.hamburger span{display:block;width:24px;height:2.5px;background:var(--yellow);border-radius:2px;transition:transform .3s ease,opacity .3s ease;transform-origin:center}
+.hamburger.open span:nth-child(1){transform:translateY(7.5px) rotate(45deg)}
+.hamburger.open span:nth-child(2){opacity:0;transform:scaleX(0)}
+.hamburger.open span:nth-child(3){transform:translateY(-7.5px) rotate(-45deg)}
+.mobile-menu{display:flex;flex-direction:column;position:fixed;top:64px;left:0;right:0;z-index:199;background:rgba(8,18,34,.98);backdrop-filter:blur(16px);border-bottom:2px solid rgba(255,210,0,.15);padding:.5rem 0 1rem;max-height:calc(100vh - 64px);overflow-y:auto;transform:translateY(-12px);opacity:0;pointer-events:none;visibility:hidden;transition:transform .28s var(--ease-out),opacity .22s ease}
+.mobile-menu.open{transform:translateY(0);opacity:1;pointer-events:all;visibility:visible}
+.mobile-menu a{padding:1rem 6vw;font-size:1.2rem;font-weight:800;color:rgba(255,255,255,.85);text-decoration:none;border-bottom:1px solid rgba(255,255,255,.06)}
+.mobile-menu a.m-cta{margin:1rem 6vw 0;padding:14px;background:var(--hot-pink);color:#fff;border-radius:50px;text-align:center;font-size:1rem;border-bottom:none}
+.mobile-menu a.m-admin{padding:.6rem 6vw;font-size:.85rem;color:rgba(255,255,255,.35);border-bottom:none}
+
+body.modal-active .hero,body.modal-active .ticker,body.modal-active .deal-counter-bar{visibility:hidden}
+body.modal-active nav{display:none}
+
+@media(max-width:768px){.hero-inner{grid-template-columns:1fr;gap:2.5rem}.hero-right{order:-1}.nav-links{display:none}.hamburger{display:flex}.wa-inner{flex-direction:column;text-align:center;gap:1.5rem}.footer-top{grid-template-columns:1fr 1fr;gap:2rem}.footer-brand{grid-column:1/-1}.dp-body{grid-template-columns:1fr;padding:0 max(5vw,20px) 2rem}.mascot-hero-wrap{max-width:360px}.floating-badge{font-size:.85rem;padding:8px 16px}.fb-hot{right:0}.fb-flash{right:-2%}.fb-price{left:0}.hero-headline-v2{font-size:clamp(3.5rem,14vw,6rem)!important}}
+@media(max-width:640px){.plans{grid-template-columns:1fr}.deals-grid{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(280px,1fr))!important;gap:1.2rem!important}}
+@media(max-width:480px){.hero-inner{grid-template-columns:1fr!important;gap:2rem}.footer-top{grid-template-columns:1fr}.deal-counter-bar{padding:.8rem .5rem}.dcb-item{padding:0 .5rem}.mascot-hero-wrap{max-width:300px}.floating-badge{font-size:.72rem;padding:6px 13px}.fb-flash{right:0;top:50%}}
+@media(prefers-reduced-motion:reduce){.ticker-inner{animation:none!important}.reveal,.reveal-left,.reveal-right{opacity:1!important;transform:none!important;transition:none!important}*{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<a class="wa-fab mcf-wa-link" href="#" target="_blank" rel="noopener noreferrer" onclick="mcfTrack('whatsapp_click',{location:'fab'})"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg><span class="wa-fab-label">Get Deals on WhatsApp</span></a>
+<nav><a class="nav-logo" href="#">MR <span>CHEAP</span> FLIGHTS</a><ul class="nav-links"><li><a href="#how" onclick="mcfTrack('nav_click',{link:'how_it_works'})">How It Works</a></li><li><a href="#deals" onclick="mcfTrack('nav_click',{link:'deals'})">Deals</a></li><li><a href="#pricing" onclick="mcfTrack('nav_click',{link:'pricing'})">Pricing</a></li><li><a href="#" class="nav-cta" onclick="openSignup(event,'free');mcfTrack('signup_intent',{plan:'free',location:'nav'})">Join Free</a></li><li><a href="#" class="admin-link" onclick="openAdmin(event)">⚙ Admin</a></li></ul><a href="#" id="region-switcher" class="nav-region-switcher" onclick="switchRegion(event)" title="Switch to UK site">🇬🇧 UK</a><button class="hamburger" id="hamburger" onclick="toggleMenu()" aria-label="Menu"><span></span><span></span><span></span></button></nav>
+<div class="mobile-menu" id="mobile-menu"><a href="#how" onclick="closeMenu();mcfTrack('nav_click',{link:'how_it_works',device:'mobile'})">How It Works</a><a href="#deals" onclick="closeMenu();mcfTrack('nav_click',{link:'deals',device:'mobile'})">Deals</a><a href="#pricing" onclick="closeMenu();mcfTrack('nav_click',{link:'pricing',device:'mobile'})">Pricing</a><a href="#" onclick="closeMenu();openSignup(event,'free');mcfTrack('signup_intent',{plan:'free',location:'mobile_nav'})" class="m-cta">✈ Join Free</a><a href="#" onclick="openAdmin(event);closeMenu();" class="m-admin">⚙ Admin</a></div>
+<section class="hero" id="hero"><div class="hero-inner"><div class="hero-left"><div class="hero-badge" id="hero-badge">🇮🇪 IRELAND'S #1 FLIGHT DEAL FINDER</div><h1><span class="hero-headline-v2"><span class="hl-ridic">RIDIC</span><br><span class="hl-ulous">ULOUS</span><br><span class="hl-deals">DEALS.</span></span></h1><p class="hero-sub" id="hero-sub">Mr Cheap Flights hunts down the best flight deals from Irish airports — so you don't have to. Join thousands saving big on every trip.</p><div class="hero-stats"><div class="stat-pill"><div><div class="stat-num" id="hero-deal-count">4</div><div class="stat-pill-label">deals live now</div></div></div><div class="stat-pill"><div><div class="stat-num pink" id="hero-best-price">€47</div><div class="stat-pill-label">lowest deal today</div></div></div><div class="stat-pill"><div><div class="stat-num mcf-member-count">12,400+</div><div class="stat-pill-label">members</div></div></div></div><div class="hero-form" id="hero-form"><input type="email" id="hero-email" placeholder="Your email address…" autocomplete="email" onkeydown="if(event.key==='Enter'){event.preventDefault();submitEmail(event);}"/><button class="btn-primary" onclick="submitEmail(event)">Get Free Deals ✈</button></div><div class="signup-success" id="signup-success"><div class="success-icon">🎉</div><p class="signup-success-heading">You're in! Welcome to the club.</p><p class="signup-success-sub">Check your inbox for your first deals.</p><button class="btn-primary signup-success-btn" onclick="smoothTo(null,'deals')">See Today's Deals ↓</button></div><p class="hero-trust" id="hero-trust-line">🔒 No spam. Unsubscribe anytime. Loved by <strong class="mcf-member-count">12,400+</strong> deal hunters.</p></div><div class="hero-right"><div class="mascot-hero-wrap"><div class="mascot-neon-ring"></div><img src="mascot.png" alt="Mr Cheap Flights mascot" class="mascot-hero-img" /><div class="floating-badge fb-hot" onclick="openDealByRouteSmart('Dublin → Ibiza')">🔥 HOT DEAL</div><div class="floating-badge fb-flash" onclick="openDealByRouteSmart('Dublin → Lisbon')">⚡ FLASH SALE</div><div class="floating-badge fb-price" onclick="openDealByRouteSmart('Dublin → Lisbon')">✈ €29 LISBON</div></div></div></div></section>
+<div class="ticker"><div class="ticker-inner" id="ticker-wrap"></div></div>
+<div class="section-wave" style="background:transparent"><svg viewBox="0 0 1440 40" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg"><path d="M0,20 C360,40 1080,0 1440,20 L1440,40 L0,40 Z" fill="#0a1628"/></svg></div>
+<div class="deal-counter-bar"><div class="dcb-item"><div class="dcb-pulse"></div><div class="dcb-label" style="color:#22c55e">Live now</div></div><div class="dcb-item"><div class="dcb-num" id="dcb-live">4</div><div class="dcb-label">Deals available</div></div><div class="dcb-divider"></div><div class="dcb-item"><div class="dcb-num pink" id="dcb-monthly">47</div><div class="dcb-label">Deals this month</div></div><div class="dcb-divider"></div><div class="dcb-item"><div class="dcb-num sky" id="dcb-saved">€183</div><div class="dcb-label">Avg. member saving</div></div><div class="dcb-divider"></div><div class="dcb-item"><div class="dcb-num mcf-member-count">12,400+</div><div class="dcb-label">Members saving</div></div></div>
+<section class="section" id="how"><p class="section-label">The process</p><h2 class="section-title">HOW IT <span>WORKS</span></h2><div class="steps"><div class="step reveal reveal-left"><div class="step-num">01</div><h3>Sign Up Free</h3><p>Create your free account in seconds. No credit card. No catches.</p></div><div class="step reveal reveal-right"><div class="step-num">02</div><h3>We Hunt Deals</h3><p>Our team scans hundreds of airlines 24/7 for mistake fares, flash sales and insane prices.</p></div><div class="step reveal reveal-left"><div class="step-num">03</div><h3>You Get Notified</h3><p>When we find a jaw-dropper, you get an email instantly.</p></div><div class="step reveal reveal-right"><div class="step-num">04</div><h3>Book & Fly</h3><p>Click straight through to the airline — we never take commission.</p></div></div></section>
+<section class="section deals-section" id="deals"><p class="section-label reveal">Latest drops</p><div class="prefs-trigger-row"><h2 class="section-title" id="deals-title">RECENT <span>DEALS</span></h2><button class="btn-personalise" onclick="openPrefs();mcfTrack('personalise_click')">🎯 Personalise for me</button></div><div class="premium-section-banner" id="premium-section-banner" style="display:none"><div class="psb-text"><strong>⭐ Some deals are Premium-only</strong><span>Featured and Long Haul deals are unlocked for Premium members</span></div><button class="btn-go-premium" onclick="openSignup(event,'premium');mcfTrack('signup_intent',{plan:'premium',location:'deals_banner'})">Upgrade to Premium →</button></div><div id="prefs-banner"><div class="prefs-banner-text"><strong id="prefs-banner-title">Showing deals for you</strong><span id="prefs-banner-sub">Based on your preferences</span></div><button class="btn-edit-prefs" onclick="openPrefs()">✏️ Edit preferences</button></div><div class="deals-filter-bar" id="deals-filter-bar"><button class="filter-chip active" data-filter="all" onclick="setFilter('all',this)">🌍 All Deals <span class="chip-count" id="fc-all"></span></button><button class="filter-chip" data-filter="hot" onclick="setFilter('hot',this)">🔥 Hot <span class="chip-count" id="fc-hot"></span></button><button class="filter-chip" data-filter="flash" onclick="setFilter('flash',this)">⚡ Flash <span class="chip-count" id="fc-flash"></span></button><button class="filter-chip" data-filter="long" onclick="setFilter('long',this)">✈ Long Haul <span class="chip-count" id="fc-long"></span></button><button class="filter-chip" data-filter="feat" onclick="setFilter('feat',this)">⭐ Featured <span class="chip-count" id="fc-feat"></span></button><div class="filter-sep"></div><select class="sort-select" id="sort-select" onchange="renderPublic()"><option value="default">🕐 Newest first</option><option value="price-asc">💸 Cheapest first</option><option value="price-desc">💰 Most expensive</option><option value="expiry">⏳ Expiring soon</option></select></div><div class="deals-grid" id="public-grid"></div><div id="no-deals-pub" style="display:none"><div class="empty-deals-state"><span class="eds-icon">✈️</span><h3>Deals Loading Soon</h3><p>Our hunters are finding the best fares. Sign up to be first to know.</p><button class="btn-plan primary" style="margin-top:1.2rem;max-width:280px" onclick="openSignup(event,'free')">Get Notified Free</button></div></div><div style="text-align:center;margin-top:2.5rem"><p style="color:#777;font-weight:700;margin-bottom:1rem">🔒 Members get 3× more deals including mistake fares</p><button class="btn-primary" style="font-size:1.05rem;padding:14px 32px" onclick="openSignup(event,'free');mcfTrack('signup_intent',{plan:'free',location:'below_deals'})">Unlock All Deals – It's Free</button></div></section>
+<div class="section-wave"><svg viewBox="0 0 1440 40" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg"><path d="M0,0 C480,40 960,0 1440,30 L1440,40 L0,40 Z" fill="#0a1628"/></svg></div>
+<section class="section" id="pricing" style="background:linear-gradient(180deg,#0a1628,#081220)"><p class="section-label reveal">Plans</p><h2 class="section-title reveal reveal-delay-1">JOIN THE <span>CLUB</span></h2><div class="pricing-toggle-row reveal reveal-delay-2"><span class="pricing-toggle-label active" id="lbl-monthly">Monthly</span><button class="pricing-toggle" id="pricing-toggle-btn" onclick="togglePricingMode()"></button><span class="pricing-toggle-label" id="lbl-annual">Annual</span><span class="annual-badge">Save 33%</span></div><div class="plans"><div class="plan reveal reveal-delay-2"><div class="plan-name">Free</div><div class="plan-price"><span class="plan-price-currency">€</span><span>0</span><span>/mo</span></div><div class="plan-price-annual">€0/year — always free</div><p class="plan-desc">The basics — perfect to get started.</p><ul class="plan-features"><li>Weekly deals newsletter</li><li>Economy class deals only</li><li>Dublin departures only</li><li>Email support</li><li class="locked">Instant alerts</li><li class="locked">Business class deals</li><li class="locked">All Irish airports</li></ul><button class="btn-plan secondary" onclick="openSignup(event,'free');mcfTrack('signup_intent',{plan:'free',location:'pricing_card'})">Join Free — No Card Needed</button></div><div class="plan featured reveal reveal-delay-3"><div class="plan-badge">🔥 Most Popular</div><div class="plan-name">Premium ⭐</div><div class="plan-price"><span class="plan-price-currency">€</span><span id="prem-price-num">4.99</span><span id="prem-price-period">/mo</span></div><div class="plan-price-annual" id="prem-annual-note">€39.99/year — billed once</div><div class="plan-saving-tag" id="prem-saving-tag">🎉 Save €19.89 vs monthly</div><p class="plan-desc">For serious deal hunters. Never miss a fare again.</p><ul class="plan-features"><li>Instant deal alerts — be first</li><li>Business &amp; premium class deals</li><li>All Irish airports covered</li><li>Mistake fare alerts</li><li>Members-only community</li><li>Priority support</li><li>Cancel anytime</li></ul><button class="btn-plan primary" id="btn-start-premium" onclick="openSignup(event,'premium');mcfTrack('signup_intent',{plan:'premium',location:'pricing_card'})">Start for €4.99/mo →</button></div></div></section>
+<section id="testimonials" class="section testi-section"><p class="section-label reveal">The people love it</p><h2 class="section-title">WHAT MEMBERS <span>SAY</span></h2><div class="testi-grid"><div class="testi-card reveal reveal-left"><div class="testi-stars">★★★★★</div><p class="testi-text">"Booked Dublin to Lisbon for €29 return. My friends couldn't believe it."</p><p class="testi-author">Sarah M. <span>· Dublin</span></p></div><div class="testi-card reveal reveal-delay-1"><div class="testi-stars">★★★★★</div><p class="testi-text">"Got a mistake fare to New York for €189. Mr Cheap Flights is dangerous for my holiday calendar."</p><p class="testi-author">Ciarán O. <span>· Cork</span></p></div><div class="testi-card reveal reveal-right reveal-delay-2"><div class="testi-stars">★★★★★</div><p class="testi-text">"I've been to 6 countries this year and spent less than my friends on two holidays."</p><p class="testi-author">Niamh T. <span>· Galway</span></p></div><div class="testi-card reveal reveal-delay-3"><div class="testi-stars">★★★★★</div><p class="testi-text">"The best €5 I spend each month. Community is brilliant and deals are lightning fast."</p><p class="testi-author">James K. <span>· Belfast</span></p></div></div></section>
+<section class="cta-banner"><h2 id="cta-h2">STOP PAYING FULL PRICE ✈</h2><p id="cta-p">Join <span class="mcf-cta-count">12,400+</span> savvy Irish travellers getting insane deals every week.</p><button class="btn-white" onclick="openSignup(event,'free');mcfTrack('signup_intent',{plan:'free',location:'cta_banner'})">Join Mr Cheap Flights — Free</button></section>
+<section class="wa-section" id="whatsapp"><div class="wa-inner"><div class="wa-icon-big">💬</div><div class="wa-text"><h2>GET DEALS ON WHATSAPP</h2><p>Join our WhatsApp broadcast and get instant alerts the moment a deal drops.</p><a class="btn-wa mcf-wa-link" href="#" target="_blank" rel="noopener noreferrer" onclick="mcfTrack('whatsapp_click',{location:'section'})"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>Join WhatsApp Alerts</a></div></div></section>
+<footer><div class="footer-top"><div class="footer-brand"><a class="nav-logo" href="#" style="font-size:2rem" id="footer-logo">MR <span>CHEAP</span> FLIGHTS</a><p style="margin-top:.6rem" id="footer-desc">Hunting down the best flight deals from Irish airports since 2024.</p><div class="footer-social-icons" style="margin-top:1rem"><a class="footer-social-icon" id="fsoc-ig" href="#" target="_blank" title="Instagram" rel="noopener noreferrer" onclick="mcfTrack('social_click',{platform:'instagram'})">📸</a><a class="footer-social-icon" id="fsoc-tk" href="#" target="_blank" title="TikTok" rel="noopener noreferrer" onclick="mcfTrack('social_click',{platform:'tiktok'})">🎵</a><a class="footer-social-icon" id="fsoc-fb" href="#" target="_blank" title="Facebook" rel="noopener noreferrer" onclick="mcfTrack('social_click',{platform:'facebook'})">📘</a><a class="footer-social-icon" id="fsoc-tw" href="#" target="_blank" title="Twitter/X" rel="noopener noreferrer" onclick="mcfTrack('social_click',{platform:'twitter'})">🐦</a><a class="footer-social-icon mcf-wa-link" href="#" target="_blank" title="WhatsApp" rel="noopener noreferrer" onclick="mcfTrack('whatsapp_click',{location:'footer'})">💬</a></div></div><div class="footer-col"><h4>Company</h4><a href="#how">How It Works</a><a href="#" onclick="openSignup(event,'free')">Join Free</a><a href="#" onclick="openContact(event)">Contact Us</a></div><div class="footer-col"><h4>Deals</h4><a href="#deals">All Deals</a><a href="#pricing">Pricing</a><a href="#" onclick="openSignup(event,'free')">Get Alerts</a></div><div class="footer-col"><h4>Follow</h4><a id="ft-ig" href="#" target="_blank" rel="noopener noreferrer">Instagram</a><a id="ft-tk" href="#" target="_blank" rel="noopener noreferrer">TikTok</a><a id="ft-fb" href="#" target="_blank" rel="noopener noreferrer">Facebook</a><a id="ft-tw" href="#" target="_blank" rel="noopener noreferrer">Twitter / X</a></div></div><div class="footer-bottom-brand">MR CHEAP FLIGHTS</div><div class="footer-bottom"><p>© <span id="footer-year">2025</span> Mr Cheap Flights. All rights reserved.</p></div></footer>
+<div id="admin-overlay"><div id="login-screen"><div class="login-box"><h2>⚡ Admin Panel</h2><p>Authorised access only</p><label class="field-label">Password</label><input type="password" class="field-input" id="admin-pw" placeholder="Enter password…" onkeydown="if(event.key==='Enter')doLogin()"/><p class="login-error" id="login-err">❌ Wrong password.</p><button class="btn-login" onclick="doLogin()">Login →</button></div></div><div id="admin-dashboard"><div class="admin-header"><div><h1>✈ Deals CMS</h1><p id="deal-count">0 deals live</p></div><button class="btn-logout" onclick="doLogout()">Log Out</button></div><div class="admin-card"><h3 id="form-heading">➕ Add New Deal</h3><input type="hidden" id="edit-id"/><div class="form-grid"><div class="form-group"><label>Flag</label><input id="f-flag" placeholder="🇪🇸" maxlength="4"/></div><div class="form-group"><label>Route</label><input id="f-route" placeholder="Dublin → Ibiza" oninput="fillSlug()"/></div><div class="form-group"><label>Dates</label><input id="f-dates" placeholder="Late April – May"/></div><div class="form-group"><label>Price</label><input id="f-price" placeholder="€47" oninput="fillSlug()"/></div><div class="form-group"><label>Badge</label><select id="f-badge"><option>🔥 Hot</option><option>⚡ Flash</option><option>✈ Long Haul</option><option>⭐ Featured</option></select></div><div class="form-group"><label>Region</label><select id="f-region"><option value="ie">🇮🇪 Ireland</option><option value="uk">🇬🇧 UK</option></select></div><div class="form-group"><label></label>Booking URL</label><input id="f-url" placeholder="https://…"/></div><div class="form-group"><label>Slug</label><input id="f-slug" placeholder="auto-generated" oninput="this.dataset.manuallyEdited='1'"/></div><div class="form-group"><label>Expiry</label><input id="f-expiry" type="date"/></div></div><div class="form-actions"><button class="btn-add" id="form-submit-btn" onclick="submitDeal()">Add Deal ✈</button><button class="btn-clear-form" onclick="resetForm()">Clear</button></div></div><div class="admin-card"><h3>📋 All Deals</h3><div class="deals-table-wrap"><table><thead><tr><th>Flag</th><th>Route</th><th>Price</th><th>Badge</th><th>Region</th><th></th>Expires</th><th>Actions</th></tr></thead><tbody id="admin-tbody"></tbody></table><div id="admin-empty" class="empty-state" style="display:none">No deals yet ✈</div></div></div><div class="admin-card"><h3>⚙️ Settings</h3><div class="settings-grid"><div class="settings-section-title">📊 Stats</div><div class="form-group"><label>Members</label><input id="s-members" class="field-input"/></div><div class="form-group"><label>Monthly Deals</label><input id="s-monthly" type="number" class="field-input"/></div><div class="form-group"><label>Avg Saving</label><input id="s-saving" class="field-input"/></div><div class="settings-section-title">📱 WhatsApp</div><div class="form-group"><label>WA Number</label><input id="s-wa" class="field-input"/></div><div class="form-group"><label>Mailchimp URL</label><input id="s-mc" class="field-input"/></div><div class="settings-section-title">💳 Stripe</div><div class="form-group" style="grid-column:1/-1"><label>Payment Link</label><input id="s-stripe-link" class="field-input"/></div><div class="form-group" style="grid-column:1/-1"><label>Publishable Key</label><input id="s-stripe-pk" class="field-input"/></div><div class="settings-section-title">📬 Contact</div><div class="form-group"><label>Email</label><input id="s-contact-email" class="field-input"/></div><div class="settings-section-title">🔗 Social</div><div class="form-group"><label>Instagram</label><input id="s-ig" class="field-input"/></div><div class="form-group"><label>TikTok</label><input id="s-tk" class="field-input"/></div><div class="form-group"><label>Facebook</label><input id="s-fb" class="field-input"/></div><div class="form-group"><label>Twitter/X</label><input id="s-tw" class="field-input"/></div><div class="settings-section-title">🔒 Security</div><div class="form-group"><label>Current Password</label><input id="s-pw-current" type="password" class="field-input"/></div><div class="form-group"><label>New Password</label><input id="s-pw-new" type="password" class="field-input" oninput="checkPwStrength(this.value)"/><div class="pw-strength" id="pw-strength-msg"></div></div><div class="form-group"><label>Confirm</label><input id="s-pw-confirm" type="password" class="field-input"/></div></div><div class="form-actions"><button class="btn-add" onclick="saveSettings()">Save Settings ✓</button></div></div></div></div>
+<div id="deal-modal" onclick="if(event.target===this)closeModal()"><div class="modal-box"><div class="modal-header"><div class="modal-flag" id="m-flag">🇪🇸</div><div style="flex:1;min-width:0"><div class="modal-route" id="m-route">Dublin → Ibiza</div><div class="modal-dates" id="m-dates">Late April – May</div></div><button class="modal-close" onclick="closeModal()">✕</button></div><div class="modal-body"><div style="display:flex;align-items:center;gap:.8rem;margin-bottom:.5rem;flex-wrap:wrap"><div style="display:flex;align-items:baseline;gap:.3rem"><span class="modal-price-from">from</span><span class="modal-price" id="m-price">€47</span></div><span class="modal-badge-big tag tag-hot" id="m-badge">🔥 Hot</span></div><div class="modal-expiry" id="m-expiry-row"></div><a class="modal-book-btn" id="m-book-btn" href="#" target="_blank" rel="noopener noreferrer">Book This Deal ✈</a><p class="modal-disclaimer">You book directly with the airline.</p><div class="modal-tips-heading">✈ Booking Tips</div><ul class="modal-tips" id="m-tips"></ul><div style="margin-bottom:.8rem"><button id="modal-share-toggle" onclick="toggleModalShare()" style="background:none;border:1.5px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);border-radius:50px;padding:7px 16px;font-size:.8rem;font-weight:800;cursor:pointer;width:100%">↗ Share this deal</button><div class="modal-share-row" id="modal-share-row" style="display:none;margin-top:.6rem"><a class="modal-share-btn" id="ms-wa" href="#" target="_blank" style="background:#25D366;color:#fff" rel="noopener noreferrer">💬 WA</a><a class="modal-share-btn" id="ms-tw" href="#" target="_blank" style="background:#1DA1F2;color:#fff" rel="noopener noreferrer">🐦 X</a><button class="modal-share-btn" id="ms-copy" onclick="copyDealLink()" style="background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.15);color:#fff">🔗 Copy</button></div></div><button class="modal-fullpage-btn" onclick="openDealPageFromModal()">📄 View Full Deal Page</button></div></div></div>
+<button id="ai-fab" onclick="toggleAI();mcfTrack('ai_open')">🤖<span class="fab-badge" id="ai-fab-badge">AI</span></button>
+<div id="ai-panel"><div class="ai-panel-header"><div class="ai-avatar">🕶️</div><div class="ai-header-text"><strong>Mr Cheap AI</strong><span>Your deal hunter</span></div><div class="ai-status"></div><button class="ai-close-btn" onclick="toggleAI()">✕</button></div><div class="ai-messages" id="ai-messages"></div><div class="ai-suggestions" id="ai-suggestions"><button class="ai-suggestion" onclick="askAI('What cheap deals do you have?')">🔥 What's hot?</button><button class="ai-suggestion" onclick="askAI('Cheap Europe flights')">🇪🇺 Cheap Europe</button><button class="ai-suggestion" onclick="askAI('Any long haul deals?')">✈️ Long haul</button><button class="ai-suggestion" onclick="askAI('Cheapest deal?')">💸 Cheapest</button></div><div class="ai-input-row"><input class="ai-input" id="ai-input" placeholder="Ask anything…" onkeydown="if(event.key==='Enter')sendAI()"/><button class="ai-send" id="ai-send-btn" onclick="sendAI()">➤</button></div></div>
+<div id="prefs-modal" onclick="if(event.target===this)closePrefs()"><div class="prefs-box"><div class="prefs-header"><div><h2>🎯 Personalise</h2><p>We'll highlight deals for you</p></div><button class="modal-close" onclick="closePrefs()">✕</button></div><div class="prefs-body"><div class="prefs-section"><span class="prefs-section-label">✈ Home airport</span><div class="airport-grid" id="airport-grid"><div class="airport-chip" data-val="DUB" onclick="toggleAirport(this)">🇮🇪 Dublin</div><div class="airport-chip" data-val="ORK" onclick="toggleAirport(this)">🟢 Cork</div><div class="airport-chip" data-val="SNN" onclick="toggleAirport(this)">🟡 Shannon</div><div class="airport-chip" data-val="NOC" onclick="toggleAirport(this)">🟣 Knock</div><div class="airport-chip" data-val="BFS" onclick="toggleAirport(this)">🔵 Belfast</div></div></div><div class="prefs-section"><span class="prefs-section-label">🌍 Interests</span><div class="interest-grid" id="interest-grid"><div class="interest-tag" data-val="beach" onclick="toggleInterest(this)">🏖️ Beach</div><div class="interest-tag" data-val="city" onclick="toggleInterest(this)">🏙️ City</div><div class="interest-tag" data-val="longhaul" onclick="toggleInterest(this)">🌏 Long Haul</div><div class="interest-tag" data-val="europe" onclick="toggleInterest(this)">🇪🇺 Europe</div><div class="interest-tag" data-val="winter sun" onclick="toggleInterest(this)">☀️ Winter Sun</div><div class="interest-tag" data-val="ski" onclick="toggleInterest(this)">⛷️ Ski</div><div class="interest-tag" data-val="usa" onclick="toggleInterest(this)">🗽 USA</div><div class="interest-tag" data-val="cheap" onclick="toggleInterest(this)">💸 Bargain</div></div></div><div class="prefs-section"><span class="prefs-section-label">💰 Max budget</span><div class="budget-row"><input type="range" class="budget-slider" id="budget-slider" min="20" max="800" step="10" value="200" oninput="updateBudgetLabel(this.value)"/><div class="budget-val" id="budget-label">€200</div></div></div><div class="prefs-section"><span class="prefs-section-label">📅 Travel months</span><div class="months-grid" id="months-grid"><div class="month-chip" data-val="jan" onclick="toggleMonth(this)">Jan</div><div class="month-chip" data-val="feb" onclick="toggleMonth(this)">Feb</div><div class="month-chip" data-val="mar" onclick="toggleMonth(this)">Mar</div><div class="month-chip" data-val="apr" onclick="toggleMonth(this)">Apr</div><div class="month-chip" data-val="may" onclick="toggleMonth(this)">May</div><div class="month-chip" data-val="jun" onclick="toggleMonth(this)">Jun</div><div class="month-chip" data-val="jul" onclick="toggleMonth(this)">Jul</div><div class="month-chip" data-val="aug" onclick="toggleMonth(this)">Aug</div><div class="month-chip" data-val="sep" onclick="toggleMonth(this)">Sep</div><div class="month-chip" data-val="oct" onclick="toggleMonth(this)">Oct</div><div class="month-chip" data-val="nov" onclick="toggleMonth(this)">Nov</div><div class="month-chip" data-val="dec" onclick="toggleMonth(this)">Dec</div></div></div></div><div class="prefs-footer"><button class="btn-save-prefs" onclick="savePrefs()">Save & Show My Deals ✈</button><button class="btn-clear-prefs" onclick="clearPrefs()">Clear</button></div></div></div>
+<div id="deal-page"><div class="dp-nav"><button class="dp-back" onclick="closeDealPage()">← Back to all deals</button><div class="dp-share-nav"><a id="dpn-wa" href="#" target="_blank" style="background:#25D366;color:#fff;padding:7px 14px;border-radius:50px;font-size:.78rem;font-weight:900;text-decoration:none" rel="noopener noreferrer">💬 Share</a><button id="dpn-copy" onclick="copyDealLink()" style="background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.15);color:#fff;padding:7px 14px;border-radius:50px;font-size:.78rem;font-weight:900;cursor:pointer;font-family:'Nunito',sans-serif">🔗 Copy</button></div></div><div class="dp-hero"><div class="dp-hero-inner"><div class="dp-breadcrumb"><a href="#" onclick="closeDealPage();return false;">Mr Cheap Flights</a> › <span id="dp-breadcrumb-dest">Ibiza</span></div><span class="dp-flag-big" id="dp-flag">🇪🇸</span><h1 class="dp-title">Cheap Flights<br><span class="accent" id="dp-title-route">Dublin → Ibiza</span></h1><p class="dp-subtitle" id="dp-subtitle">Return flights</p><div class="dp-meta-row"><div class="dp-price-big"><small>from</small><span id="dp-price">€47</span></div><span class="dp-badge-big tag tag-hot" id="dp-badge-big">🔥 Hot</span></div></div></div><div class="dp-body"><div class="dp-main"><div class="dp-section"><h2>About This Deal</h2><p id="dp-about-1"></p><p id="dp-about-2"></p></div><div class="dp-section"><h2>✈ Booking Tips</h2><ul class="dp-tips-list" id="dp-tips-list"></ul></div><div class="dp-section"><h2>📢 Share</h2><div class="dp-share-grid"><a class="dp-share-btn share-wa" id="dp-wa" href="#" target="_blank" rel="noopener noreferrer">💬 WhatsApp</a><a class="dp-share-btn share-tw" id="dp-tw" href="#" target="_blank" rel="noopener noreferrer">🐦 X</a><a class="dp-share-btn share-fb" id="dp-fb" href="#" target="_blank" rel="noopener noreferrer">📘 Facebook</a><button class="dp-share-btn share-copy" id="dp-copy" onclick="copyDealLink()">🔗 Copy</button></div></div><div class="dp-section"><h2>🔍 More Deals</h2><div class="deals-grid" id="dp-related"></div></div></div><div class="dp-sidebar"><div class="dp-book-card"><div class="price-label">Price per person</div><div class="price-num" id="dps-price">€47</div><div class="price-sub">Return · Economy</div><div class="expiry-note" id="dps-expiry" style="display:none"></div><a class="btn-book-big" id="dps-book" href="#" target="_blank" rel="noopener noreferrer">Book Now ✈</a><div class="disclaimer">No commission. Book direct.</div></div></div></div></div>
+<div id="signup-modal" onclick="if(event.target===this)closeSignup()"><div class="signup-modal-box"><div class="signup-modal-header"><div><h2>Join Mr Cheap Flights ✈</h2><p>Start getting deals delivered</p></div><button class="modal-close" onclick="closeSignup()" style="flex-shrink:0;margin-left:1rem">✕</button></div><div class="signup-modal-body"><div class="signup-tabs"><button class="signup-tab active" id="tab-free" onclick="switchTab('free')">🆓 Free</button><button class="signup-tab" id="tab-premium" onclick="switchTab('premium')">⭐ Premium</button></div><div class="signup-tab-pane active" id="pane-free"><p style="font-size:.9rem;font-weight:700;color:rgba(255,255,255,.7);margin:0 0 1rem;text-align:center">Get the best Irish flight deals ✈</p><input class="signup-field" id="su-free-name" type="text" style="display:none"/><input class="signup-field" id="su-free-email" type="email" placeholder="Your email address" autocomplete="email"/><button class="btn-signup-submit" onclick="submitSignup('free')">Get Free Deals ✈</button><p class="signup-small">🔒 No spam. Unsubscribe anytime.</p></div><div class="signup-tab-pane" id="pane-premium"><div id="payment-success"><div class="success-icon">🎉</div><div class="success-title">You're Premium!</div><p class="success-sub">Welcome to the club.</p></div><div id="details-step"><div style="display:flex;align-items:center;gap:.6rem;margin-bottom:1.1rem;padding:.7rem 1rem;background:rgba(255,210,0,.08);border:1.5px solid rgba(255,210,0,.25);border-radius:12px"><span style="font-size:1.3rem">⭐</span><div><strong style="color:var(--yellow)">Premium</strong> <span style="color:rgba(255,255,255,.55);font-size:.85rem">€4.99/mo · cancel anytime</span></div></div><input class="signup-field" id="su-prem-name" type="text" placeholder="Your first name"/><input class="signup-field" id="su-prem-email" type="email" placeholder="Your email" autocomplete="email"/><button class="btn-signup-submit" onclick="continueToPayment()" style="background:var(--hot-pink);color:#fff">Continue to Payment →</button><p class="signup-small">🔒 Powered by Stripe.</p></div><div id="stripe-step"><button class="btn-back-details" onclick="backToDetails()">← Back</button><div style="font-size:.82rem;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:.8rem">Paying as <span id="stripe-email-display"></span></div><div id="stripe-link-mode"><div class="stripe-setup-notice" id="stripe-config-notice" style="display:none"><strong>⚙️ Stripe not configured</strong></div><a class="stripe-link-btn" id="stripe-payment-link-btn" href="#" target="_blank" onclick="handleStripeLink(event)" rel="noopener noreferrer"><span>Pay with Stripe — €4.99/mo</span></a><div class="stripe-security-row" style="margin-top:.8rem"><div class="stripe-badges"><span class="stripe-badge">STRIPE</span><span class="stripe-badge">SSL</span></div><span>Secure</span></div></div><div id="stripe-elements-mode" style="display:none"><div id="stripe-card-element"></div><div id="stripe-card-error"></div></div></div></div></div></div></div>
+<div id="gdpr-banner"><p class="gdpr-text">🍪 We use cookies to save preferences. <a href="#" onclick="return false">Cookie Policy</a></p><div class="gdpr-btns"><button class="btn-gdpr-decline" onclick="gdprDecline()">Decline</button><button class="btn-gdpr-accept" onclick="gdprAccept()">Accept ✓</button></div></div>
+<div id="contact-modal" onclick="if(event.target===this)closeContact()"><div class="contact-box"><div class="contact-header"><div><h2>📬 Contact Us</h2></div><button class="modal-close" onclick="closeContact()">✕</button></div><div class="contact-body"><div class="contact-email-row"><span>✉️</span><a id="contact-email-link" href="/cdn-cgi/l/email-protection#721a171e1e1d321f00111a171302141e1b151a06015c1b17" style="color:var(--sky);font-weight:700;text-decoration:none"><span class="__cf_email__" data-cfemail="92faf7fefefdd2ffe0f1faf7f3e2f4fefbf5fae6e1bcfbf7">[email&#160;protected]</span></a></div><input class="signup-field" id="ct-name" type="text" placeholder="Your name"/><input class="signup-field" id="ct-email" type="email" placeholder="Your email"/><input class="signup-field" id="ct-subject" type="text" placeholder="Subject"/><textarea class="signup-field" id="ct-message" rows="4" placeholder="Your message…" style="resize:vertical;min-height:90px"></textarea><button class="btn-signup-submit" onclick="submitContact()">Send ✉️</button></div></div></div>
+<div id="toast"></div>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+const STORAGE_KEYS={deals:'mcf_deals',nid:'mcf_nid',prefs:'mcf_prefs',premium:'mcf_premium',settings:'mcf_settings',gdpr:'mcf_gdpr',pendingPremium:'mcf_pending_premium'};
+const el=id=>document.getElementById(id);
+let siteSettings={members:'12,400+',monthly:47,saving:'€183',waNumber:'',mailchimp:'',igUrl:'#',tkUrl:'#',fbUrl:'#',twUrl:'#',adminPassword:'mrcheap2024',stripeLink:'',stripePk:'',contactEmail:'hello@mrcheapflights.ie'};
+let currentRegion = window.location.hostname.includes('co.uk') ? 'uk' : 'ie';
+function loadSettings(){try{const s=localStorage.getItem(STORAGE_KEYS.settings);if(s)siteSettings={...siteSettings,...JSON.parse(s)};}catch(e){}}
+function saveSettingsData(){try{localStorage.setItem(STORAGE_KEYS.settings,JSON.stringify(siteSettings));}catch(e){}}
+function applySettings(){document.querySelectorAll('.mcf-member-count').forEach(n=>{n.textContent=siteSettings.members;});const cm=el('dcb-monthly');if(cm)cm.textContent=siteSettings.monthly;const cs=el('dcb-saved');if(cs)cs.textContent=siteSettings.saving;if(siteSettings.waNumber){const waMsg=encodeURIComponent('Hey! Sign me up for Mr Cheap Flights deals ✈️');document.querySelectorAll('.mcf-wa-link').forEach(n=>{n.href='https://wa.me/'+siteSettings.waNumber+'?text='+waMsg;});}document.querySelectorAll('.mcf-cta-count').forEach(n=>{n.textContent=siteSettings.members;});syncSocialIcons();}
+function populateSettingsForm(){el('s-members').value=siteSettings.members||'';el('s-monthly').value=siteSettings.monthly||'';el('s-saving').value=siteSettings.saving||'';el('s-wa').value=siteSettings.waNumber||'';el('s-mc').value=siteSettings.mailchimp||'';el('s-ig').value=siteSettings.igUrl||'';el('s-tk').value=siteSettings.tkUrl||'';el('s-fb').value=siteSettings.fbUrl||'';el('s-tw').value=siteSettings.twUrl||'';el('s-contact-email').value=siteSettings.contactEmail||'';el('s-stripe-link').value=siteSettings.stripeLink||'';el('s-stripe-pk').value=siteSettings.stripePk||'';}
+function saveSettings(){var newPw=el('s-pw-new').value.trim(),confirm2=el('s-pw-confirm').value.trim(),current=el('s-pw-current').value.trim();if(newPw||current){if(current!==siteSettings.adminPassword){toast('⚠️ Wrong password.');return;}if(newPw.length<10){toast('⚠️ Min 10 chars.');return;}if(newPw!==confirm2){toast("⚠️ No match.");return;}siteSettings.adminPassword=newPw;el('s-pw-current').value='';el('s-pw-new').value='';el('s-pw-confirm').value='';}siteSettings.members=el('s-members').value.trim()||siteSettings.members;var _m=el('s-monthly').value.trim();siteSettings.monthly=(_m!==''&&!isNaN(Number(_m)))?Number(_m):siteSettings.monthly;siteSettings.saving=el('s-saving').value.trim()||siteSettings.saving;siteSettings.waNumber=el('s-wa').value.trim();siteSettings.mailchimp=el('s-mc').value.trim();siteSettings.igUrl=el('s-ig').value.trim()||'#';siteSettings.tkUrl=el('s-tk').value.trim()||'#';siteSettings.fbUrl=el('s-fb').value.trim()||'#';siteSettings.twUrl=el('s-tw').value.trim()||'#';siteSettings.contactEmail=el('s-contact-email').value.trim()||'hello@mrcheapflights.ie';siteSettings.stripeLink=el('s-stripe-link').value.trim();siteSettings.stripePk=el('s-stripe-pk').value.trim();saveSettingsData();applySettings();updateCounterBar();toast('✅ Settings saved!');}
+function checkPwStrength(pw){var m=el('pw-strength-msg');if(!pw){m.textContent='';return;}if(pw.length>=10&&/[A-Z]/.test(pw)&&/[0-9]/.test(pw)){m.textContent='💪 Strong';m.className='pw-strength pw-strong';}else if(pw.length>=10){m.textContent='👍 OK';m.className='pw-strength pw-medium';}else{m.textContent='⚠️ Too short';m.className='pw-strength pw-weak';}}
+function openSignup(e,plan){if(e)e.preventDefault();switchTab(plan||'free');el('signup-modal').classList.add('open');document.body.style.overflow='hidden';document.body.classList.add('modal-active');}
+function closeSignup(){el('signup-modal').classList.remove('open');document.body.style.overflow='';document.body.classList.remove('modal-active');}
+function switchTab(tab){['free','premium'].forEach(function(t){var te=el('tab-'+t);if(te)te.classList.toggle('active',t===tab);var pe=el('pane-'+t);if(pe)pe.classList.toggle('active',t===tab);});}
+function submitSignup(plan){var emailEl=el(plan==='free'?'su-free-email':'su-prem-email');var email=emailEl.value.trim();if(!email||!email.includes('@')){toast('⚠️ Enter a valid email!');emailEl.focus();return;}
+  // ── GA: signup complete ──
+  mcfTrack('sign_up',{method:'email',plan:plan});
+  closeSignup();var hf=el('hero-form');if(hf){hf.style.display='none';el('hero-trust-line').style.display='none';el('signup-success').style.display='block';}toast('🎉 Welcome!');}
+var pendingPremiumEmail='',pendingPremiumName='';
+function continueToPayment(){var name=el('su-prem-name').value.trim(),email=el('su-prem-email').value.trim();if(!name){toast('⚠️ Enter your name!');return;}if(!email||!email.includes('@')){toast('⚠️ Enter email!');return;}pendingPremiumName=name;pendingPremiumEmail=email;
+  // ── GA: begin checkout ──
+  mcfTrack('begin_checkout',{plan:'premium',currency:'EUR',value:4.99});
+  el('details-step').classList.add('hidden');el('stripe-step').classList.add('visible');el('stripe-email-display').textContent=email;var link=siteSettings.stripeLink;if(link){try{var btn=el('stripe-payment-link-btn');var url=new URL(link);url.searchParams.set('prefilled_email',email);btn.href=url.toString();}catch(err){}el('stripe-config-notice').style.display='none';}else{el('stripe-config-notice').style.display='block';el('stripe-payment-link-btn').style.display='none';}}
+function backToDetails(){el('stripe-step').classList.remove('visible');el('details-step').classList.remove('hidden');}
+function handleStripeLink(e){if(!siteSettings.stripeLink){e.preventDefault();toast('⚠️ Stripe not configured.');return;}
+  // ── GA: payment initiated via Stripe link ──
+  mcfTrack('purchase_attempt',{plan:'premium',currency:'EUR',value:4.99,payment_method:'stripe_link'});
+  setTimeout(function(){closeSignup();toast('💳 Stripe checkout opened!');},600);}
+var activeFilter='all';
+function setFilter(filter,chip){activeFilter=filter;document.querySelectorAll('.filter-chip').forEach(function(c){c.classList.remove('active');});chip.classList.add('active');
+  // ── GA: deals filter used ──
+  mcfTrack('deals_filter',{filter_name:filter});
+  renderPublic();}
+function applyFilterSort(arr){var result=arr.slice();if(activeFilter!=='all')result=result.filter(function(d){if(activeFilter==='hot')return d.badge.includes('Hot');if(activeFilter==='flash')return d.badge.includes('Flash');if(activeFilter==='long')return d.badge.includes('Long');if(activeFilter==='feat')return d.badge.includes('Featured');return true;});var sv=el('sort-select');var sortVal=sv?sv.value:'default';if(sortVal==='price-asc'||sortVal==='price-desc'){result.sort(function(a,b){var pa=parseDealPrice(a.price),pb=parseDealPrice(b.price);return sortVal==='price-asc'?pa-pb:pb-pa;});}if(sortVal==='expiry')result.sort(function(a,b){return(a.expiry?new Date(a.expiry):new Date('9999-12-31'))-(b.expiry?new Date(b.expiry):new Date('9999-12-31'));});return result;}
+function initReveal(){var obs=new IntersectionObserver(function(entries){entries.forEach(function(e){if(e.isIntersecting){e.target.classList.add('visible');obs.unobserve(e.target);}});},{threshold:0.12});document.querySelectorAll('.reveal,.reveal-left,.reveal-right').forEach(function(n){obs.observe(n);});}
+function initBackToTop(){var btn=el('back-to-top');if(!btn)return;window.addEventListener('scroll',function(){btn.classList.toggle('visible',window.scrollY>500);},{passive:true});}
+var deals=[],nextId=1,loggedIn=false,currentDealId=null;
+function save(){try{localStorage.setItem(STORAGE_KEYS.deals,JSON.stringify(deals));localStorage.setItem(STORAGE_KEYS.nid,nextId);}catch(e){}}
+function load(){try{var d=localStorage.getItem(STORAGE_KEYS.deals),n=localStorage.getItem(STORAGE_KEYS.nid);if(d)deals=JSON.parse(d);if(n)nextId=parseInt(n);}catch(e){}if(!deals.length){var today=new Date(),fmt=function(d){return d.toISOString().split('T')[0];};var in7=new Date(today);in7.setDate(today.getDate()+7);var in3=new Date(today);in3.setDate(today.getDate()+3);var in14=new Date(today);in14.setDate(today.getDate()+14);deals=[{id:nextId++,flag:'🇪🇸',route:'Dublin → Ibiza',dates:'Late April – May · Return',price:'€47',badge:'🔥 Hot',expiry:fmt(in7),slug:'dublin-ibiza-47',url:'https://www.ryanair.com/ie/en/cheap-flights/dublin/ibiza',region:'ie'},{id:nextId++,flag:'🇵🇹',route:'Dublin → Lisbon',dates:'June Weekends · Return',price:'€29',badge:'⚡ Flash',expiry:fmt(in3),slug:'dublin-lisbon-29',url:'https://www.ryanair.com/ie/en/cheap-flights/dublin/lisbon',region:'ie'},{id:nextId++,flag:'🇺🇸',route:'Dublin → New York',dates:'October – Nov · Return',price:'€289',badge:'✈ Long Haul',expiry:fmt(in14),slug:'dublin-new-york-289',url:'https://www.aerlingus.com/flights/dublin/new-york',region:'ie'},{id:nextId++,flag:'🇮🇹',route:'Dublin → Rome',dates:'September · Return',price:'€52',badge:'⭐ Featured',expiry:fmt(in7),slug:'dublin-rome-52',url:'https://www.ryanair.com/ie/en/cheap-flights/dublin/rome',region:'ie'}];save();}}
+function isExpired(expiry){if(!expiry)return false;var today=new Date();var todayStr=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');return expiry<todayStr;}
+function daysLeft(expiry){if(!expiry)return null;var today=new Date();var todayMidnight=new Date(today.getFullYear(),today.getMonth(),today.getDate());var expiryMidnight=new Date(expiry+'T00:00:00');return Math.ceil((expiryMidnight-todayMidnight)/86400000);}
+function expiryChip(expiry){if(!expiry)return'';var d=daysLeft(expiry);if(d<0)return'<span class="expiry-chip expiry-urgent">Expired</span>';if(d===0)return'<span class="expiry-chip expiry-urgent">Expires today!</span>';if(d<=2)return'<span class="expiry-chip expiry-urgent">⚡ '+d+'d left</span>';if(d<=5)return'<span class="expiry-chip expiry-soon">🕐 '+d+'d left</span>';return'<span class="expiry-chip expiry-ok">✓ '+d+'d left</span>';}
+function slugify(s){return s.toLowerCase().replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-');}
+function autoSlug(route,price){return slugify(route)+'-'+price.replace(/[^0-9]/g,'');}
+function fillSlug(){var s=el('f-slug');if(!s||s.dataset.manuallyEdited)return;var r=el('f-route'),p=el('f-price');var rv=r?r.value.trim():'',pv=p?p.value.trim():'';if(rv&&pv)s.value=autoSlug(rv,pv);}
+function dealPageUrl(d){return window.location.href.split('#')[0]+'#deal/'+(d.slug||autoSlug(d.route,d.price));}
+function parseDealPrice(price){if(!price)return NaN;return parseFloat(String(price).replace(/[^0-9.]/g,''));}
+function escapeHtml(s){if(typeof s!=='string')return'';return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function sanitiseUrl(url){if(!url)return'#';var t=url.trim();if(t==='#')return'#';if(/^https?:\/\//i.test(t))return t;if(/^www\./i.test(t))return'https://'+t;return'#';}
+function isPremium(){try{var r=localStorage.getItem(STORAGE_KEYS.premium);if(!r)return false;if(r==='true')return true;var d=JSON.parse(r);if(!d.active)return false;if(d.expires&&Date.now()>d.expires){localStorage.removeItem(STORAGE_KEYS.premium);return false;}return true;}catch(e){return false;}}
+function isGated(badge){if(isPremium())return false;return badge.includes('Long Haul')||badge.includes('Featured');}
+var userPrefs={};
+function loadPrefs(){try{var p=localStorage.getItem(STORAGE_KEYS.prefs);if(p)userPrefs=JSON.parse(p);}catch(e){}}
+function matchesPref(d){if(!userPrefs.airports&&!userPrefs.interests&&!userPrefs.budget)return false;var price=parseDealPrice(d.price);if(userPrefs.budget&&!isNaN(price)&&price>userPrefs.budget)return false;if(userPrefs.interests&&userPrefs.interests.length){var ri=d.route.toLowerCase()+' '+d.badge.toLowerCase()+' '+d.dates.toLowerCase();var found=false;for(var i=0;i<userPrefs.interests.length;i++){if(ri.includes(userPrefs.interests[i])){found=true;break;}}if(!found)return false;}if(userPrefs.airports&&userPrefs.airports.length){var ac={DUB:'dublin',ORK:'cork',SNN:'shannon',NOC:'knock',BFS:'belfast'};var rl=d.route.toLowerCase();var airMatch=false;for(var j=0;j<userPrefs.airports.length;j++){var city=ac[userPrefs.airports[j]];if(city&&rl.indexOf(city)===0){airMatch=true;break;}}if(!airMatch)return false;}return true;}
+function updatePrefsBanner(){var banner=el('prefs-banner');if(!banner)return;if(!userPrefs.airports&&!userPrefs.interests&&!userPrefs.budget){banner.style.display='none';return;}var matches=deals.filter(function(d){return!isExpired(d.expiry);}).filter(matchesPref).length;var t=el('prefs-banner-title');if(t)t.textContent='✨ '+matches+' deals match';banner.style.display='flex';}
+function openPrefs(){el('prefs-modal').classList.add('open');document.body.style.overflow='hidden';populateAirportPrefs();}
+function closePrefs(){el('prefs-modal').classList.remove('open');document.body.style.overflow='';}
+function populateAirportPrefs(){var ag=el('airport-grid');if(!ag)return;var airports=currentRegion==='ie'?[{val:'DUB',label:'🇮🇪 Dublin'},{val:'ORK',label:'🟢 Cork'},{val:'SNN',label:'🟡 Shannon'},{val:'NOC',label:'🟣 Knock'},{val:'BFS',label:'🔵 Belfast'}]:[{val:'LHR',label:'🇬🇧 London Heathrow'},{val:'LGW',label:'🟢 London Gatwick'},{val:'MAN',label:'🟡 Manchester'},{val:'BHX',label:'🟣 Birmingham'},{val:'GLA',label:'🔵 Glasgow'}];ag.innerHTML=airports.map(function(a){return'<div class="airport-chip" data-val="'+a.val+'" onclick="toggleAirport(this)">'+a.label+'</div>';}).join('');}
+function toggleInterest(e){e.classList.toggle('active');}
+function toggleMonth(e){e.classList.toggle('active');}
+function updateBudgetLabel(v){var b=el('budget-label');if(b)b.textContent='€'+v;}
+function savePrefs(){userPrefs.airports=Array.from(document.querySelectorAll('.airport-chip.active')).map(function(c){return c.dataset.val;});userPrefs.interests=Array.from(document.querySelectorAll('.interest-tag.active')).map(function(c){return c.dataset.val;});userPrefs.months=Array.from(document.querySelectorAll('.month-chip.active')).map(function(c){return c.dataset.val;});userPrefs.budget=parseInt(el('budget-slider').value)||200;try{localStorage.setItem(STORAGE_KEYS.prefs,JSON.stringify(userPrefs));}catch(e){}
+  // ── GA: preferences saved ──
+  mcfTrack('prefs_saved',{airports:(userPrefs.airports||[]).join(','),interests:(userPrefs.interests||[]).join(','),budget:userPrefs.budget});
+  closePrefs();setTimeout(function(){renderPublic();updatePrefsBanner();},0);toast('🎯 Saved!');}
+function clearPrefs(){userPrefs={};try{localStorage.removeItem(STORAGE_KEYS.prefs);}catch(e){}document.querySelectorAll('.airport-chip,.interest-tag,.month-chip').forEach(function(c){c.classList.remove('active');});var s=el('budget-slider');if(s)s.value=200;updateBudgetLabel(200);closePrefs();renderPublic();updatePrefsBanner();}
+function openAdmin(e){if(e)e.preventDefault();el('admin-overlay').classList.add('open');if(!loggedIn){el('login-screen').style.display='flex';el('admin-dashboard').style.display='none';setTimeout(function(){el('admin-pw').focus();},100);}}
+var loginAttempts=0,loginLockedUntil=0;
+function doLogin(){if(Date.now()<loginLockedUntil){toast('⏳ Wait...');return;}var pw=el('admin-pw').value;if(pw===(siteSettings.adminPassword||'mrcheap2024')){loginAttempts=0;loggedIn=true;el('login-err').style.display='none';el('login-screen').style.display='none';el('admin-dashboard').style.display='block';populateSettingsForm();renderAdmin();}else{loginAttempts++;el('admin-pw').value='';if(loginAttempts>=5){loginLockedUntil=Date.now()+30000;loginAttempts=0;}el('login-err').style.display='block';}}
+function doLogout(){loggedIn=false;el('admin-overlay').classList.remove('open');el('admin-pw').value='';}
+document.addEventListener('keydown',function(e){if(e.key!=='Escape')return;var dp=el('deal-page');if(dp&&dp.style.display==='block'){closeDealPage();return;}var pm=el('prefs-modal');if(pm&&pm.classList.contains('open')){closePrefs();return;}var cm=el('contact-modal');if(cm&&cm.classList.contains('open')){closeContact();return;}var sm=el('signup-modal');if(sm&&sm.classList.contains('open')){closeSignup();return;}var dm=el('deal-modal');if(dm&&dm.classList.contains('open')){closeModal();return;}var ap=el('ai-panel');if(ap&&ap.classList.contains('open')){closeAI();return;}var ao=el('admin-overlay');if(ao&&ao.classList.contains('open')){doLogout();return;}});
+function badgeCls(b){if(b.includes('Hot'))return'tag tag-hot';if(b.includes('Flash'))return'tag tag-flash';if(b.includes('Long'))return'tag tag-longhaul';return'tag tag-feat';}
+function refreshAfterDealChange(){save();renderAdmin();renderPublic();renderTicker();updateHeroStats();updateCounterBar();}
+function determineRegion(route){var dep=route.split('→')[0].trim().toLowerCase();var ieCities=['dublin','cork','shannon','knock','galway','sligo','derry','donegal','kerry','limerick','waterford','wexford'];var ukCities=['london','manchester','birmingham','glasgow','edinburgh','leeds','bristol','newcastle','sheffield','liverpool','cardiff','brighton','southampton','plymouth','exeter','bournemouth','norwich','leicester','coventry','hull','middlesbrough','stoke','sunderland','portsmouth','luton','stansted','heathrow','gatwick','city','southend','aberdeen','inverness','dundee','edinburgh','glasgow','cardiff','swansea','newport','bangor','belfast','derry'];if(ieCities.some(c=>dep.includes(c)))return'ie';if(ukCities.some(c=>dep.includes(c)))return'uk';return currentRegion;}
+function submitDeal(){var eid=el('edit-id').value,flag=el('f-flag').value.trim()||'✈️',route=el('f-route').value.trim(),dates=el('f-dates').value.trim(),price=el('f-price').value.trim(),badge=el('f-badge').value,url=sanitiseUrl(el('f-url').value.trim()),expiry=el('f-expiry').value,slugEl=el('f-slug'),slug=slugEl?(slugEl.value.trim()||autoSlug(route,price)):autoSlug(route,price),region=el('f-region').value;if(!route||!price){toast('⚠️ Route + Price required!');return;}if(eid){var i=deals.findIndex(function(d){return d.id==eid;});if(i>-1)deals[i]={id:+eid,flag:flag,route:route,dates:dates,price:price,badge:badge,url:url,expiry:expiry,slug:slug,region:region};toast('✅ Updated!');}else{deals.unshift({id:nextId++,flag:flag,route:route,dates:dates,price:price,badge:badge,url:url,expiry:expiry,slug:slug,region:region});toast('🎉 Added!');}refreshAfterDealChange();resetForm();}
+function editDeal(id){var d=deals.find(function(x){return x.id===id;});if(!d)return;el('edit-id').value=d.id;el('f-flag').value=d.flag;el('f-route').value=d.route;el('f-dates').value=d.dates;el('f-price').value=d.price;el('f-badge').value=d.badge;el('f-region').value=d.region||'ie';el('f-url').value=d.url;el('f-expiry').value=d.expiry||'';var s=el('f-slug');if(s)s.value=d.slug||autoSlug(d.route,d.price);el('form-heading').textContent='✏️ Edit Deal';el('form-submit-btn').textContent='Save ✓';}
+function deleteDeal(id){if(!confirm('Delete this deal?'))return;deals=deals.filter(function(d){return d.id!==id;});refreshAfterDealChange();toast('🗑️ Removed.');}
+function resetForm(){['edit-id','f-flag','f-route','f-dates','f-price','f-url','f-expiry'].forEach(function(id){var f=el(id);if(f)f.value='';});var s=el('f-slug');if(s){s.value='';delete s.dataset.manuallyEdited;}el('f-badge').value='🔥 Hot';el('f-region').value='ie';el('form-heading').textContent='✚ Add New Deal';el('form-submit-btn').textContent='Add Deal ✈';}
+function renderAdmin(){var live=deals.filter(function(d){return!isExpired(d.expiry);}).length;var c=el('deal-count');if(c)c.textContent=live+' live / '+deals.length+' total';var tbody=el('admin-tbody'),empty=el('admin-empty');if(!tbody)return;if(!deals.length){tbody.innerHTML='';if(empty)empty.style.display='block';return;}if(empty)empty.style.display='none';tbody.innerHTML=deals.map(function(d){return'<tr><td style="font-size:1.4rem">'+d.flag+'</td><td style="font-weight:800">'+d.route+'</td><td class="price-col">'+d.price+'</td><td><span class="'+badgeCls(d.badge)+'">'+d.badge+'</span></td><td>'+(d.region?'🇮🇪/🇬🇧':'')+'</td><td>'+(d.expiry?expiryChip(d.expiry):'<small style="color:rgba(255,255,255,.2)">No expiry</small>')+'</td><td><button class="btn-edit-row" onclick="editDeal('+d.id+')">Edit</button><button class="btn-delete" onclick="deleteDeal('+d.id+')">Del</button></td></tr>';}).join('');}
+function updateHeroStats(){var live=deals.filter(function(d){return!isExpired(d.expiry) && d.region === currentRegion;});var dc=el('hero-deal-count');if(dc)dc.textContent=live.length;var prices=live.map(function(d){return parseDealPrice(d.price);}).filter(function(n){return!isNaN(n);});if(prices.length){var lowest=Math.min.apply(null,prices);var ld=live.find(function(d){return parseDealPrice(d.price)===lowest;});if(ld){var bp=el('hero-best-price');if(bp)bp.textContent=ld.price;}}}
+function updateCounterBar(){var live=deals.filter(function(d){return!isExpired(d.expiry);});var le=el('dcb-live');if(le)le.textContent=live.length;var mo=el('dcb-monthly');if(mo)mo.textContent=siteSettings.monthly||Math.max(live.length*3,12);var sv=el('dcb-saved');if(sv)sv.textContent=siteSettings.saving||'€183';}
+function updateFilterCounts(){var live=deals.filter(function(d){return!isExpired(d.expiry) && d.region === currentRegion;});var counts={all:live.length,hot:live.filter(function(d){return d.badge.includes('Hot');}).length,flash:live.filter(function(d){return d.badge.includes('Flash');}).length,long:live.filter(function(d){return d.badge.includes('Long');}).length,feat:live.filter(function(d){return d.badge.includes('Featured');}).length};Object.keys(counts).forEach(function(key){var chip=el('fc-'+key);if(chip)chip.textContent=counts[key]>0?counts[key]:'';});}
+function renderPublic(){updateFilterCounts();var grid=el('public-grid'),none=el('no-deals-pub');if(!grid)return;var livDeals=deals.filter(function(d){return!isExpired(d.expiry) && d.region === currentRegion;});livDeals=applyFilterSort(livDeals);var pb=el('premium-section-banner');if(pb)pb.style.display=livDeals.some(function(d){return isGated(d.badge);})?'flex':'none';if(!livDeals.length){grid.innerHTML='';if(none){var edsH=none.querySelector('h3'),edsP=none.querySelector('p');if(deals.length>0&&edsH){edsH.textContent='All Deals Currently Expired';if(edsP)edsP.textContent='New deals are being loaded. Sign up to be first to know when they drop.';}none.style.display='block';}return;}if(none)none.style.display='none';grid.innerHTML=livDeals.map(function(d){var gated=isGated(d.badge);var forYou=matchesPref(d);var tileClick=gated?"openSignup(event,'premium')":'openModal('+d.id+')';return'<div class="deal-tile'+(gated?' gated':'')+'" role="button" tabindex="0" onclick="'+tileClick+'">'+(forYou?'<div class="deal-foryou-ring"></div><div class="deal-foryou-tag">⭐ For You</div>':'')+(gated?'<div class="deal-tile-lock"><span>🔒 Premium Only</span><button onclick="openSignup(event,\'premium\')">Unlock →</button></div>':'')+'<div class="deal-tile-header"><span class="deal-tile-flag">'+escapeHtml(d.flag)+'</span><span class="deal-tile-badge '+badgeCls(d.badge)+'">'+escapeHtml(d.badge)+'</span></div><div class="deal-tile-body"><div class="deal-tile-route">'+escapeHtml(d.route)+(d.expiry?expiryChip(d.expiry):'')+'</div><div class="deal-tile-dates">'+escapeHtml(d.dates)+'</div><div class="deal-tile-footer"><div class="deal-tile-price"><small>from</small>'+escapeHtml(d.price)+'</div><button class="deal-tile-btn">'+(gated?'🔒 Premium':'View Deal →')+'</button></div></div></div>';}).join('');updatePrefsBanner();}
+function renderTicker(){var src=deals.filter(function(d){return!isExpired(d.expiry) && d.region === currentRegion;});var base=src.length?src:[{id:null,flag:'🇪🇸',route:'Dublin → Ibiza',price:'€47'},{id:null,flag:'🇵🇹',route:'Dublin → Lisbon',price:'€29'},{id:null,flag:'🇺🇸',route:'Dublin → New York',price:'€289'},{id:null,flag:'🇮🇹',route:'Dublin → Rome',price:'€52'}];var set=base.concat(base).concat(base);var tw=el('ticker-wrap');if(tw)tw.innerHTML=set.map(function(d){var oc=d.id?'openDealSmart('+d.id+')':'openDealByRouteSmart(\''+d.route.replace(/'/g,"\\'")+'\')';return'<button class="ticker-item" onclick="'+oc+'"><span class="ti-flag">'+escapeHtml(d.flag||'✈️')+'</span><span class="ti-route">'+escapeHtml(d.route)+'</span><span class="ti-price">'+escapeHtml(d.price)+'</span></button>';}).join('');}
+function openModal(id){var d=deals.find(function(x){return x.id===id;});if(!d)return;currentDealId=id;
+  // ── GA: deal modal view ──
+  mcfTrack('view_item',{item_id:String(d.id),item_name:d.route,item_category:d.badge,price:parseDealPrice(d.price),currency:'EUR',deal_route:d.route,deal_price:d.price,deal_badge:d.badge});
+  el('m-flag').textContent=d.flag;el('m-route').textContent=d.route;el('m-dates').textContent=d.dates;el('m-price').textContent=d.price;el('m-book-btn').href=sanitiseUrl(d.url);var be=el('m-badge');be.textContent=d.badge;be.className='modal-badge-big '+badgeCls(d.badge);var er=el('m-expiry-row');if(d.expiry){var dl=daysLeft(d.expiry);er.innerHTML=dl<=0?'Expired':dl<=3?'⚡ '+dl+' days left!':'🕐 '+dl+' days';er.style.color=dl<=2?'var(--hot-pink)':'rgba(255,255,255,.4)';}else{er.textContent='';}el('m-tips').innerHTML=['Book directly with the airline','Be flexible ±1–2 days for cheaper fares','Book ASAP — flash deals sell out fast','Check baggage allowance before booking'].map(function(t){return'<li>'+t+'</li>';}).join('');
+  // Track book button click separately
+  var bookBtn=el('m-book-btn');bookBtn.onclick=function(){mcfTrack('deal_book_click',{deal_route:d.route,deal_price:d.price,deal_badge:d.badge,currency:'EUR',value:parseDealPrice(d.price)});};
+  var st=encodeURIComponent('✈ '+d.route+' for '+d.price+' return!');var su=encodeURIComponent(dealPageUrl(d));var wa=el('ms-wa');if(wa)wa.href='https://wa.me/?text='+st+'%20'+su;var tw2=el('ms-tw');if(tw2)tw2.href='https://twitter.com/intent/tweet?text='+st+'&url='+su;el('deal-modal').classList.add('open');document.body.style.overflow='hidden';document.body.classList.add('modal-active');}
+function toggleModalShare(){var r=el('modal-share-row'),b=el('modal-share-toggle');if(!r)return;var o=r.style.display==='flex';r.style.display=o?'none':'flex';if(b)b.textContent=o?'↗ Share this deal':'✕ Close share';
+  if(!o){var d=currentDealId?deals.find(function(x){return x.id===currentDealId;}):null;if(d)mcfTrack('deal_share_open',{deal_route:d.route,deal_price:d.price});}}
+function closeModal(){el('deal-modal').classList.remove('open');document.body.style.overflow='';document.body.classList.remove('modal-active');currentDealId=null;var sr=el('modal-share-row');if(sr)sr.style.display='none';var sb=el('modal-share-toggle');if(sb)sb.textContent='↗ Share this deal';}
+function copyDealLink(){var d=currentDealId?deals.find(function(x){return x.id===currentDealId;}):null;var url=d?dealPageUrl(d):window.location.href;
+  if(d)mcfTrack('deal_share',{method:'copy_link',deal_route:d.route,deal_price:d.price});
+  navigator.clipboard.writeText(url).then(function(){toast('🔗 Link copied!');}).catch(function(){toast(url);});}
+function openDealPageFromModal(){var id=currentDealId;closeModal();if(id!=null)openDealPage(id);}
+function isMobile(){return window.innerWidth<768;}
+function openDealSmart(id){if(isMobile())openModal(id);else openDealPage(id);}
+function openDealByRouteSmart(routeText){var parts=routeText.toLowerCase().split('→');var raw=(parts[1]||parts[0]).trim();var aliases={nyc:'new york','new york':'new york',rom:'rome',lis:'lisbon'};var dest=aliases[raw]||raw;var liveDls=deals.filter(function(d){return!isExpired(d.expiry) && d.region === currentRegion;});var match=liveDls.find(function(d){return d.route.toLowerCase().includes(dest);})||deals.find(function(d){return d.route.toLowerCase().includes(dest) && d.region === currentRegion;});if(match){openDealSmart(match.id);return;}smoothTo(null,'deals');}
+function populateDealPage(d){var dest=(d.route.split('→')[1]||d.route).trim();el('dp-flag').textContent=d.flag;el('dp-breadcrumb-dest').textContent=dest;el('dp-title-route').textContent=dest;el('dp-subtitle').textContent=d.dates;el('dp-price').textContent=d.price;el('dps-price').textContent=d.price;var bookBig=el('dps-book');bookBig.href=sanitiseUrl(d.url);
+  // Track book click on deal page
+  bookBig.onclick=function(){mcfTrack('deal_book_click',{deal_route:d.route,deal_price:d.price,deal_badge:d.badge,currency:'EUR',value:parseDealPrice(d.price),location:'deal_page'});};
+  var be=el('dp-badge-big');be.textContent=d.badge;be.className='dp-badge-big '+badgeCls(d.badge);var ee=el('dps-expiry');if(d.expiry&&ee){var dl=daysLeft(d.expiry);ee.textContent=dl<=0?'Expired':'⚡ '+dl+' days left!';ee.style.display='block';}var st=encodeURIComponent('✈ '+d.route+' for '+d.price+' return!');var su=encodeURIComponent(dealPageUrl(d));var dw=el('dp-wa');if(dw)dw.href='https://wa.me/?text='+st+'%20'+su;var dt=el('dp-tw');if(dt)dt.href='https://twitter.com/intent/tweet?text='+st+'&url='+su;var df=el('dp-fb');if(df)df.href='https://www.facebook.com/sharer/sharer.php?u='+su;var dn=el('dpn-wa');if(dn)dn.href='https://wa.me/?text='+st+'%20'+su;var a1=el('dp-about-1');if(a1)a1.textContent='This deal covers '+d.route+' at just '+d.price+' per person return. '+d.dates+'.';var a2=el('dp-about-2');if(a2)a2.textContent='Book directly with the airline using the button on the right. Deals like this sell out fast.';var tips=el('dp-tips-list');if(tips)tips.innerHTML=['Book as soon as possible — flash deals sell out fast','Be flexible with your exact travel dates','Check airline baggage policy before booking','Compare with Google Flights as a sense-check'].map(function(t){return'<li>'+t+'</li>';}).join('');}
+function renderRelatedDeals(currentId){var rg=el('dp-related');if(!rg)return;var related=deals.filter(function(x){return!isExpired(x.expiry)&&x.id!==currentId && x.region === currentRegion;}).slice(0,3);rg.innerHTML=related.map(function(x){return'<div class="deal-tile" onclick="openDealPage('+x.id+')" style="cursor:pointer"><div class="deal-tile-header"><span class="deal-tile-flag">'+x.flag+'</span><span class="deal-tile-badge '+badgeCls(x.badge)+'">'+x.badge+'</span></div><div class="deal-tile-body"><div class="deal-tile-route">'+x.route+'</div><div class="deal-tile-dates">'+x.dates+'</div><div class="deal-tile-footer"><div class="deal-tile-price"><small>from</small>'+x.price+'</div><button class="deal-tile-btn">View →</button></div></div></div>';}).join('');}
+function openDealPage(id){try{var d=deals.find(function(x){return x.id===id;});if(!d)return;currentDealId=id;
+  // ── GA: deal page view (virtual page view) ──
+  mcfTrack('page_view',{page_title:d.route+' for '+d.price,page_location:dealPageUrl(d),deal_route:d.route,deal_price:d.price,deal_badge:d.badge});
+  try{history.pushState({dealId:id},'','#deal/'+(d.slug||autoSlug(d.route,d.price)));}catch(e){}populateDealPage(d);renderRelatedDeals(id);el('deal-page').style.display='block';el('deal-page').scrollTop=0;document.body.style.overflow='hidden';document.body.classList.add('modal-active');document.title=d.route+' for '+d.price+' – Mr Cheap Flights';}catch(err){console.error('openDealPage error:',err);}}
+function closeDealPage(){el('deal-page').style.display='none';document.body.style.overflow='';document.body.classList.remove('modal-active');try{history.pushState({},'',window.location.pathname);}catch(e){}document.title='Mr Cheap Flights – Ridiculous Flight Deals from Ireland';}
+window.addEventListener('popstate',function(){var hash=window.location.hash;if(!hash||!hash.startsWith('#deal/')){el('deal-page').style.display='none';document.body.style.overflow='';return;}var slug=hash.slice(6);var d=deals.find(function(x){return(x.slug||autoSlug(x.route,x.price))===slug;});if(d)openDealPage(d.id);});
+var aiMessages=[];
+function toggleAI(){var panel=el('ai-panel');panel.classList.toggle('open');if(panel.classList.contains('open')&&aiMessages.length===0){addAIMsg('bot','Hey! 👋 I\'m Mr Cheap AI. Ask me about flights — "under €100", "cheap October break", "best long haul"…');}}
+function addAIMsg(role,text){aiMessages.push({role:role,text:text});if(aiMessages.length>40)aiMessages=aiMessages.slice(-40);var e=document.createElement('div');e.className='ai-msg '+role;e.innerHTML=text;var container=el('ai-messages');container.appendChild(e);while(container.children.length>40)container.removeChild(container.firstChild);container.scrollTop=container.scrollHeight;}
+var aiRequestPending=false;
+function sendAI(){if(aiRequestPending)return;var input=el('ai-input');var q=input.value.trim();if(!q)return;aiRequestPending=true;var btn=el('ai-send-btn');if(btn){btn.disabled=true;btn.style.opacity='0.5';}addAIMsg('user',q);input.value='';askAI(q);}
+var aiConversationHistory=[];
+function askAI(question){el('ai-suggestions').style.display='none';addAIMsg('bot','<em>Searching deals…</em>');
+  // ── GA: AI query ──
+  mcfTrack('ai_query',{query_length:question.length});
+  var livDeals=deals.filter(function(d){return!isExpired(d.expiry) && d.region === currentRegion;});aiConversationHistory.push({role:'user',content:question});if(aiConversationHistory.length>12)aiConversationHistory=aiConversationHistory.slice(-12);var msgs;if(aiConversationHistory.length===1){var dealsCtx=livDeals.map(function(d){return d.flag+' '+d.route+' | '+d.price+' | '+d.dates+' | '+d.badge;}).join('\n')||'No live deals.';msgs=[{role:'user',content:'You are Mr Cheap AI, a friendly '+(currentRegion==='ie'?'Irish':'UK')+' flight deal assistant. Current live deals:\n'+dealsCtx+'\n\nKeep replies short (2-3 sentences). If deals match, mention them by route and price.\n\nUser: '+question}];}else{msgs=aiConversationHistory;}var removeTyping=function(){var container=el('ai-messages');var last=container.lastElementChild;if(last&&last.innerHTML.indexOf('Searching')!==-1)last.remove();};fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:400,messages:msgs})}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(function(data){removeTyping();var raw=(data.content&&data.content[0]&&data.content[0].text)||'No answer right now.';aiConversationHistory.push({role:'assistant',content:raw});var text=raw.replace(/</g,'&lt;').replace(/>/g,'&gt;');addAIMsg('bot',text);}).catch(function(){removeTyping();addAIMsg('bot','Sorry, I\'m having trouble connecting. Check out the deals section above! ✈️');}).finally(function(){aiRequestPending=false;var btn=el('ai-send-btn');if(btn){btn.disabled=false;btn.style.opacity='';}});}
+function closeAI(){el('ai-panel').classList.remove('open');aiConversationHistory=[];}
+var _toastTimer=null;
+function toast(msg){var t=el('toast');if(!t)return;if(_toastTimer){clearTimeout(_toastTimer);_toastTimer=null;}t.textContent=msg;t.classList.add('show');_toastTimer=setTimeout(function(){t.classList.remove('show');_toastTimer=null;},2800);}
+function updateUIBasedOnRegion(){var isUK=currentRegion==='uk';var domain=isUK?'https://mrcheapflights.co.uk':'https://mrcheapflights.ie';el('canonical-link').href=domain;el('og-url').content=domain;el('page-title').textContent=isUK?'Mr Cheap Flights – Ridiculous Flight Deals from UK Airports':'Mr Cheap Flights – Ridiculous Flight Deals, Direct to You';el('meta-desc').content=isUK?'Mr Cheap Flights finds insane flight deals from UK airports. Join 12,400+ members saving big on every trip.':'Mr Cheap Flights finds insane flight deals from Irish airports. Join 12,400+ members saving big on every trip.';el('og-title').content=isUK?'Mr Cheap Flights – Ridiculous Flight Deals from UK Airports':'Mr Cheap Flights – Ridiculous Flight Deals';el('og-desc').content=isUK?'Ridiculous flight deals from UK airports, delivered straight to you.':'Ridiculous flight deals from Irish airports, delivered straight to you.';el('hero-badge').textContent=isUK?'🇬🇧 UK\'S #1 FLIGHT DEAL FINDER':'🇮🇪 IRELAND\'S #1 FLIGHT DEAL FINDER';el('hero-sub').textContent=isUK?'Mr Cheap Flights hunts down the best flight deals from UK airports — so you don\'t have to. Join thousands saving big on every trip.':'Mr Cheap Flights hunts down the best flight deals from Irish airports — so you don\'t have to. Join thousands saving big on every trip.';el('hero-trust-line').innerHTML=isUK?'🔒 No spam. Unsubscribe anytime. Loved by <strong class=\"mcf-member-count\">12,400+</strong> deal hunters.':'🔒 No spam. Unsubscribe anytime. Loved by <strong class=\"mcf-member-count\">12,400+</strong> deal hunters.';el('deals-title').innerHTML='RECENT <span>DEALS</span>';el('cta-h2').textContent='STOP PAYING FULL PRICE ✈';el('cta-p').innerHTML='Join <span class=\"mcf-cta-count\">12,400+</span> savvy '+(isUK?'UK':'Irish')+' travellers getting insane deals every week.';el('footer-logo').innerHTML='MR <span>CHEAP</span> FLIGHTS';el('footer-desc').textContent='Hunting down the best flight deals from '+(isUK?'UK':'Irish')+' airports since 2024.';var rs=el('region-switcher');if(rs){rs.textContent=isUK?'🇮🇪 Ireland':'🇬🇧 UK';rs.title='Switch to '+(isUK?'Ireland':'UK')+' site';rs.href=isUK?'https://mrcheapflights.ie':'https://mrcheapflights.co.uk';}}
+function closeMenu(){var m=el('mobile-menu'),b=el('hamburger');if(m)m.classList.remove('open');if(b)b.classList.remove('open');}
+document.addEventListener('click',function(ev){var menu=el('mobile-menu'),burger=el('hamburger');if(menu&&burger&&menu.classList.contains('open')&&!menu.contains(ev.target)&&!burger.contains(ev.target))closeMenu();});
+function smoothTo(e,id){if(e)e.preventDefault();var target=el(id);if(target)target.scrollIntoView({behavior:'smooth'});}
+function submitEmail(e){if(e)e.preventDefault();var emailEl=el('hero-email');var email=emailEl.value.trim();if(!email||!email.includes('@')){toast('⚠️ Please enter a valid email!');emailEl.focus();return;}
+  // ── GA: hero email signup ──
+  mcfTrack('sign_up',{method:'email',plan:'free',location:'hero'});
+  var hf=el('hero-form');if(hf)hf.style.display='none';var ht=el('hero-trust-line');if(ht)ht.style.display='none';var ss=el('signup-success');if(ss)ss.style.display='block';toast('🎉 Welcome to the club!');}
+function togglePricingMode(){document.body.classList.toggle('annual-mode');el('pricing-toggle-btn').classList.toggle('annual');var isAnnual=document.body.classList.contains('annual-mode');el('lbl-monthly').classList.toggle('active',!isAnnual);el('lbl-annual').classList.toggle('active',isAnnual);
+  // ── GA: pricing toggle ──
+  mcfTrack('pricing_toggle',{billing_period:isAnnual?'annual':'monthly'});
+  var priceEl=el('prem-price-num'),periodEl=el('prem-price-period');if(priceEl)priceEl.textContent=isAnnual?'39.99':'4.99';if(periodEl)periodEl.textContent=isAnnual?'/year':'/mo';var btn=el('btn-start-premium');if(btn)btn.textContent=isAnnual?'Start for €39.99/year →':'Start for €4.99/mo →';}
+function syncSocialIcons(){var s=siteSettings;function applySocial(iconId,textId,url){var isSet=url&&url!=='#';[el(iconId),el(textId)].forEach(function(e){if(!e)return;e.href=isSet?url:'#';e.setAttribute('aria-disabled',isSet?'false':'true');});}var ig=el('fsoc-ig');if(ig)ig.href=s.igUrl||'#';applySocial('fsoc-tk','ft-tk',s.tkUrl);applySocial('fsoc-fb','ft-fb',s.fbUrl);applySocial('fsoc-tw','ft-tw',s.twUrl);if(s.waNumber){var waUrl='https://wa.me/'+s.waNumber+'?text='+encodeURIComponent('Hey! Sign me up for Mr Cheap Flights ✈️');document.querySelectorAll('.mcf-wa-link').forEach(function(e){e.href=waUrl;});}document.querySelectorAll('.mcf-member-count').forEach(function(e){e.textContent=s.members||'12,400+';});var cl=el('contact-email-link');if(cl){cl.textContent=s.contactEmail||'hello@mrcheapflights.ie';cl.href='mailto:'+(s.contactEmail||'hello@mrcheapflights.ie');}}
+function checkGdpr(){try{if(localStorage.getItem(STORAGE_KEYS.gdpr)==='v3'){document.body.classList.remove('gdpr-active');}else{document.body.classList.add('gdpr-active');setTimeout(function(){var b=el('gdpr-banner');if(b)b.style.transform='translateY(0)';},1800);}}catch(e){}}
+function gdprAccept(){try{localStorage.setItem(STORAGE_KEYS.gdpr,'v3');}catch(e){}var b=el('gdpr-banner');if(b)b.style.transform='translateY(100%)';document.body.classList.remove('gdpr-active');
+  // ── GA: GDPR consent ──
+  mcfTrack('gdpr_consent',{action:'accept'});}
+function gdprDecline(){var b=el('gdpr-banner');if(b)b.style.transform='translateY(100%)';document.body.classList.remove('gdpr-active');
+  mcfTrack('gdpr_consent',{action:'decline'});}
+function openContact(e){if(e)e.preventDefault();el('contact-modal').classList.add('open');document.body.style.overflow='hidden';}
+function closeContact(){el('contact-modal').classList.remove('open');document.body.style.overflow='';}
+function submitContact(){var email=el('ct-email').value.trim(),msg=el('ct-message').value.trim();if(!email||!msg){toast('⚠️ Email and message required');return;}var subj=el('ct-subject').value.trim()||'Enquiry',name=el('ct-name').value.trim(),to=siteSettings.contactEmail||'hello@mrcheapflights.ie';
+  // ── GA: contact form submit ──
+  mcfTrack('contact_submit',{subject:subj});
+  window.open('mailto:'+to+'?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent('Name: '+name+'\nEmail: '+email+'\n\n'+msg),'_self');setTimeout(function(){closeContact();toast('📬 Opening email client…');},400);}
+function loadDealPageFromHash(){var hash=window.location.hash;if(!hash||!hash.startsWith('#deal/'))return;var slug=hash.slice(6);var d=deals.find(function(x){return(x.slug||autoSlug(x.route,x.price))===slug;});if(d)openDealPage(d.id);}
+
+// ── INIT ──
+el('footer-year').textContent=new Date().getFullYear();
+loadSettings();loadPrefs();load();renderPublic();renderTicker();updateHeroStats();updateCounterBar();updatePrefsBanner();applySettings();checkGdpr();syncSocialIcons();initReveal();initBackToTop();loadDealPageFromHash();updateUIBasedOnRegion();
+
+// ── GA: scroll depth tracking ──
+(function(){var marks=[25,50,75,90],fired={};window.addEventListener('scroll',function(){var pct=Math.round((window.scrollY/(document.body.scrollHeight-window.innerHeight))*100);marks.forEach(function(m){if(!fired[m]&&pct>=m){fired[m]=true;mcfTrack('scroll',{percent_scrolled:m});}});},{passive:true});})();
+
+// Nav scroll effect
+(function(){var nav=document.querySelector('nav');if(!nav)return;window.addEventListener('scroll',function(){nav.classList.toggle('scrolled',window.scrollY>40);},{passive:true});})();
+
+// Ripple on deal tiles
+document.addEventListener('click',function(e){var tile=e.target.closest('.deal-tile');if(!tile)return;var r=document.createElement('span');var rect=tile.getBoundingClientRect();var size=Math.max(rect.width,rect.height);r.style.cssText='position:absolute;border-radius:50%;background:rgba(255,210,0,.15);pointer-events:none;transform:scale(0);animation:ripple-out .5s ease forwards;width:'+size+'px;height:'+size+'px;left:'+(e.clientX-rect.left-size/2)+'px;top:'+(e.clientY-rect.top-size/2)+'px;';tile.appendChild(r);setTimeout(function(){r.remove();},520);});
+</script>
+<button id="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">↑</button>
+</body>
+</html>
