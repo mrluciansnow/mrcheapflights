@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mr Cheap Flights · Content Pipeline</title>
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;padding:1.5rem;}
+:root{--y:#FFD700;--p:#FF2D78;--d:#0A0F2E;--t:#00E5CC;--o:#FF6B2B;}
+.w{background:var(--d);border-radius:16px;padding:1.5rem;max-width:780px;margin:0 auto;border:1px solid rgba(255,255,255,0.06);}
+.logo{font-family:'Bangers',cursive;font-size:26px;letter-spacing:2px;color:var(--y);}
+.logo span{color:var(--p);}
+.sub{font-family:'Bebas Neue',cursive;font-size:11px;letter-spacing:3px;color:var(--t);margin-top:1px;}
+.step-bar{display:flex;align-items:center;gap:0;margin:1.25rem 0;}
+.step{display:flex;align-items:center;gap:5px;padding:7px 10px;border-radius:20px;font-family:'Bebas Neue',cursive;font-size:10px;letter-spacing:2px;cursor:pointer;border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.35);background:transparent;flex:1;justify-content:center;}
+.step.done{color:var(--t);border-color:rgba(0,229,204,0.4);}
+.step.active{color:var(--d);background:var(--y);border-color:var(--y);}
+.step-arrow{color:rgba(255,255,255,0.2);font-size:14px;padding:0 4px;}
+.section{display:none;}
+.section.vis{display:block;}
+.hd{font-family:'Bebas Neue',cursive;font-size:12px;letter-spacing:3px;color:var(--t);margin-bottom:10px;}
+.deal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:1rem;}
+.deal{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:10px 12px;cursor:pointer;position:relative;}
+.deal.sel{border-color:var(--y);background:rgba(255,215,0,0.07);}
+.deal:hover{border-color:rgba(255,255,255,0.25);}
+.deal-route{font-family:'Bebas Neue',cursive;font-size:14px;letter-spacing:1px;color:#fff;}
+.deal-price{font-family:'Bangers',cursive;font-size:22px;color:var(--y);letter-spacing:1px;}
+.deal-was{font-size:10px;color:rgba(255,255,255,0.35);text-decoration:line-through;margin-left:3px;}
+.deal-save{background:var(--p);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;margin-left:4px;letter-spacing:0.5px;}
+.deal-meta{font-size:10px;color:rgba(255,255,255,0.4);margin-top:3px;}
+.chk{width:18px;height:18px;border-radius:50%;border:1.5px solid rgba(255,255,255,0.2);float:right;margin-top:2px;display:flex;align-items:center;justify-content:center;font-size:10px;color:transparent;background:transparent;}
+.deal.sel .chk{background:var(--y);border-color:var(--y);color:var(--d);font-weight:700;}
+.next-btn{background:var(--y);color:var(--d);border:none;border-radius:8px;padding:11px 20px;font-family:'Bebas Neue',cursive;font-size:14px;letter-spacing:2px;cursor:pointer;width:100%;margin-top:4px;}
+.next-btn:disabled{opacity:0.3;cursor:not-allowed;}
+.deal-queue{display:flex;flex-direction:column;gap:5px;margin-bottom:1rem;}
+.qrow{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.04);border-radius:7px;padding:7px 10px;font-size:12px;color:rgba(255,255,255,0.5);border:1px solid transparent;}
+.qrow.active-q{border-color:rgba(255,215,0,0.4);color:#fff;background:rgba(255,215,0,0.06);}
+.qrow.done-q{opacity:0.4;}
+.qnum{font-family:'Bangers',cursive;font-size:16px;color:var(--y);width:20px;flex-shrink:0;}
+.qstatus{margin-left:auto;font-size:10px;font-family:'Bebas Neue',cursive;letter-spacing:1px;}
+.active-panel{border-radius:10px;padding:14px;margin-bottom:1rem;}
+.style-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:10px;}
+.scard{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:9px;padding:10px;cursor:pointer;text-align:center;transition:border-color 0.15s;}
+.scard:hover{border-color:rgba(255,255,255,0.3);}
+.scard.ssel{border-color:var(--y);background:rgba(255,215,0,0.08);}
+.scard-name{font-family:'Bebas Neue',cursive;font-size:12px;letter-spacing:1px;color:#fff;margin-top:4px;}
+.scard-desc{font-size:9px;color:rgba(255,255,255,0.4);margin-top:2px;line-height:1.4;}
+.img-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:10px;}
+.icard{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:9px;overflow:hidden;cursor:pointer;transition:border-color 0.15s;}
+.icard:hover{border-color:rgba(255,255,255,0.3);}
+.icard.isel{border-color:var(--y);}
+.ipreview{height:100px;display:flex;align-items:center;justify-content:center;}
+.ilabel{padding:6px 8px;}
+.ilabel b{display:block;font-size:11px;color:#fff;font-weight:600;margin-bottom:1px;}
+.ilabel span{font-size:9px;color:rgba(255,255,255,0.4);}
+.copy-tabs{display:flex;gap:6px;margin-bottom:8px;}
+.ctab{font-family:'Bebas Neue',cursive;font-size:11px;letter-spacing:1px;padding:5px 12px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.4);background:transparent;}
+.ctab.cactive{background:rgba(0,229,204,0.12);border-color:var(--t);color:var(--t);}
+.copy-box{background:rgba(255,255,255,0.04);border:0.5px solid rgba(255,255,255,0.1);border-radius:8px;padding:12px;font-size:11px;color:rgba(255,255,255,0.75);line-height:1.65;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;}
+.pub-bar{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.04);border-radius:9px;padding:10px 12px;margin-top:10px;}
+.pub-info{flex:1;}
+.pub-info b{display:block;font-family:'Bebas Neue',cursive;font-size:13px;letter-spacing:2px;color:#fff;}
+.pub-info span{font-size:10px;color:rgba(255,255,255,0.4);}
+.btn-approve{background:var(--y);color:var(--d);border:none;border-radius:7px;padding:8px 16px;font-family:'Bebas Neue',cursive;font-size:12px;letter-spacing:2px;cursor:pointer;}
+.btn-skip{background:transparent;color:rgba(255,255,255,0.4);border:0.5px solid rgba(255,255,255,0.15);border-radius:7px;padding:8px 12px;font-size:11px;cursor:pointer;}
+.panel-hd{font-family:'Bebas Neue',cursive;font-size:14px;letter-spacing:2px;margin-bottom:3px;}
+.panel-sub{font-size:10px;color:rgba(255,255,255,0.4);margin-bottom:12px;}
+.tagline{font-style:italic;font-size:10px;color:rgba(255,255,255,0.2);text-align:center;margin-top:14px;}
+.all-done-box{text-align:center;padding:1.5rem 0;}
+.all-done-box .big{font-family:'Bangers',cursive;font-size:32px;color:var(--y);letter-spacing:3px;}
+.all-done-box .smol{font-size:12px;color:rgba(255,255,255,0.45);margin:6px 0 16px;}
+.add-toggle{background:transparent;color:var(--t);border:1px solid rgba(0,229,204,0.3);border-radius:8px;padding:8px 14px;font-family:'Bebas Neue',cursive;font-size:11px;letter-spacing:2px;cursor:pointer;width:100%;margin-bottom:10px;}
+.add-form{display:none;margin-bottom:14px;padding:12px;background:rgba(255,255,255,0.04);border-radius:10px;border:1px solid rgba(255,255,255,0.08);}
+.add-form .row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:8px;}
+.add-form input,.add-form select{width:100%;padding:8px 10px;border-radius:7px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;}
+.add-form select option{background:#0A0F2E;}
+.empty-note{text-align:center;padding:2rem 0;color:rgba(255,255,255,0.35);font-size:12px;grid-column:1/-1;}
+</style>
+</head>
+<body>
+<div class="w" id="main-w">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1.25rem;">
+    <div>
+      <div class="logo">MR <span>CHEAP</span> FLIGHTS ✈</div>
+      <div class="sub">Content Pipeline · Candidate Review</div>
+    </div>
+    <div style="font-size:10px;color:rgba(255,255,255,0.3);text-align:right;" id="header-date"></div>
+  </div>
+
+  <div class="step-bar">
+    <div class="step active" id="stp1">① Select deals</div>
+    <div class="step-arrow">›</div>
+    <div class="step" id="stp2">② Style</div>
+    <div class="step-arrow">›</div>
+    <div class="step" id="stp3">③ Images</div>
+    <div class="step-arrow">›</div>
+    <div class="step" id="stp4">④ Ad copy</div>
+  </div>
+
+  <!-- STEP 1: DEAL SELECTION -->
+  <div class="section vis" id="s1">
+    <div class="hd">Choose up to 6 candidate deals to process</div>
+    <button class="add-toggle" onclick="toggleAddForm()">+ Add candidate deal</button>
+    <div class="add-form" id="add-form">
+      <div class="row">
+        <input id="af-route" placeholder="Route, e.g. Dublin → Ibiza"/>
+        <input id="af-price" placeholder="Price, e.g. €47"/>
+      </div>
+      <div class="row">
+        <input id="af-was" placeholder="Was price (optional), e.g. €199"/>
+        <input id="af-airline" placeholder="Airline (optional)"/>
+      </div>
+      <div class="row">
+        <input id="af-dates" placeholder="Dates, e.g. Late Apr – May"/>
+        <select id="af-region"><option value="ie">🇮🇪 Ireland</option><option value="uk">🇬🇧 UK</option></select>
+      </div>
+      <div class="row">
+        <select id="af-badge"><option>🔥 Hot</option><option>⚡ Flash</option><option>✈ Long Haul</option><option>⭐ Featured</option></select>
+        <select id="af-type"><option value="sun">☀️ Sun</option><option value="longhaul">🌍 Long haul</option><option value="city">🏙️ City</option><option value="wintersun">🌴 Winter sun</option></select>
+      </div>
+      <input id="af-url" placeholder="Booking URL" style="margin-bottom:8px;"/>
+      <button class="next-btn" onclick="submitCandidate()">Add candidate ✈</button>
+    </div>
+    <div class="deal-grid" id="dg"></div>
+    <button class="next-btn" id="n1btn" onclick="startStylePhase()" disabled>Continue with <span id="selcount">0</span> deals ›</button>
+  </div>
+
+  <!-- STEP 2: STYLE SELECTION (per deal) -->
+  <div class="section" id="s2">
+    <div class="hd">Choose a visual style — one per deal</div>
+    <div class="deal-queue" id="dqueue2"></div>
+    <div class="active-panel" style="background:rgba(255,215,0,0.05);border:1px solid rgba(255,215,0,0.25);">
+      <div class="panel-hd" id="s2-dealname" style="color:var(--y);"></div>
+      <div class="panel-sub" id="s2-dealsub"></div>
+      <div class="style-grid" id="sgrid"></div>
+      <button class="next-btn" id="style-next" onclick="confirmStyle()" disabled style="opacity:0.3;">Use this style ›</button>
+    </div>
+  </div>
+
+  <!-- STEP 3: IMAGE SELECTION (per deal) -->
+  <div class="section" id="s3">
+    <div class="hd">Choose the best image — 3 variants per deal</div>
+    <div class="deal-queue" id="dqueue3"></div>
+    <div class="active-panel" style="background:rgba(255,45,120,0.05);border:1px solid rgba(255,45,120,0.25);">
+      <div class="panel-hd" id="s3-dealname" style="color:var(--p);"></div>
+      <div class="panel-sub" id="s3-style"></div>
+      <div class="img-grid" id="imgrid"></div>
+      <div style="font-size:9px;color:rgba(255,255,255,0.3);margin-bottom:8px;">Placeholder previews — real image generation isn't wired up yet.</div>
+      <button class="next-btn" id="img-next" onclick="confirmImg()" disabled style="opacity:0.3;">Use this image ›</button>
+    </div>
+  </div>
+
+  <!-- STEP 4: AD COPY (per deal) -->
+  <div class="section" id="s4">
+    <div class="hd">Select ad copy — 3 options per deal</div>
+    <div class="deal-queue" id="dqueue4"></div>
+    <div class="active-panel" id="copy-panel" style="background:rgba(0,229,204,0.04);border:1px solid rgba(0,229,204,0.2);">
+      <div class="panel-hd" id="s4-dealname" style="color:var(--t);"></div>
+      <div class="panel-sub" id="s4-sub"></div>
+      <div class="copy-tabs" id="ctabs"></div>
+      <div class="copy-box" id="copybox"></div>
+      <div class="pub-bar">
+        <div class="pub-info"><b id="approve-lbl">APPROVE &amp; NEXT ›</b><span>Move to next deal</span></div>
+        <button class="btn-skip" onclick="skipCopy()">Skip</button>
+        <button class="btn-approve" onclick="confirmCopy()">Approve ›</button>
+      </div>
+    </div>
+    <div class="all-done-box" id="all-done" style="display:none;">
+      <div class="big">ALL DEALS READY!</div>
+      <div class="smol">One click pushes the approved deals live on mrcheapflights.ie / .co.uk.</div>
+      <button class="next-btn" id="publish-btn" style="max-width:340px;" onclick="publishAll()">Publish everything ›</button>
+    </div>
+  </div>
+
+  <div class="tagline">Cheap never looked this good.</div>
+</div>
+
+<script>
+document.getElementById('header-date').innerHTML = new Date().toDateString();
+
+const stylesByType = {
+  sun:      [{n:"Synthwave retro",d:"Dark neon grid · Miami vibes"},{n:"Neon beach party",d:"Hot pink waves · club energy"},{n:"Golden hour sunset",d:"Warm orange tones · dreamy"}],
+  longhaul: [{n:"Epic skyline night",d:"City lights · cinematic dark"},{n:"Luxury editorial",d:"Film grain · premium feel"},{n:"Pop art passport",d:"Bold colour blocks · graphic"}],
+  city:     [{n:"Neon cityscape",d:"Purple & teal after dark"},{n:"Vintage travel poster",d:"Illustrated · retro type"},{n:"Urban energy",d:"Street photography aesthetic"}],
+  wintersun:[{n:"Golden paradise",d:"Warm tones · dreamy beach"},{n:"Volcano drama",d:"Dark sky · lava red accents"},{n:"Fire & ocean",d:"Contrast: warm vs cool blue"}],
+};
+const imgVariants = [
+  {lbl:"Variant A",desc:"Portrait · bold price hero"},
+  {lbl:"Variant B",desc:"Wide banner · destination focus"},
+  {lbl:"Variant C",desc:"Square · mascot overlay"},
+];
+const vBg  = ["#1e003c","#001432","#3c0800"];
+const vAcc = ["#FFD700","#FF2D78","#00E5CC"];
+
+function destOf(d){ var parts = d.route.split('→'); return (parts[1]||parts[0]).trim(); }
+function parsePrice(s){ if(!s) return NaN; return parseFloat(String(s).replace(/[^0-9.]/g,'')); }
+function saveOf(d){
+  var p = parsePrice(d.price), w = parsePrice(d.was_price);
+  if(!w || isNaN(p) || isNaN(w) || w<=p) return null;
+  return Math.round((1 - p/w) * 100);
+}
+
+function buildCopy(d) {
+  var dest = destOf(d);
+  var airline = d.airline || 'the airline';
+  var save = saveOf(d);
+  var wasLine = d.was_price ? `Was: ${d.was_price} · Now: ${d.price} RTN` : `Now ${d.price} RTN`;
+  return [
+`🚨 LAST MINUTE DEAL ALERT! 🚨
+Who needs a getaway right about... NOW?! 😎✈️
+
+${airline} are dropping unbelievable fares to ${dest} from just ${d.price} RETURN! 🤯
+
+Pack a carry-on and grab your passport — these will disappear fast.
+
+${d.route} — ${d.price} RTN
+Dates: ${d.dates}
+
+👇 Tag the travel buddy you're taking!
+🔗 Link in bio to book before it's gone!
+
+#MrCheapFlights #TravelDeals #${dest.replace(/\s/g,'')} #cheapflights #${airline.replace(/\s/g,'')}`,
+
+`${d.price} returns to ${dest}?! Someone at ${airline}'s getting fired for this one! 😂✈️
+
+${dest} is calling and the price is absolutely criminal. We're talking ${d.price} RETURN — that's less than a round of drinks. 🍺
+
+These fares are LIVE RIGHT NOW. Dates: ${d.dates}.
+
+${wasLine}${save?` · -${save}%`:''}
+
+📲 Link in bio. Go. NOW.
+
+#MrCheapFlights #${dest.replace(/\s/g,'')} #StupidCheapFlights #cheapflights`,
+
+`✈️ ${dest.toUpperCase()} FOR ${d.price}?? ✈️
+
+Yep. You read that right. 🤯
+
+${dest} in ${d.dates} — ${d.price} return. That's it. That's the post.
+
+${airline} have absolutely lost the plot and we are HERE for it.
+
+${wasLine}
+
+This is not a drill. 🔗 Link in bio.
+
+#MrCheapFlights #TravelDeals #${dest.replace(/\s/g,'')} #FlightDeal #CheapFlights`,
+  ];
+}
+
+let draftDeals = [];
+let selDeals = new Set();
+let queueIdx = 0;
+let queuedDeals = [];
+let dealMeta = {};
+let activeCopyTab = 0;
+let chosenStyle = null;
+let chosenImg = null;
+
+function toggleAddForm(){
+  var f = document.getElementById('add-form');
+  f.style.display = f.style.display === 'block' ? 'none' : 'block';
+}
+
+async function submitCandidate(){
+  var route = document.getElementById('af-route').value.trim();
+  var price = document.getElementById('af-price').value.trim();
+  if(!route || !price){ alert('Route and price are required.'); return; }
+  var slug = route.toLowerCase().replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-') + '-' + price.replace(/[^0-9]/g,'');
+  var payload = {
+    route: route, price: price, dates: document.getElementById('af-dates').value.trim(),
+    badge: document.getElementById('af-badge').value, url: document.getElementById('af-url').value.trim() || '#',
+    region: document.getElementById('af-region').value, slug: slug, status: 'draft',
+    wasPrice: document.getElementById('af-was').value.trim() || null,
+    airline: document.getElementById('af-airline').value.trim() || null,
+    destType: document.getElementById('af-type').value,
+  };
+  try {
+    var res = await fetch('/api/deals', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+    if(!res.ok){ alert('Could not add candidate deal.'); return; }
+  } catch(e){ alert('Network error.'); return; }
+  ['af-route','af-price','af-was','af-airline','af-dates','af-url'].forEach(function(id){ document.getElementById(id).value=''; });
+  document.getElementById('add-form').style.display = 'none';
+  await loadDraftDeals();
+}
+
+async function loadDraftDeals(){
+  try {
+    var res = await fetch('/api/deals');
+    if(!res.ok) throw new Error('not ok');
+    var data = await res.json();
+    var isAdmin = data.length > 0 && Object.prototype.hasOwnProperty.call(data[0], 'status');
+    if(!isAdmin){ showAuthGate(); return; }
+    draftDeals = data.filter(function(d){ return d.status === 'draft'; });
+    renderDeals();
+  } catch(e){ showAuthGate(); }
+}
+
+function showAuthGate(){
+  document.getElementById('main-w').innerHTML =
+    '<div style="text-align:center;padding:3rem 1rem;">' +
+    '<div style="font-family:\'Bebas Neue\',cursive;font-size:20px;color:var(--y);margin-bottom:8px;">🔒 ADMIN LOGIN REQUIRED</div>' +
+    '<div style="font-size:12px;color:rgba(255,255,255,0.5);margin-bottom:16px;">Log into the admin panel first, then come back to this page.</div>' +
+    '<a href="/" class="next-btn" style="display:inline-block;max-width:240px;text-decoration:none;line-height:2.2;">Go to Admin Login →</a>' +
+    '</div>';
+}
+
+function renderDeals() {
+  var dg = document.getElementById('dg');
+  if(!draftDeals.length){
+    dg.innerHTML = '<div class="empty-note">No candidate deals yet — add one above.</div>';
+  } else {
+    dg.innerHTML = draftDeals.map(function(d){
+      var save = saveOf(d);
+      return `
+      <div class="deal${selDeals.has(d.id)?' sel':''}" onclick="toggleDeal(${d.id})">
+        <div class="chk">✓</div>
+        <div class="deal-route">${d.route}</div>
+        <div style="display:flex;align-items:baseline;gap:4px;margin-top:3px;">
+          <span class="deal-price">${d.price}</span>
+          ${d.was_price?`<span class="deal-was">${d.was_price}</span>`:''}
+          ${save?`<span class="deal-save">-${save}%</span>`:''}
+        </div>
+        <div class="deal-meta">${d.airline||''} ${d.airline?'·':''} ${d.dates||''}</div>
+      </div>`;
+    }).join('');
+  }
+  var c = selDeals.size;
+  document.getElementById('selcount').textContent = c;
+  document.getElementById('n1btn').disabled = c === 0;
+}
+
+function toggleDeal(id) {
+  if(selDeals.has(id)){selDeals.delete(id);}
+  else if(selDeals.size<6){selDeals.add(id);}
+  renderDeals();
+}
+
+function goStep(n) {
+  ['s1','s2','s3','s4'].forEach(function(id,i){
+    document.getElementById(id).className = 'section'+(i+1===n?' vis':'');
+  });
+  ['stp1','stp2','stp3','stp4'].forEach(function(id,i){
+    document.getElementById(id).className = 'step'+(i+1<n?' done':i+1===n?' active':'');
+  });
+}
+
+function renderQueue(elId, activeAccent) {
+  document.getElementById(elId).innerHTML = queuedDeals.map(function(d,i){
+    var isDone = i < queueIdx, isNow = i === queueIdx;
+    var tag = isDone ? `<span class="qstatus" style="color:var(--t);">DONE ✓</span>`
+            : isNow  ? `<span class="qstatus" style="color:${activeAccent};">NOW</span>` : '';
+    return `<div class="qrow ${isDone?'done-q':isNow?'active-q':''}">
+      <span class="qnum">${i+1}</span><span>${d.route}</span>
+      <span style="margin-left:6px;font-size:9px;color:rgba(255,255,255,0.25);">${d.price}</span>${tag}
+    </div>`;
+  }).join('');
+}
+
+/* ---- STEP 2: STYLE ---- */
+function startStylePhase() {
+  queuedDeals = draftDeals.filter(function(d){ return selDeals.has(d.id); });
+  queueIdx = 0;
+  dealMeta = {};
+  goStep(2);
+  loadStyle();
+}
+
+function loadStyle() {
+  renderQueue('dqueue2','var(--y)');
+  var d = queuedDeals[queueIdx];
+  document.getElementById('s2-dealname').textContent = d.route.toUpperCase() + ' · ' + d.price;
+  document.getElementById('s2-dealsub').textContent = 'Pick the aesthetic that fits ' + destOf(d) + ' best';
+  var styles = stylesByType[d.dest_type] || stylesByType.city;
+  chosenStyle = null;
+  document.getElementById('sgrid').innerHTML = styles.map(function(s,i){
+    return `<div class="scard" id="sc${i}" onclick="pickStyle('${s.n}',${i},${styles.length})">
+      <div style="font-size:22px;color:rgba(255,255,255,0.35);">★</div>
+      <div class="scard-name">${s.n}</div><div class="scard-desc">${s.d}</div>
+    </div>`;
+  }).join('');
+  var btn = document.getElementById('style-next');
+  btn.disabled = true; btn.style.opacity='0.3';
+}
+
+function pickStyle(name, idx, total) {
+  for(var i=0;i<total;i++){ var el=document.getElementById('sc'+i); if(el) el.className='scard'+(i===idx?' ssel':''); }
+  chosenStyle = name;
+  var btn=document.getElementById('style-next');
+  btn.disabled=false; btn.style.opacity='1';
+}
+
+function confirmStyle() {
+  if(!chosenStyle) return;
+  dealMeta[queueIdx] = {style:chosenStyle};
+  queueIdx++;
+  if(queueIdx < queuedDeals.length){ loadStyle(); }
+  else { queueIdx=0; goStep(3); loadImg(); }
+}
+
+/* ---- STEP 3: IMAGES ---- */
+function loadImg() {
+  renderQueue('dqueue3','var(--p)');
+  var d = queuedDeals[queueIdx];
+  document.getElementById('s3-dealname').textContent = d.route.toUpperCase() + ' · ' + d.price;
+  document.getElementById('s3-style').textContent = 'Style: ' + (dealMeta[queueIdx]?.style||'');
+  chosenImg = null;
+  document.getElementById('imgrid').innerHTML = imgVariants.map(function(v,i){
+    return `<div class="icard" id="ic${i}" onclick="pickImg(${i})">
+      <div class="ipreview" style="background:${vBg[i]};">
+        <svg width="84" height="72" viewBox="0 0 84 72" xmlns="http://www.w3.org/2000/svg">
+          <rect x="4" y="4" width="76" height="64" rx="6" fill="rgba(255,255,255,0.04)" stroke="${vAcc[i]}" stroke-width="1.2"/>
+          <text x="42" y="22" text-anchor="middle" font-family="Bebas Neue,cursive" font-size="8" fill="${vAcc[i]}" letter-spacing="2">${v.lbl}</text>
+          <text x="42" y="46" text-anchor="middle" font-family="Bangers,cursive" font-size="22" fill="${vAcc[i]}">${d.price}</text>
+          <text x="42" y="60" text-anchor="middle" font-family="Bebas Neue,cursive" font-size="8" fill="rgba(255,255,255,0.35)" letter-spacing="1">${destOf(d).toUpperCase()}</text>
+        </svg>
+      </div>
+      <div class="ilabel"><b>${v.lbl}</b><span>${v.desc}</span></div>
+    </div>`;
+  }).join('');
+  var btn=document.getElementById('img-next');
+  btn.disabled=true; btn.style.opacity='0.3';
+}
+
+function pickImg(idx) {
+  [0,1,2].forEach(function(i){ var el=document.getElementById('ic'+i); if(el) el.className='icard'+(i===idx?' isel':''); });
+  chosenImg = idx;
+  var btn=document.getElementById('img-next');
+  btn.disabled=false; btn.style.opacity='1';
+}
+
+function confirmImg() {
+  if(chosenImg===null) return;
+  dealMeta[queueIdx].img = chosenImg;
+  queueIdx++;
+  if(queueIdx < queuedDeals.length){ loadImg(); }
+  else { queueIdx=0; goStep(4); loadCopy(); }
+}
+
+/* ---- STEP 4: AD COPY ---- */
+function loadCopy() {
+  renderQueue('dqueue4','var(--t)');
+  var d = queuedDeals[queueIdx];
+  document.getElementById('s4-dealname').textContent = d.route.toUpperCase() + ' · ' + d.price;
+  document.getElementById('s4-sub').textContent = 'Choose the tone that fits — or approve as-is';
+  activeCopyTab = 0;
+  dealMeta[queueIdx].copies = buildCopy(d);
+  renderCopyTabs();
+  document.getElementById('approve-lbl').textContent = queueIdx < queuedDeals.length-1 ? 'APPROVE & NEXT ›' : 'APPROVE & FINISH ›';
+}
+
+function renderCopyTabs() {
+  var copies = dealMeta[queueIdx].copies;
+  document.getElementById('ctabs').innerHTML = copies.map(function(_,i){
+    return `<div class="ctab${i===activeCopyTab?' cactive':''}" onclick="switchCopy(${i})">Option ${i+1}</div>`;
+  }).join('');
+  document.getElementById('copybox').textContent = copies[activeCopyTab];
+}
+
+function switchCopy(i) { activeCopyTab = i; renderCopyTabs(); }
+
+function confirmCopy() { dealMeta[queueIdx].chosenCopy = activeCopyTab; advanceCopy(); }
+function skipCopy() { advanceCopy(); }
+
+function advanceCopy() {
+  queueIdx++;
+  if(queueIdx < queuedDeals.length){ loadCopy(); }
+  else {
+    document.getElementById('copy-panel').style.display='none';
+    document.getElementById('all-done').style.display='block';
+    ['stp1','stp2','stp3','stp4'].forEach(function(id){ document.getElementById(id).className='step done'; });
+  }
+}
+
+async function publishAll() {
+  var btn = document.getElementById('publish-btn');
+  btn.disabled = true; btn.textContent = 'Publishing…';
+  for(var i=0;i<queuedDeals.length;i++){
+    var d = queuedDeals[i];
+    var meta = dealMeta[i] || {};
+    var chosenCopy = (meta.copies && meta.chosenCopy !== undefined) ? meta.copies[meta.chosenCopy] : null;
+    try {
+      await fetch('/api/deals/' + d.id, {
+        method: 'PUT', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          flag: d.flag, route: d.route, dates: d.dates, price: d.price, badge: d.badge,
+          url: d.url, expiry: d.expiry, slug: d.slug, region: d.region,
+          status: 'live', pipelineStyle: meta.style || null, pipelineCopy: chosenCopy,
+        }),
+      });
+    } catch(e) { /* best-effort: continue publishing the rest */ }
+  }
+  document.getElementById('all-done').innerHTML =
+    '<div class="big">PUBLISHED! ✈</div><div class="smol">Live on mrcheapflights.ie / .co.uk now.</div>';
+}
+
+loadDraftDeals();
+</script>
+</body>
+</html>
