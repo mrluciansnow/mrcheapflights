@@ -1,4 +1,4 @@
-name = "mrcheapflights"
+name = "mrcheap"
 compatibility_date = "2024-11-01"
 compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = "."
@@ -6,4 +6,4 @@ pages_build_output_dir = "."
 [[d1_databases]]
 binding = "DB"
 database_name = "mrcheapflights-prod"
-database_id = "REPLACE_AFTER_WRANGLER_D1_CREATE"
+database_id = "9db20f98-9534-4b6c-986e-125ed3f8e95f"
