@@ -1,0 +1,4 @@
+User-agent: *
+Disallow: /api/admin/
+Disallow: /api/stripe/
+Sitemap: https://mrcheapflights.ie/sitemap.xml
