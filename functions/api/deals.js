@@ -11,11 +11,16 @@ export async function onRequestGet(context) {
 
   const columns = session
     ? 'id, flag, route, dates, price, badge, url, expiry, slug, region, status, pipeline_style, pipeline_copy, was_price, airline, dest_type'
-    : 'id, flag, route, dates, price, badge, url, expiry, slug, region';
+    : 'id, flag, route, dates, price, badge, url, expiry, slug, region, was_price, airline';
   let query = `SELECT ${columns} FROM deals`;
   const conditions = [];
   const binds = [];
-  if (!session) conditions.push(`status = 'live'`);
+  if (!session) {
+    conditions.push(`status = 'live'`);
+    // Auto-retire deals that have been expired for more than 3 days.
+    // Grace period accounts for deals that are still bookable after nominal expiry.
+    conditions.push(`(expiry IS NULL OR date(expiry) >= date('now', '-3 days'))`);
+  }
   if (region) {
     conditions.push('region = ?');
     binds.push(region);
