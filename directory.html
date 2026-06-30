@@ -101,5 +101,61 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;opa
     <div class="ticker-text">✈ €29 Dublin → Lisbon &nbsp;·&nbsp; ✈ £89 London → New York &nbsp;·&nbsp; ✈ €47 Cork → Barcelona &nbsp;·&nbsp; ✈ £129 Manchester → Dubai &nbsp;·&nbsp; ✈ €52 Dublin → Rome &nbsp;·&nbsp; ✈ £199 Heathrow → Bangkok &nbsp;·&nbsp; ✈ €38 Shannon → Faro &nbsp;·&nbsp; ✈ £44 Gatwick → Malaga</div>
   </div>
 </div>
+
+<div id="redirect-banner" style="display:none;position:fixed;bottom:2rem;left:50%;transform:translateX(-50%);background:rgba(10,22,40,.96);border:1.5px solid rgba(255,210,0,.35);border-radius:16px;padding:1rem 1.5rem;display:none;align-items:center;gap:1rem;font-family:'Nunito',sans-serif;font-weight:800;color:#fff;font-size:.9rem;z-index:100;box-shadow:0 8px 32px rgba(0,0,0,.5);white-space:nowrap">
+  <span id="redirect-msg">Detecting your region…</span>
+  <span style="color:rgba(255,255,255,.4);font-size:.8rem">Redirecting in <span id="redirect-count">3</span>s</span>
+  <button onclick="cancelRedirect()" style="background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.15);color:#fff;padding:5px 14px;border-radius:50px;cursor:pointer;font-family:'Nunito',sans-serif;font-weight:800;font-size:.8rem">Stay here</button>
+</div>
+
+<script>
+var redirectTimer = null;
+var redirectUrl = null;
+
+function cancelRedirect() {
+  clearInterval(redirectTimer);
+  document.getElementById('redirect-banner').style.display = 'none';
+}
+
+function startRedirect(url, label) {
+  redirectUrl = url;
+  var banner = document.getElementById('redirect-banner');
+  var msg = document.getElementById('redirect-msg');
+  var count = document.getElementById('redirect-count');
+  msg.textContent = label;
+  banner.style.display = 'flex';
+  var n = 3;
+  redirectTimer = setInterval(function() {
+    n--;
+    count.textContent = n;
+    if (n <= 0) {
+      clearInterval(redirectTimer);
+      window.location.href = redirectUrl;
+    }
+  }, 1000);
+}
+
+(function detectRegion() {
+  // Skip if user explicitly wants the picker
+  if (new URLSearchParams(location.search).get('override') === '1') return;
+
+  var tz = '';
+  try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch(e) {}
+  var lang = navigator.language || '';
+
+  var isIreland = tz === 'Europe/Dublin' || lang.toLowerCase() === 'en-ie';
+  var isUK = !isIreland && (
+    tz === 'Europe/London' || tz === 'Europe/Belfast' ||
+    lang.toLowerCase().startsWith('en-gb')
+  );
+
+  if (isIreland) {
+    startRedirect('https://mrcheapflights.ie', '🇮🇪 Looks like you\'re in Ireland');
+  } else if (isUK) {
+    startRedirect('https://mrcheapflights.co.uk', '🇬🇧 Looks like you\'re in the UK');
+  }
+  // Unknown region — just show the picker, no redirect
+})();
+</script>
 </body>
 </html>
