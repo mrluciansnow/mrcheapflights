@@ -7,17 +7,20 @@ import { getCookie, verifySession } from '../_lib/auth.js';
 // keeps a cancelled-but-already-paid-for period accessible until it ends).
 export async function onRequestGet(context) {
   const cookie = getCookie(context.request, 'mcf_member');
-  if (!cookie) return Response.json({ premium: false, tier: 'free' });
+  const noCache = { headers: { 'Cache-Control': 'private, no-store' } };
+  if (!cookie) return Response.json({ premium: false, tier: 'free' }, noCache);
 
   const session = await verifySession(cookie, context.env.SESSION_SIGNING_SECRET);
-  if (!session) return Response.json({ premium: false, tier: 'free' });
+  if (!session) return Response.json({ premium: false, tier: 'free' }, noCache);
 
   const row = await context.env.DB.prepare(
     'SELECT email, current_period_end FROM subscribers WHERE member_token = ?'
   ).bind(session.sub).first();
-  if (!row) return Response.json({ premium: false, tier: 'free' });
+  if (!row) return Response.json({ premium: false, tier: 'free' }, noCache);
 
   const now = Math.floor(Date.now() / 1000);
   const premium = row.current_period_end != null && row.current_period_end > now;
-  return Response.json({ premium, tier: premium ? 'premium' : 'free', email: row.email });
+  return Response.json({ premium, tier: premium ? 'premium' : 'free', email: row.email }, {
+    headers: { 'Cache-Control': 'private, no-store' },
+  });
 }

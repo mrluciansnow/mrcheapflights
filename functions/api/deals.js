@@ -30,7 +30,10 @@ export async function onRequestGet(context) {
 
   const stmt = context.env.DB.prepare(query);
   const { results } = await (binds.length ? stmt.bind(...binds) : stmt).all();
-  return Response.json(results);
+  const cacheHeaders = session
+    ? { 'Cache-Control': 'private, no-store' }
+    : { 'Cache-Control': 'public, max-age=300, stale-while-revalidate=60' };
+  return Response.json(results, { headers: cacheHeaders });
 }
 
 // Admin: create a deal. Defaults to 'live' (the existing CMS behaviour) --
@@ -43,6 +46,18 @@ export async function onRequestPost(context) {
   const { flag, route, dates, price, badge, url, expiry, slug, region, status, wasPrice, airline, destType } = body;
   if (!route || !price || !slug) {
     return new Response('route, price and slug are required', { status: 400 });
+  }
+  if (slug && !/^[a-z0-9-]{1,120}$/.test(slug)) {
+    return new Response('slug must be lowercase alphanumeric with hyphens (max 120 chars)', { status: 400 });
+  }
+  if (!['ie', 'uk'].includes(region || 'ie')) {
+    return new Response('region must be ie or uk', { status: 400 });
+  }
+  if (url && url !== '#' && !/^https?:\/\/.+/.test(url)) {
+    return new Response('url must be https://...', { status: 400 });
+  }
+  if (expiry && !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) {
+    return new Response('expiry must be YYYY-MM-DD', { status: 400 });
   }
 
   const result = await context.env.DB.prepare(

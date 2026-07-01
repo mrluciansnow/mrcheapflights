@@ -7,29 +7,35 @@ export async function onRequestGet(context) {
   const base = isUk ? 'https://mrcheapflights.co.uk' : 'https://mrcheapflights.ie';
   const now = new Date().toISOString().slice(0, 10);
 
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+
   let dealUrls = '';
   try {
     const rows = await context.env.DB.prepare(
-      `SELECT slug, route, price, updated_at
+      `SELECT slug, route, price, updated_at, created_at
        FROM deals
        WHERE region = ?
+         AND status = 'live'
          AND slug IS NOT NULL
          AND slug != ''
          AND (expiry IS NULL OR expiry >= date('now'))
-       ORDER BY created_at DESC
-       LIMIT 200`
+       ORDER BY created_at DESC`
     ).bind(region).all();
 
     dealUrls = (rows.results || []).map(function (d) {
       const lastmod = d.updated_at
         ? new Date(d.updated_at * 1000).toISOString().slice(0, 10)
         : now;
+      const createdDate = d.created_at
+        ? new Date(d.created_at * 1000).toISOString().slice(0, 10)
+        : now;
+      const priority = createdDate >= sevenDaysAgo ? '0.8' : '0.6';
       return `
   <url>
     <loc>${base}/deals/${escXml(d.slug)}</loc>
     <lastmod>${lastmod}</lastmod>
     <changefreq>daily</changefreq>
-    <priority>0.7</priority>
+    <priority>${priority}</priority>
   </url>`;
     }).join('');
   } catch { /* DB unavailable — serve static-only sitemap */ }

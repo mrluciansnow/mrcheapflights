@@ -12,7 +12,9 @@ export async function onRequestGet(context) {
   const { results } = await context.env.DB.prepare('SELECT key, value FROM settings').all();
   const obj = {};
   for (const row of results) obj[row.key] = row.value;
-  return Response.json(obj);
+  return Response.json(obj, {
+    headers: { 'Cache-Control': 'public, max-age=3600, stale-while-revalidate=600' },
+  });
 }
 
 export async function onRequestPut(context) {

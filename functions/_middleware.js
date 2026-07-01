@@ -9,11 +9,29 @@
 
 const STATIC_EXT = /\.(png|jpe?g|gif|svg|ico|webp|css|js|woff2?|ttf|eot|txt|xml|pdf|mp4|webm|avif)$/i;
 
+// Content-Security-Policy covering all external resources used on site:
+// GA4 (googletagmanager + google-analytics), Google Fonts, Cloudflare email
+// obfuscation script (same origin), and the Stripe redirect flow (no client JS).
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https:",
+  "connect-src 'self' https://analytics.google.com https://www.google-analytics.com https://region1.google-analytics.com https://region1.analytics.google.com",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+].join('; ');
+
 function applySecurityHeaders(headers, pathname) {
+  headers.set('Content-Security-Policy', CSP);
+  headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   headers.set('X-Content-Type-Options', 'nosniff');
-  headers.set('X-Frame-Options', 'SAMEORIGIN');
+  headers.set('X-Frame-Options', 'DENY');
+  headers.set('X-XSS-Protection', '1; mode=block');
   headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-  headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
   if (pathname.startsWith('/api/admin')) {
     headers.set('Cache-Control', 'no-store');
     headers.set('X-Robots-Tag', 'noindex, nofollow');
