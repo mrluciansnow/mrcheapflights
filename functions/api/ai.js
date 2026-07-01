@@ -1,10 +1,27 @@
 // Proxy for the Mr Cheap AI chat widget.
 // Keeps the Anthropic API key server-side instead of exposing it in the browser.
-// Rate-limited to 15 req/min per IP using KV (graceful-degrades if KV not bound).
+// Rate-limited to 20 req/min per IP (graceful-degrades if DB not bound).
+
+const ALLOWED_ORIGINS = new Set([
+  'https://mrcheapflights.ie',
+  'https://mrcheapflights.co.uk',
+  'https://mrcheap.flights',
+  'https://www.mrcheap.flights',
+]);
+
+function getAllowedOrigin(origin) {
+  if (!origin) return null;
+  if (ALLOWED_ORIGINS.has(origin)) return origin;
+  // Allow any *.mrcheap.pages.dev preview URL
+  if (/^https:\/\/[a-z0-9-]+\.mrcheap\.pages\.dev$/.test(origin)) return origin;
+  return null;
+}
+
 export async function onRequestPost(context) {
   const origin = context.request.headers.get('Origin') || '';
+  const allowedOrigin = getAllowedOrigin(origin);
   const corsHeaders = {
-    'Access-Control-Allow-Origin': origin || '*',
+    'Access-Control-Allow-Origin': allowedOrigin || 'https://mrcheapflights.ie',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Vary': 'Origin',
   };

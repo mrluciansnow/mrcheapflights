@@ -2,13 +2,27 @@ import Stripe from 'stripe';
 import { randomHex, signSession, setCookieHeader } from '../../_lib/auth.js';
 
 const YEAR_IN_SECONDS = 60 * 60 * 24 * 400;
+const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,253}\.[^\s@]{2,}$/;
 
 // Creates a real Stripe Checkout Session for the chosen billing period.
 // Replaces the old static Payment Link, which couldn't tell monthly from
 // annual and gave no reliable way to attribute payment back to a subscriber.
 export async function onRequestPost(context) {
-  const { email, name, billing, region } = await context.request.json();
-  if (!email || !email.includes('@')) return new Response('Invalid email', { status: 400 });
+  let body;
+  try { body = await context.request.json(); } catch {
+    return new Response('Invalid JSON', { status: 400 });
+  }
+  const { email, name, billing, region } = body;
+
+  if (!email || typeof email !== 'string' || !EMAIL_RE.test(email.trim()) || email.length > 254) {
+    return new Response('Invalid email', { status: 400 });
+  }
+  if (region && !['ie', 'uk'].includes(region)) {
+    return new Response('Invalid region', { status: 400 });
+  }
+  if (name && (typeof name !== 'string' || name.length > 100)) {
+    return new Response('Invalid name', { status: 400 });
+  }
   const normalizedEmail = email.trim().toLowerCase();
 
   let row = await context.env.DB.prepare(

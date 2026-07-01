@@ -14,14 +14,26 @@ export async function sendEmail(env, { to, subject, html, text }) {
     return { ok: false, reason: 'not_configured' };
   }
 
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({ from, to, subject, html, text }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  let res;
+  try {
+    res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ from, to, subject, html, text }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeout);
+    const reason = err.name === 'AbortError' ? 'timeout' : err.message;
+    console.error('[email] fetch failed:', reason);
+    return { ok: false, reason };
+  }
+  clearTimeout(timeout);
 
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {

@@ -47,6 +47,12 @@ export async function onRequestGet(context) {
     <lastmod>${now}</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>${base}/privacy.html</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
   </url>${dealUrls}
 </urlset>`;
 

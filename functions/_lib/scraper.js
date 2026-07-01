@@ -87,81 +87,10 @@ export async function runScraper(env) {
 }
 
 // ── RSS parser ───────────────────────────────────────────────────────────────
-// Parses standard RSS 2.0 <item> blocks. Uses HTMLRewriter in XML mode
-// (XMLRewriter isn't available, but RSS is well-formed enough for HTMLRewriter).
-
+// Delegates to the text-based parser which is more reliable for RSS/XML than
+// HTMLRewriter (which was designed for HTML and struggles with self-closing tags
+// and CDATA sections common in RSS feeds).
 async function parseRss(url, region, filterFn) {
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'MrCheapFlightsBot/1.0 (+https://mrcheapflights.ie)' },
-    cf: { cacheEverything: true, cacheTtl: 1800 },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-  const items = [];
-  let current = {};
-  let inItem = false;
-  let captureField = null;
-  let buffer = '';
-
-  await new HTMLRewriter()
-    .on('item', {
-      element() { inItem = true; current = {}; buffer = ''; captureField = null; },
-    })
-    .on('item > title', {
-      element() { captureField = 'title'; buffer = ''; },
-      text(chunk) { if (captureField === 'title') buffer += chunk.text; },
-    })
-    .on('item > link', {
-      element() { captureField = 'link'; buffer = ''; },
-      text(chunk) { if (captureField === 'link') buffer += chunk.text; },
-    })
-    .on('item > description', {
-      element() { captureField = 'desc'; buffer = ''; },
-      text(chunk) { if (captureField === 'desc') buffer += chunk.text; },
-    })
-    .on('item > pubdate', {
-      element() { captureField = 'date'; buffer = ''; },
-      text(chunk) { if (captureField === 'date') buffer += chunk.text; },
-    })
-    // Flush each field when its closing tag is encountered
-    .on('title', {
-      element(el) {
-        if (inItem && buffer && captureField === 'title') {
-          current.title = buffer.trim();
-          captureField = null;
-        }
-      },
-    })
-    .on('link', {
-      element() {
-        if (inItem && buffer && captureField === 'link') {
-          current.link = buffer.trim();
-          captureField = null;
-        }
-      },
-    })
-    .on('description', {
-      element() {
-        if (inItem && buffer && captureField === 'desc') {
-          current.desc = buffer.slice(0, 300).trim();
-          captureField = null;
-        }
-      },
-    })
-    .on('pubdate', {
-      element() {
-        if (inItem && captureField === 'date') {
-          current.pubDate = buffer.trim();
-          captureField = null;
-        }
-      },
-    })
-    .transform(res)
-    .text();
-
-  // HTMLRewriter fires element() on open, so we need a different strategy:
-  // accumulate items by re-parsing the text response.
-  // Simpler approach: fetch text and do regex extraction.
   return parseRssText(url, region, filterFn);
 }
 

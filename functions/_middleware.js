@@ -32,6 +32,10 @@ function applySecurityHeaders(headers, pathname) {
   headers.set('X-XSS-Protection', '1; mode=block');
   headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  // Prevents opener access across origins (Spectre / cross-origin leak protection).
+  headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  // Prevents other origins from loading our resources (images, scripts) directly.
+  headers.set('Cross-Origin-Resource-Policy', 'same-site');
   if (pathname.startsWith('/api/admin')) {
     headers.set('Cache-Control', 'no-store');
     headers.set('X-Robots-Tag', 'noindex, nofollow');
