@@ -1,4 +1,5 @@
 import { requireAdmin } from '../_lib/auth.js';
+import { routeSearchUrl } from '../_lib/affiliate.js';
 
 // Public: list live deals, optionally filtered by region. Mirrors the shape
 // of the old in-memory `deals[]` array so the frontend mapping is 1:1.
@@ -30,10 +31,17 @@ export async function onRequestGet(context) {
 
   const stmt = context.env.DB.prepare(query);
   const { results } = await (binds.length ? stmt.bind(...binds) : stmt).all();
+  // Affiliate layer: derive a "check live fares" search link per deal.
+  // Clean Aviasales link without TRAVELPAYOUTS_MARKER; wrapped once it's set.
+  const marker = context.env.TRAVELPAYOUTS_MARKER || '';
+  const withLinks = results.map((d) => ({
+    ...d,
+    search_url: routeSearchUrl(d.route, d.region, marker),
+  }));
   const cacheHeaders = session
     ? { 'Cache-Control': 'private, no-store' }
     : { 'Cache-Control': 'public, max-age=300, stale-while-revalidate=60' };
-  return Response.json(results, { headers: cacheHeaders });
+  return Response.json(withLinks, { headers: cacheHeaders });
 }
 
 // Admin: create a deal. Defaults to 'live' (the existing CMS behaviour) --

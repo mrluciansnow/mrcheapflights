@@ -711,6 +711,7 @@ function advanceCopy() {
 async function publishAll() {
   var btn = document.getElementById('publish-btn');
   btn.disabled = true; btn.textContent = 'Publishing…';
+  // Step 1: persist content/meta and set each deal live
   for(var i=0;i<queuedDeals.length;i++){
     var d = queuedDeals[i];
     var meta = dealMeta[i] || {};
@@ -726,8 +727,35 @@ async function publishAll() {
       });
     } catch(e) { /* best-effort: continue publishing the rest */ }
   }
+  // Step 2: fan out to the other channels (social / email) — idempotent per channel
+  var channelNote = '';
+  try {
+    var res = await fetch('/api/admin/publish', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ dealIds: queuedDeals.map(function(d){ return d.id; }) }),
+    });
+    if (res.ok) {
+      var data = await res.json();
+      var social = 0, blasts = 0, queued = 0;
+      Object.keys(data.results || {}).forEach(function(k){
+        var r = data.results[k];
+        if (r.social && (r.social.instagram || r.social.facebook)) social++;
+        if (r.email && r.email.blast) blasts++;
+        if (r.email && r.email.queued) queued++;
+      });
+      var bits = [];
+      if (social) bits.push(social + ' posted to social');
+      if (blasts) bits.push(blasts + ' error-fare blast' + (blasts > 1 ? 's' : '') + ' sent');
+      if (queued) bits.push(queued + ' queued for the daily digest');
+      channelNote = bits.length ? bits.join(' · ') : 'Social &amp; email channels in shell mode (keys not set)';
+    } else {
+      channelNote = 'Channel fan-out failed (HTTP ' + res.status + ') — deals are still live';
+    }
+  } catch(e) {
+    channelNote = 'Channel fan-out unreachable — deals are still live';
+  }
   document.getElementById('all-done').innerHTML =
-    '<div class="big">PUBLISHED! ✈</div><div class="smol">Live on mrcheapflights.ie / .co.uk now.</div>';
+    '<div class="big">PUBLISHED! ✈</div><div class="smol">Live on mrcheapflights.ie / .co.uk now.<br>' + channelNote + '</div>';
 }
 
 loadDraftDeals();
