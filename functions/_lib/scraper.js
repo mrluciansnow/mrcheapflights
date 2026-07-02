@@ -1,6 +1,11 @@
 // Deal scraper library — fetches public flight-deal RSS feeds and pages,
 // stores candidates in `scraped_deals` for admin review.
 
+// IE airport keywords: all 6 public airports + common name variants
+const IE_FILTER = /dublin|ireland|irish|cork|shannon|knock|ireland west|kerry|farranfore|waterford|donegal|city of derry/i;
+// UK airport keywords: London (all 6 airports), all major regional airports + country names
+const UK_FILTER = /london|heathrow|gatwick|stansted|luton|london city|manchester|birmingham|glasgow|edinburgh|bristol|newcastle|leeds|bradford|liverpool|john lennon|belfast|international|east midlands|nottingham|cardiff|norwich|exeter|uk|britain|england|scotland|wales/i;
+
 const SOURCES = [
   // ── RSS feeds — preferred; reliable structure, light on bandwidth ──────────
   {
@@ -8,28 +13,58 @@ const SOURCES = [
     url: 'https://www.fly4free.com/feed/',
     region: 'ie',
     type: 'rss',
-    filter: (title) => /dublin|ireland|irish|cork|shannon|belfast/i.test(title),
+    filter: (title) => IE_FILTER.test(title),
   },
   {
     name: 'Fly4Free UK',
     url: 'https://www.fly4free.com/feed/',
     region: 'uk',
     type: 'rss',
-    filter: (title) => /london|manchester|birmingham|glasgow|edinburgh|bristol|uk|britain|england|scotland/i.test(title),
+    filter: (title) => UK_FILTER.test(title),
   },
   {
     name: 'Travel-Dealz IE',
     url: 'https://www.travel-dealz.eu/feed/',
     region: 'ie',
     type: 'rss',
-    filter: (title) => /dublin|ireland|irish|cork|shannon/i.test(title),
+    filter: (title) => IE_FILTER.test(title),
   },
   {
     name: 'Travel-Dealz UK',
     url: 'https://www.travel-dealz.eu/feed/',
     region: 'uk',
     type: 'rss',
-    filter: (title) => /london|manchester|birmingham|glasgow|edinburgh|uk|britain/i.test(title),
+    filter: (title) => UK_FILTER.test(title),
+  },
+  // The Flight Deal — US-operated but covers transatlantic cheap fares relevant to IE/UK
+  {
+    name: 'The Flight Deal IE',
+    url: 'https://www.theflightdeal.com/feed/',
+    region: 'ie',
+    type: 'rss',
+    filter: (title) => IE_FILTER.test(title),
+  },
+  {
+    name: 'The Flight Deal UK',
+    url: 'https://www.theflightdeal.com/feed/',
+    region: 'uk',
+    type: 'rss',
+    filter: (title) => UK_FILTER.test(title),
+  },
+  // Holiday Pirates — major European deal aggregator with UK/IE-relevant flights
+  {
+    name: 'Holiday Pirates IE',
+    url: 'https://www.holidaypirates.com/rss/?type=flight',
+    region: 'ie',
+    type: 'rss',
+    filter: (title) => IE_FILTER.test(title),
+  },
+  {
+    name: 'Holiday Pirates UK',
+    url: 'https://www.holidaypirates.com/rss/?type=flight',
+    region: 'uk',
+    type: 'rss',
+    filter: (title) => UK_FILTER.test(title),
   },
   // ── HTML scrapers — fallback for sites without reliable RSS ───────────────
   {

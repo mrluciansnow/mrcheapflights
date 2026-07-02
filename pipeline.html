@@ -77,6 +77,32 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
 .add-form input,.add-form select{width:100%;padding:8px 10px;border-radius:7px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;}
 .add-form select option{background:#0A0F2E;}
 .empty-note{text-align:center;padding:2rem 0;color:rgba(255,255,255,0.35);font-size:12px;grid-column:1/-1;}
+.stats-bar{display:flex;align-items:center;gap:12px;background:rgba(0,229,204,0.05);border:1px solid rgba(0,229,204,0.18);border-radius:10px;padding:10px 14px;margin-bottom:1.2rem;flex-wrap:wrap;}
+.stat{flex:1;min-width:55px;text-align:center;}
+.stat b{display:block;font-family:'Bangers',cursive;font-size:22px;color:var(--t);letter-spacing:1px;line-height:1.1;}
+.stat small{font-size:9px;color:rgba(255,255,255,0.35);letter-spacing:1px;font-family:'Bebas Neue',cursive;text-transform:uppercase;}
+.stat-actions{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;}
+.act-btn{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:7px;padding:6px 12px;font-family:'Bebas Neue',cursive;font-size:10px;letter-spacing:1px;color:rgba(255,255,255,0.55);cursor:pointer;transition:all 0.15s;}
+.act-btn:hover{background:rgba(0,229,204,0.1);border-color:rgba(0,229,204,0.35);color:var(--t);}
+.act-btn.act-loading{opacity:0.45;cursor:wait;}
+.tab-bar{display:flex;gap:6px;margin-bottom:12px;}
+.tab{flex:1;padding:7px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:transparent;font-family:'Bebas Neue',cursive;font-size:10px;letter-spacing:2px;color:rgba(255,255,255,0.3);cursor:pointer;transition:all 0.15s;}
+.tab.active{background:rgba(255,215,0,0.09);border-color:rgba(255,215,0,0.35);color:var(--y);}
+.conf{display:inline-block;font-size:8.5px;font-weight:700;padding:2px 6px;border-radius:10px;letter-spacing:0.3px;flex-shrink:0;}
+.conf-hi{background:rgba(34,197,94,0.13);color:#4ade80;border:1px solid rgba(34,197,94,0.28);}
+.conf-mid{background:rgba(251,191,36,0.12);color:#fbbf24;border:1px solid rgba(251,191,36,0.28);}
+.conf-lo{background:rgba(248,113,113,0.1);color:#f87171;border:1px solid rgba(248,113,113,0.25);}
+.conf-none{background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.25);border:1px solid rgba(255,255,255,0.1);}
+.scrape-deal{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:9px;padding:10px 12px;}
+.scrape-deal-route{font-family:'Bebas Neue',cursive;font-size:13px;letter-spacing:1px;color:#fff;}
+.scrape-deal-price{font-family:'Bangers',cursive;font-size:19px;color:var(--y);letter-spacing:1px;}
+.scrape-deal-meta{font-size:9px;color:rgba(255,255,255,0.3);margin:2px 0;}
+.scrape-actions{display:flex;gap:5px;margin-top:8px;}
+.btn-ok{flex:1;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.28);color:#4ade80;border-radius:6px;padding:5px;font-family:'Bebas Neue',cursive;font-size:9px;letter-spacing:1px;cursor:pointer;}
+.btn-ok:hover{background:rgba(34,197,94,0.25);}
+.btn-no{background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);color:#f87171;border-radius:6px;padding:5px 9px;font-family:'Bebas Neue',cursive;font-size:9px;letter-spacing:1px;cursor:pointer;}
+.btn-no:hover{background:rgba(248,113,113,0.18);}
+.bulk-bar{display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap;}
 </style>
 </head>
 <body>
@@ -87,6 +113,17 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
       <div class="sub">Content Pipeline · Candidate Review</div>
     </div>
     <div style="font-size:10px;color:rgba(255,255,255,0.3);text-align:right;" id="header-date"></div>
+  </div>
+
+  <!-- AUTOMATION STATS BAR -->
+  <div class="stats-bar" id="stats-bar">
+    <div class="stat"><b id="stat-pending">—</b><small>Pending</small></div>
+    <div class="stat"><b id="stat-live">—</b><small>Live</small></div>
+    <div class="stat"><b id="stat-sources">10</b><small>Sources</small></div>
+    <div class="stat-actions">
+      <button class="act-btn" id="btn-scrape" onclick="runScraper()">🔄 Scrape</button>
+      <button class="act-btn" id="btn-enrich" onclick="runEnrich()">🤖 Enrich</button>
+    </div>
   </div>
 
   <div class="step-bar">
@@ -101,7 +138,13 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
 
   <!-- STEP 1: DEAL SELECTION -->
   <div class="section vis" id="s1">
-    <div class="hd">Choose up to 6 candidate deals to process</div>
+    <div class="tab-bar">
+      <button class="tab active" id="tab-draft" onclick="switchTab('draft')">Draft Deals</button>
+      <button class="tab" id="tab-scraped" onclick="switchTab('scraped')">Scraped Queue<span id="scraped-count-badge"></span></button>
+    </div>
+
+    <!-- Draft Deals pane -->
+    <div id="draft-pane">
     <button class="add-toggle" onclick="toggleAddForm()">+ Add candidate deal</button>
     <div class="add-form" id="add-form">
       <div class="row">
@@ -125,6 +168,17 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
     </div>
     <div class="deal-grid" id="dg"></div>
     <button class="next-btn" id="n1btn" onclick="startStylePhase()" disabled>Continue with <span id="selcount">0</span> deals ›</button>
+    </div><!-- /draft-pane -->
+
+    <!-- Scraped Queue pane -->
+    <div id="scraped-pane" style="display:none">
+      <div class="bulk-bar">
+        <button class="act-btn" onclick="approveAllHighConf()">✅ Approve High Conf (≥80)</button>
+        <button class="act-btn" onclick="rejectAllLowConf()">🗑️ Reject Low (&lt;40)</button>
+        <button class="act-btn" onclick="loadScrapedQueue()">↻ Refresh</button>
+      </div>
+      <div class="deal-grid" id="scraped-dg"></div>
+    </div><!-- /scraped-pane -->
   </div>
 
   <!-- STEP 2: STYLE SELECTION (per deal) -->
@@ -259,6 +313,184 @@ let dealMeta = {};
 let activeCopyTab = 0;
 let chosenStyle = null;
 let chosenImg = null;
+let scrapedDeals = [];
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  var isDraft = tab === 'draft';
+  document.getElementById('draft-pane').style.display = isDraft ? 'block' : 'none';
+  document.getElementById('scraped-pane').style.display = isDraft ? 'none' : 'block';
+  document.getElementById('tab-draft').className = 'tab' + (isDraft ? ' active' : '');
+  document.getElementById('tab-scraped').className = 'tab' + (!isDraft ? ' active' : '');
+  if (!isDraft) loadScrapedQueue();
+}
+
+// ── Stats bar ─────────────────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    var [scrapedRes, dealsRes] = await Promise.all([
+      fetch('/api/admin/scraped-deals?status=pending'),
+      fetch('/api/deals'),
+    ]);
+    var scraped = scrapedRes.ok ? await scrapedRes.json() : [];
+    var deals   = dealsRes.ok  ? await dealsRes.json()   : [];
+    var pending = Array.isArray(scraped) ? scraped.length : 0;
+    var live    = Array.isArray(deals)   ? deals.filter(function(d){ return d.status === 'live'; }).length : 0;
+    document.getElementById('stat-pending').textContent = pending;
+    document.getElementById('stat-live').textContent    = live;
+    var badge = document.getElementById('scraped-count-badge');
+    if (badge) badge.textContent = pending ? ' (' + pending + ')' : '';
+  } catch(e) { /* stats are non-critical */ }
+}
+
+// ── Scraped queue ─────────────────────────────────────────────────────────────
+async function loadScrapedQueue() {
+  var grid = document.getElementById('scraped-dg');
+  if (!grid) return;
+  grid.innerHTML = '<div class="empty-note">Loading…</div>';
+  try {
+    var res = await fetch('/api/admin/scraped-deals?status=pending');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    scrapedDeals = await res.json();
+    renderScrapedQueue();
+  } catch(e) {
+    grid.innerHTML = '<div class="empty-note">Could not load scraped queue.</div>';
+  }
+}
+
+function confClass(c) {
+  if (c === null || c === undefined) return 'conf-none';
+  if (c >= 80) return 'conf-hi';
+  if (c >= 50) return 'conf-mid';
+  return 'conf-lo';
+}
+
+function confLabel(c) {
+  if (c === null || c === undefined) return '? unenriched';
+  return c + '%';
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderScrapedQueue() {
+  var grid = document.getElementById('scraped-dg');
+  if (!scrapedDeals.length) {
+    grid.innerHTML = '<div class="empty-note">Queue empty — click 🔄 Scrape to fetch new deals.</div>';
+    return;
+  }
+  grid.innerHTML = scrapedDeals.map(function(d) {
+    var cc = confClass(d.confidence);
+    var cl = confLabel(d.confidence);
+    return '<div class="scrape-deal" id="sd-' + d.id + '">' +
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;">' +
+        '<div>' +
+          '<div class="scrape-deal-route">' + escHtml(d.route) + '</div>' +
+          '<div class="scrape-deal-price">' + escHtml(d.price || '') + '</div>' +
+        '</div>' +
+        '<span class="conf ' + cc + '">' + cl + '</span>' +
+      '</div>' +
+      '<div class="scrape-deal-meta">' + escHtml(d.source_name) + ' · ' + escHtml(d.dates || '—') + '</div>' +
+      '<div class="scrape-deal-meta">' + escHtml(d.badge || '') + (d.dest_type ? ' · ' + d.dest_type : '') + '</div>' +
+      '<div class="scrape-actions">' +
+        '<button class="btn-ok" onclick="approveScraped(' + d.id + ')">✓ Approve</button>' +
+        '<button class="btn-no" onclick="rejectScraped(' + d.id + ')">✕</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+async function approveScraped(id) {
+  var el = document.getElementById('sd-' + id);
+  if (el) el.style.opacity = '0.4';
+  try {
+    var res = await fetch('/api/admin/scraped-deals/' + id + '/approve', { method: 'POST' });
+    if (!res.ok) {
+      var body = await res.text();
+      alert('Cannot approve: ' + body);
+      if (el) el.style.opacity = '1';
+      return;
+    }
+    scrapedDeals = scrapedDeals.filter(function(d){ return d.id !== id; });
+    renderScrapedQueue();
+    loadStats();
+    loadDraftDeals();
+  } catch(e) {
+    alert('Network error.');
+    if (el) el.style.opacity = '1';
+  }
+}
+
+async function rejectScraped(id) {
+  var el = document.getElementById('sd-' + id);
+  if (el) el.style.opacity = '0.4';
+  try {
+    await fetch('/api/admin/scraped-deals/' + id + '/reject', { method: 'POST' });
+    scrapedDeals = scrapedDeals.filter(function(d){ return d.id !== id; });
+    renderScrapedQueue();
+    loadStats();
+  } catch(e) {
+    if (el) el.style.opacity = '1';
+  }
+}
+
+async function approveAllHighConf() {
+  var hi = scrapedDeals.filter(function(d){ return d.confidence !== null && d.confidence !== undefined && d.confidence >= 80; });
+  if (!hi.length) { alert('No deals with confidence ≥ 80. Run 🤖 Enrich first.'); return; }
+  if (!confirm('Approve ' + hi.length + ' high-confidence deal' + (hi.length > 1 ? 's' : '') + '?')) return;
+  for (var i = 0; i < hi.length; i++) await approveScraped(hi[i].id);
+}
+
+async function rejectAllLowConf() {
+  var lo = scrapedDeals.filter(function(d){ return d.confidence !== null && d.confidence !== undefined && d.confidence < 40; });
+  if (!lo.length) { alert('No deals with confidence < 40.'); return; }
+  if (!confirm('Reject ' + lo.length + ' low-confidence deal' + (lo.length > 1 ? 's' : '') + '?')) return;
+  for (var i = 0; i < lo.length; i++) await rejectScraped(lo[i].id);
+}
+
+// ── Automation controls ───────────────────────────────────────────────────────
+async function runScraper() {
+  var btn = document.getElementById('btn-scrape');
+  if (btn) { btn.classList.add('act-loading'); btn.textContent = 'Scraping…'; }
+  try {
+    var res  = await fetch('/api/admin/trigger-scrape', { method: 'POST' });
+    var data = res.ok ? await res.json() : null;
+    if (data) {
+      var msg = 'Found ' + data.deals_found + ' deals · ' + data.deals_new + ' new';
+      if (data.errors && data.errors.length) msg += ' · ' + data.errors.length + ' source error(s)';
+      alert(msg);
+    } else {
+      alert('Scraper error: HTTP ' + res.status);
+    }
+  } catch(e) { alert('Network error: ' + e.message); }
+  if (btn) { btn.classList.remove('act-loading'); btn.textContent = '🔄 Scrape'; }
+  loadStats();
+  if (document.getElementById('scraped-pane').style.display !== 'none') loadScrapedQueue();
+}
+
+async function runEnrich() {
+  var btn = document.getElementById('btn-enrich');
+  if (btn) { btn.classList.add('act-loading'); btn.textContent = 'Enriching…'; }
+  try {
+    var res  = await fetch('/api/admin/enrich-pending', { method: 'POST' });
+    var data = res.ok ? await res.json() : null;
+    if (data) {
+      if (data.reason) { alert(data.reason); }
+      else {
+        var msg = 'Enriched ' + data.enriched + ' deal' + (data.enriched !== 1 ? 's' : '');
+        if (data.auto_approved) msg += ' · Auto-approved ' + data.auto_approved + ' high-confidence deal' + (data.auto_approved !== 1 ? 's' : '');
+        alert(msg);
+      }
+    } else {
+      alert('Enrich error: HTTP ' + res.status);
+    }
+  } catch(e) { alert('Network error: ' + e.message); }
+  if (btn) { btn.classList.remove('act-loading'); btn.textContent = '🤖 Enrich'; }
+  await loadStats();
+  await loadDraftDeals();
+  if (document.getElementById('scraped-pane').style.display !== 'none') await loadScrapedQueue();
+}
 
 function toggleAddForm(){
   var f = document.getElementById('add-form');
@@ -296,6 +528,7 @@ async function loadDraftDeals(){
     if(!isAdmin){ showAuthGate(); return; }
     draftDeals = data.filter(function(d){ return d.status === 'draft'; });
     renderDeals();
+    loadStats();
   } catch(e){ showAuthGate(); }
 }
 
