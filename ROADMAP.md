@@ -1,36 +1,26 @@
-# Roadmap — what's left to integrate & develop
-_Last updated 2026-07-08. Everything not listed here is built, deployed, and verified._
+# Roadmap — what's left
+_Last updated 2026-07-08 (post automation-sweep, commit 30ecd36). Done and verified: affiliate layer, publish orchestrator, subscriber digest + unsubscribe, AI captions, source-health display, List-Unsubscribe, premium-only blasts, AUTO_PUBLISH flag, GA4 purchase funnel, **AI image generation (Workers AI → D1 → /images/*)**, **personalised digests (prefs)**, deal landing pages, sitemap.xml fix, 5 cron jobs, Holiday Pirates feed fix._
 
-## Tier 1 — Arming switches (minutes each; the feature already exists)
+## Needs one action from you
 
-1. **Newsletter cron auth** — Edit the "Daily newsletter digest" job on cron-job.org → Advanced → replace `PASTE_CRON_SECRET_HERE` with the real secret.
-2. **Admin password** ⚠️ CRITICAL — `mrcheap2024` is compromised (was in public page source for weeks). Change at /admin → Settings → Security.
-3. **`RESEND_API_KEY`** — create free account at resend.com, verify `mrcheapflights.ie` sending domain, `wrangler pages secret put RESEND_API_KEY --project-name mrcheap`. Unlocks: subscriber digest, urgent error-fare blasts, admin daily briefing.
-4. **`NEWSLETTER_ENABLED=1`** — the arming flag; until set, the digest endpoint reports what it *would* send and emails nobody.
-5. **`TRAVELPAYOUTS_MARKER`** — register at travelpayouts.com (instant), set the secret. Every "Check live fares" link on both sites becomes revenue-tracked immediately, no republish.
-6. **Google Search Console** — submit `/sitemap.xml` for both domains (it 404'd until 2026-07-08, so Google has never indexed the deal pages; a manual submit accelerates recrawl).
-7. **Stripe live-mode check** — confirm the deployed keys are live (not test) and run one real €4.99 premium purchase end-to-end (checkout → webhook → premium unlock).
+1. **Paste `CRON_SECRET`** into the "Admin morning briefing" (09:15) job header on cron-job.org — last placeholder remaining.
+2. **Resend review** — submitted 2026-07-08, reply lands at mrluciansnow@gmail.com within ~1 business day. When approved, tell Claude: next steps are add domain → DNS records → API key → `RESEND_API_KEY` secret → `NEWSLETTER_ENABLED=1`.
+3. **Deploy the email-ingest worker** (code complete in `workers/email-ingest/`, blocked overnight pending your go-ahead):
+   ```powershell
+   cd C:\Users\scath\MrCheapFlights\workers\email-ingest
+   & "C:\Program Files\nodejs\node.exe" "..\..\node_modules\wrangler\bin\wrangler.js" deploy
+   ```
+   Then 2 dashboard clicks: mrcheapflights.ie zone → Email Routing → enable → route `deals@mrcheapflights.ie` → Send to Worker → `mrcheap-email-ingest`. Then subscribe that address to Jack's Flight Club / Going / Airfarewatchdog.
+4. **Travelpayouts** — sign up (free) at travelpayouts.com; your marker (a number, shown top-right after login) is public — paste it in chat and Claude wires it.
+5. **Search Console** — log into search.google.com/search-console in Chrome and tell Claude; verification + sitemap submission for both domains gets driven for you.
+6. **Buffer** (social auto-posting) — create account, connect IG/FB, create an access token, then `wrangler pages secret put BUFFER_ACCESS_TOKEN --project-name mrcheap` (paste it yourself at the prompt). Everything downstream is already wired, including generated images on posts.
+7. **(Optional) Enable R2** — dashboard → R2 → accept terms. Images currently live in D1 (works fine at this volume); R2 swap is a 10-line change when enabled.
+8. **(Later) Stripe live-mode check** — one real €4.99 purchase end-to-end.
+9. **(Ignored by choice) Admin password** — mrcheap2024 remains compromised; flagged, your call.
 
-## Tier 2 — Integration gaps (hours; finishing systems that are half-wired)
+## Bigger builds still open
 
-8. **Social publishing keys** — `BUFFER_ACCESS_TOKEN` (one token, all platforms) or Meta direct (`META_PAGE_ACCESS_TOKEN`/`META_PAGE_ID`/`META_IG_USER_ID`). publishSocial is built and wired into the publish button; currently posts text-only (no image pipeline — see #13). Instagram requires an image, Facebook works text-only today.
-9. **Admin daily-digest email has no cron** — `/api/admin/daily-digest` (your morning briefing: pending counts, expiry warnings) exists but nothing schedules it. Add an 08:00 cron-job.org job, or merge its content into the 09:30 subscriber-digest run.
-10. **Server-side AI copy** — `scraped_deals.ai_copy` column is reserved but unused. Extend enrich-pending to have Haiku write 3 caption variants per deal; surface them in pipeline Step 4 (replacing the client-side string templates).
-11. **Pipeline dashboard: channel + source health** — show published_email/published_social state per deal; per-source scrape stats with an alert when a source returns 0 items (e.g. to catch a dead Holiday Pirates feed URL early).
-12. **`List-Unsubscribe` header** on digest emails — enables Gmail's native one-click unsubscribe; improves deliverability and spam-score.
-
-## Tier 3 — Bigger builds (days; the pack's unported Phase 2/3 ideas + planned features)
-
-13. **Real image generation** — pipeline Step 3 is SVG placeholders. Pack's design: Claude prompt → Ideogram → composite. CF-native equivalent: image API (Ideogram/Flux) → store in R2/Cloudflare Images → attach to deals. Unlocks Instagram publishing (#8) and deal-page OG images.
-14. **Inbound newsletter scraping** — Cloudflare Email Routing + an Email Worker: subscribe a `deals@` address to Jack's Flight Club / Going / Airfarewatchdog, parse arriving mails (regex + Haiku fallback) into `scraped_deals`. This was the original "newsletter scraping mechanism" plan; nothing built yet.
-15. **Price snapshot layer** (pack Phase 2) — poll Travelpayouts/Amadeus price APIs daily into a `price_snapshots` table; enables verified "was €X" claims, price-history sparklines in the deal modal, and genuine-deal scoring instead of source-trust heuristics.
-16. **Personalised digests** — subscriber airport/budget/interest preferences currently live only in each visitor's localStorage. Move to the subscribers table; filter each digest per subscriber. (Also the premium hook: preference filtering as a paid feature.)
-17. **Premium email tiers** — free = 09:30 daily digest; premium = instant error-fare blasts. The blast/digest split already exists in code; needs tier check on recipients + marketing copy.
-18. **Full auto-publish mode** — today: confidence ≥80 auto-approves to *draft*. Final step: score ≥ a stricter threshold (e.g. 90) goes straight to live + channel fan-out with zero dashboard touch. Config flag so it can be turned off.
-
-## Tier 4 — Hardening & housekeeping
-
-19. **Error monitoring** — Cloudflare Tail Workers or Sentry on Pages Functions; today failures are only visible in per-endpoint JSON responses and cron-job.org history.
-20. **GA4 ecommerce funnel** — begin_checkout / purchase events around the Stripe flow (view_item + book-click already tracked).
-21. **More sources** — AirHint, Kiwi Deals RSS; validate Holiday Pirates + The Flight Deal actually yield IE/UK items after a week of runs (check source stats, #11).
-22. **mrcheap.flights domain** (optional) — gateway middleware, directory.html and geo-detect are already deployed and waiting; just needs the domain purchase + DNS.
+- **#15 Price snapshot layer** — needs Travelpayouts/Amadeus API keys first (blocked on #4).
+- **#19 Error monitoring** — Tail Workers (paid) or Sentry (account); cron-job.org failure emails cover the crons meanwhile.
+- **#22 mrcheap.flights domain** — purchase only; gateway code is deployed and waiting.
+- **AUTO_PUBLISH=1** — flip when you trust the ≥90-confidence scoring after watching it for a week or two.
