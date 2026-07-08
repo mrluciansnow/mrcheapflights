@@ -26,7 +26,7 @@ export async function onRequestGet(context) {
     return Response.redirect(`${base}/`, 302);
   }
 
-  const SELECT = `SELECT flag, route, dates, price, badge, url, expiry, slug, region, was_price, airline
+  const SELECT = `SELECT flag, route, dates, price, badge, url, expiry, slug, region, was_price, airline, image_url
                   FROM deals
                   WHERE slug = ? AND region = ? AND status = 'live'
                     AND (expiry IS NULL OR date(expiry) >= date('now', '-3 days'))`;
@@ -79,8 +79,8 @@ export async function onRequestGet(context) {
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(desc)}">
 <meta property="og:url" content="${esc(pageUrl)}">
-<meta property="og:image" content="${base}/mascot.png">
-<meta name="twitter:card" content="summary">
+<meta property="og:image" content="${esc(deal.image_url ? (deal.image_url.startsWith('/') ? base + deal.image_url : deal.image_url) : base + '/mascot.png')}">
+<meta name="twitter:card" content="${deal.image_url ? 'summary_large_image' : 'summary'}">
 <link rel="icon" href="/mascot.png" type="image/png">
 <script type="application/ld+json">${JSON.stringify(jsonLd)}</script>
 <style>

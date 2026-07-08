@@ -54,14 +54,14 @@ const SOURCES = [
   // Holiday Pirates — major European deal aggregator with UK/IE-relevant flights
   {
     name: 'Holiday Pirates IE',
-    url: 'https://www.holidaypirates.com/rss/?type=flight',
+    url: 'https://www.holidaypirates.com/feed',
     region: 'ie',
     type: 'rss',
     filter: (title) => IE_FILTER.test(title),
   },
   {
     name: 'Holiday Pirates UK',
-    url: 'https://www.holidaypirates.com/rss/?type=flight',
+    url: 'https://www.holidaypirates.com/feed',
     region: 'uk',
     type: 'rss',
     filter: (title) => UK_FILTER.test(title),

@@ -35,8 +35,13 @@ export function dealEmailBlock(deal, siteUrl, marker) {
   const wasLine = deal.was_price ? ` · was ${esc(deal.was_price)}` : '';
   const airlineLine = deal.airline ? `${esc(deal.airline)} · ` : '';
 
+  const imgSrc = deal.image_url
+    ? (String(deal.image_url).startsWith('/') ? siteUrl + deal.image_url : deal.image_url)
+    : null;
+
   return `
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;background:#0A0F2E;border-radius:12px;">
+    ${imgSrc ? `<tr><td style="padding:0;"><img src="${esc(imgSrc)}" width="100%" style="border-radius:12px 12px 0 0;display:block;" alt="${esc(deal.route)}"/></td></tr>` : ''}
     <tr><td style="padding:20px;">
       <div style="font-family:Arial,sans-serif;font-size:12px;color:#FF2D78;font-weight:bold;letter-spacing:1px;margin-bottom:6px;">
         ${esc(deal.badge || '🔥 Hot')}

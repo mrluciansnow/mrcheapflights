@@ -53,7 +53,7 @@ export async function onRequestPost(context) {
 
     const deal = await context.env.DB.prepare(
       `SELECT id, flag, route, dates, price, badge, url, expiry, slug, region, status,
-              pipeline_copy, was_price, airline, published_email, published_social
+              pipeline_copy, was_price, airline, published_email, published_social, image_url
        FROM deals WHERE id=?`
     ).bind(id).first();
 
@@ -83,7 +83,10 @@ export async function onRequestPost(context) {
         const dealPageUrl = deal.slug ? `${siteUrl}/#deal/${encodeURIComponent(deal.slug)}` : siteUrl;
         const copy = (deal.pipeline_copy || `${deal.flag || '✈️'} ${deal.route} — ${deal.price} return! ${deal.dates || ''}`)
           + `\n\n${dealPageUrl}` + (searchUrl ? `\n${searchUrl}` : '');
-        const social = await publishSocial(copy, '', context.env);
+        const socialImg = deal.image_url
+          ? (String(deal.image_url).startsWith('/') ? siteUrl + deal.image_url : deal.image_url)
+          : '';
+        const social = await publishSocial(copy, socialImg, context.env);
         dealResult.social = social;
         if (!social.shellMode && (social.instagram || social.facebook)) {
           await context.env.DB.prepare(

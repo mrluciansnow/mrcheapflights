@@ -7,3 +7,7 @@ pages_build_output_dir = "."
 binding = "DB"
 database_name = "mrcheapflights-prod"
 database_id = "9db20f98-9534-4b6c-986e-125ed3f8e95f"
+
+# Workers AI — image generation for the content pipeline (flux-1-schnell).
+[ai]
+binding = "AI"

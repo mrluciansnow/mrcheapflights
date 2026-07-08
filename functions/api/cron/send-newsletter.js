@@ -25,6 +25,39 @@ import { buildDigestHtml, digestSubject } from '../../_lib/publishers.js';
 const MAX_SENDS_PER_RUN = 90; // Resend free tier: 100 emails/day
 const MAX_DEALS_PER_DIGEST = 8;
 
+// Preference filtering — AND across categories, OR within a category.
+// Unparseable/absent data always passes (never hide a deal on bad data).
+const AIRPORT_CITY = { DUB: 'dublin', ORK: 'cork', SNN: 'shannon', NOC: 'knock', KIR: 'kerry', BFS: 'belfast' };
+const INTEREST_TYPES = {
+  'beach': ['sun', 'wintersun'], 'city': ['city'], 'longhaul': ['longhaul'],
+  'winter sun': ['wintersun'], 'usa': ['longhaul'], 'europe': ['city', 'sun'],
+};
+
+function filterDealsForSubscriber(deals, prefsJson) {
+  if (!prefsJson) return deals;
+  let prefs;
+  try { prefs = JSON.parse(prefsJson); } catch { return deals; }
+  if (!prefs || typeof prefs !== 'object') return deals;
+
+  return deals.filter((d) => {
+    if (prefs.budget) {
+      const n = parseFloat(String(d.price).replace(/[^0-9.]/g, ''));
+      if (!isNaN(n) && n > prefs.budget) return false;
+    }
+    if (Array.isArray(prefs.airports) && prefs.airports.length) {
+      const origin = String(d.route).split(/→|->/)[0].toLowerCase();
+      const match = prefs.airports.some((code) => origin.includes(AIRPORT_CITY[code] || '~'));
+      if (!match) return false;
+    }
+    if (Array.isArray(prefs.interests) && prefs.interests.length && d.dest_type) {
+      const wanted = new Set(prefs.interests.flatMap((i) => INTEREST_TYPES[i] || []));
+      // Interests that don't map to a dest_type (cheap, ski) impose no filter
+      if (wanted.size && !wanted.has(d.dest_type)) return false;
+    }
+    return true;
+  });
+}
+
 async function handle(context) {
   const session = await requireAdmin(context);
   if (!session) {
@@ -58,7 +91,7 @@ async function handle(context) {
 
     // Layer 2: fresh live deals not yet emailed
     const { results: deals } = await context.env.DB.prepare(
-      `SELECT id, flag, route, dates, price, badge, url, slug, region, was_price, airline
+      `SELECT id, flag, route, dates, price, badge, url, slug, region, was_price, airline, dest_type, image_url
        FROM deals
        WHERE region=? AND status='live' AND published_email=0
          AND created_at >= unixepoch() - 172800
@@ -73,7 +106,7 @@ async function handle(context) {
     }
 
     const { results: subs } = await context.env.DB.prepare(
-      `SELECT email, member_token FROM subscribers
+      `SELECT email, member_token, prefs FROM subscribers
        WHERE region=? AND newsletter_opt_out=0`
     ).bind(region).all();
 
@@ -89,17 +122,21 @@ async function handle(context) {
       continue;
     }
 
-    const html = buildDigestHtml(deals, siteUrl, marker);
-    const subject = digestSubject(deals);
-
     let sent = 0;
+    let skippedNoMatch = 0;
     for (const sub of subs) {
       if (sendBudget <= 0) break;
+      // Personalisation: filter this region's deals by the member's saved
+      // preferences. No prefs (or nothing matching a category) → full digest;
+      // prefs that match zero deals → no email today rather than noise.
+      const myDeals = filterDealsForSubscriber(deals, sub.prefs);
+      if (!myDeals.length) { skippedNoMatch++; continue; }
+
       const unsubUrl = `${siteUrl}/api/unsubscribe?token=${encodeURIComponent(sub.member_token)}`;
       const res = await sendEmail(context.env, {
         to: sub.email,
-        subject,
-        html: html.replaceAll('%%UNSUB_URL%%', unsubUrl),
+        subject: digestSubject(myDeals),
+        html: buildDigestHtml(myDeals, siteUrl, marker).replaceAll('%%UNSUB_URL%%', unsubUrl),
         // RFC 8058 one-click unsubscribe — Gmail/Yahoo surface a native
         // Unsubscribe button and it materially helps deliverability.
         headers: {
@@ -109,6 +146,7 @@ async function handle(context) {
       });
       if (res.ok) { sent++; sendBudget--; }
     }
+    if (skippedNoMatch) regionSummary.skipped_no_pref_match = skippedNoMatch;
     regionSummary.sent = sent;
     if (sendBudget <= 0 && sent < subs.length) {
       regionSummary.truncated = `daily send budget (${MAX_SENDS_PER_RUN}) reached`;

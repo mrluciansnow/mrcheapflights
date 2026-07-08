@@ -728,6 +728,8 @@ function updateBudgetLabel(v){var b=el('budget-label');if(b)b.textContent=(curre
 function savePrefs(){userPrefs.airports=Array.from(document.querySelectorAll('.airport-chip.active')).map(function(c){return c.dataset.val;});userPrefs.interests=Array.from(document.querySelectorAll('.interest-tag.active')).map(function(c){return c.dataset.val;});userPrefs.months=Array.from(document.querySelectorAll('.month-chip.active')).map(function(c){return c.dataset.val;});userPrefs.budget=parseInt(el('budget-slider').value)||200;try{localStorage.setItem(STORAGE_KEYS.prefs,JSON.stringify(userPrefs));}catch(e){}
   // ── GA: preferences saved ──
   mcfTrack('prefs_saved',{airports:(userPrefs.airports||[]).join(','),interests:(userPrefs.interests||[]).join(','),budget:userPrefs.budget});
+  // Sync to the server for digest personalisation — no-ops for non-members (401).
+  try{fetch('/api/me/prefs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({airports:userPrefs.airports,interests:userPrefs.interests,budget:userPrefs.budget})}).catch(function(){});}catch(e){}
   closePrefs();setTimeout(function(){renderPublic();updatePrefsBanner();},0);toast('🎯 Saved!');}
 function clearPrefs(){userPrefs={};try{localStorage.removeItem(STORAGE_KEYS.prefs);}catch(e){}document.querySelectorAll('.airport-chip,.interest-tag,.month-chip').forEach(function(c){c.classList.remove('active');});var s=el('budget-slider');if(s)s.value=200;updateBudgetLabel(200);closePrefs();renderPublic();updatePrefsBanner();}
 function openAdmin(e){if(e)e.preventDefault();el('admin-overlay').classList.add('open');if(!loggedIn){el('login-screen').style.display='flex';el('admin-dashboard').style.display='none';setTimeout(function(){el('admin-pw').focus();},100);}}

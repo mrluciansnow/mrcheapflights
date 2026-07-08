@@ -202,7 +202,8 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
       <div class="panel-hd" id="s3-dealname" style="color:var(--p);"></div>
       <div class="panel-sub" id="s3-style"></div>
       <div class="img-grid" id="imgrid"></div>
-      <div style="font-size:9px;color:rgba(255,255,255,0.3);margin-bottom:8px;">Placeholder previews — real image generation isn't wired up yet.</div>
+      <button class="act-btn" id="btn-genimg" onclick="generateDealImage()" style="width:100%;margin-bottom:8px;">✨ Generate real AI image (uses the chosen style)</button>
+      <div style="font-size:9px;color:rgba(255,255,255,0.3);margin-bottom:8px;" id="img-note">Variants A–C are layout placeholders — or generate a real image above.</div>
       <button class="next-btn" id="img-next" onclick="confirmImg()" disabled style="opacity:0.3;">Use this image ›</button>
     </div>
   </div>
@@ -686,15 +687,49 @@ function loadImg() {
 }
 
 function pickImg(idx) {
-  [0,1,2].forEach(function(i){ var el=document.getElementById('ic'+i); if(el) el.className='icard'+(i===idx?' isel':''); });
+  [0,1,2,'ai'].forEach(function(i){ var el=document.getElementById('ic'+i); if(el) el.className='icard'+(i===idx?' isel':''); });
   chosenImg = idx;
   var btn=document.getElementById('img-next');
   btn.disabled=false; btn.style.opacity='1';
 }
 
+async function generateDealImage() {
+  var d = queuedDeals[queueIdx];
+  var btn = document.getElementById('btn-genimg');
+  btn.disabled = true; btn.textContent = '✨ Generating… (~10s)';
+  try {
+    var res = await fetch('/api/admin/generate-image', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ dealId: d.id, style: (dealMeta[queueIdx] && dealMeta[queueIdx].style) || null }),
+    });
+    var data = res.ok ? await res.json() : null;
+    if (!data || !data.url) {
+      var errBody = null;
+      try { errBody = await res.json(); } catch(e) {}
+      alert('Generation failed: ' + ((errBody && errBody.error) || (data && data.error) || ('HTTP ' + res.status)));
+    } else {
+      dealMeta[queueIdx].imageUrl = data.url;
+      var grid = document.getElementById('imgrid');
+      var old = document.getElementById('icai');
+      if (old) old.remove();
+      var card = document.createElement('div');
+      card.className = 'icard'; card.id = 'icai';
+      card.onclick = function(){ pickImg('ai'); };
+      card.innerHTML = '<div class="ipreview" style="background:#000;overflow:hidden;">' +
+        '<img src="' + data.url + '" style="width:100%;height:100%;object-fit:cover;" alt="AI generated"/></div>' +
+        '<div class="ilabel"><b>✨ AI Generated</b><span>' + escHtml((dealMeta[queueIdx] && dealMeta[queueIdx].style) || 'Default style') + '</span></div>';
+      grid.appendChild(card);
+      pickImg('ai');
+    }
+  } catch(e) { alert('Network error: ' + e.message); }
+  btn.disabled = false; btn.textContent = '✨ Generate real AI image (uses the chosen style)';
+}
+
 function confirmImg() {
   if(chosenImg===null) return;
   dealMeta[queueIdx].img = chosenImg;
+  // Only keep the generated image URL if the AI card was the actual selection
+  if (chosenImg !== 'ai') dealMeta[queueIdx].imageUrl = null;
   queueIdx++;
   if(queueIdx < queuedDeals.length){ loadImg(); }
   else { queueIdx=0; goStep(4); loadCopy(); }
@@ -760,6 +795,7 @@ async function publishAll() {
           flag: d.flag, route: d.route, dates: d.dates, price: d.price, badge: d.badge,
           url: d.url, expiry: d.expiry, slug: d.slug, region: d.region,
           status: 'live', pipelineStyle: meta.style || null, pipelineCopy: chosenCopy,
+          imageUrl: meta.imageUrl || null,
         }),
       });
     } catch(e) { /* best-effort: continue publishing the rest */ }
