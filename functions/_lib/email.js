@@ -5,7 +5,7 @@
 // Falls back to a no-op (logs to console) if RESEND_API_KEY is not set,
 // so the digest endpoint works in testing even before Resend is configured.
 
-export async function sendEmail(env, { to, subject, html, text }) {
+export async function sendEmail(env, { to, subject, html, text, headers }) {
   const apiKey = env.RESEND_API_KEY;
   const from = 'Mr Cheap Flights <digest@mrcheapflights.ie>';
 
@@ -24,7 +24,7 @@ export async function sendEmail(env, { to, subject, html, text }) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ from, to, subject, html, text }),
+      body: JSON.stringify({ from, to, subject, html, text, ...(headers ? { headers } : {}) }),
       signal: controller.signal,
     });
   } catch (err) {

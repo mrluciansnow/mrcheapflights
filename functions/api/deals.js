@@ -11,7 +11,7 @@ export async function onRequestGet(context) {
   const region = searchParams.get('region');
 
   const columns = session
-    ? 'id, flag, route, dates, price, badge, url, expiry, slug, region, status, pipeline_style, pipeline_copy, was_price, airline, dest_type'
+    ? 'id, flag, route, dates, price, badge, url, expiry, slug, region, status, pipeline_style, pipeline_copy, was_price, airline, dest_type, ai_copy, published_email, published_social'
     : 'id, flag, route, dates, price, badge, url, expiry, slug, region, was_price, airline';
   let query = `SELECT ${columns} FROM deals`;
   const conditions = [];

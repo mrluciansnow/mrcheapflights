@@ -39,7 +39,7 @@ export async function onRequestPost(context) {
   const { results: pending } = await context.env.DB.prepare(
     `SELECT id, source_name, route, price, badge, region, raw_snippet, dates
      FROM scraped_deals WHERE status='pending' AND confidence IS NULL
-     ORDER BY created_at DESC LIMIT 30`
+     ORDER BY created_at DESC LIMIT 12`
   ).all();
 
   if (!pending.length) return Response.json({ enriched: 0, reason: 'nothing_to_enrich' });
@@ -60,6 +60,7 @@ For each flight deal, return a JSON array where every element has:
 - "confidence": 0-100 (100 = unmistakably a genuine cheap flight deal with a clear route and price; 0 = spam, non-flight, unclear, or irrelevant)
 - "dest_type": one of "sun" (warm beach holiday), "city" (European city break), "longhaul" (>6h flight e.g. USA/Asia/Australia), "wintersun" (Canaries/warm winter beach)
 - "badge": one of "🔥 Hot", "⚡ Flash", "✈ Long Haul", "⭐ Featured", "⚠️ Mistake Fare"
+- "copy": array of exactly 3 short social captions (each 2-4 sentences, energetic Irish/UK voice, includes the route and price, ends with "Link in bio ✈"; vary the tone: 1=urgent FOMO, 2=cheeky/funny, 3=straight value). Use plain text, emojis welcome, no hashtags.
 
 Confidence guide: ≥80 = excellent deal, clear route, credible price. 50-79 = plausible but uncertain. <50 = poor quality or off-topic.
 
@@ -81,7 +82,7 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 2048,
+        max_tokens: 4096,
         messages: [{ role: 'user', content: prompt }],
       }),
       signal: controller.signal,
@@ -112,7 +113,7 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
     return Response.json({ enriched: 0, error: 'AI returned unparseable JSON', raw: raw.slice(0, 300) }, { status: 502 });
   }
 
-  // Write enrichment scores back to scraped_deals
+  // Write enrichment scores + AI captions back to scraped_deals
   const stmts = [];
   let enriched = 0;
   for (const s of scores) {
@@ -120,23 +121,32 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
     const confidence = Math.max(0, Math.min(100, parseInt(s.confidence) || 0));
     const destType = VALID_TYPES.has(s.dest_type) ? s.dest_type : null;
     const badge    = VALID_BADGES.has(s.badge)    ? s.badge    : null;
+    // 3 caption variants → JSON string; discard malformed shapes
+    let aiCopy = null;
+    if (Array.isArray(s.copy) && s.copy.length && s.copy.every((c) => typeof c === 'string')) {
+      aiCopy = JSON.stringify(s.copy.slice(0, 3).map((c) => c.slice(0, 600)));
+    }
 
     stmts.push(context.env.DB.prepare(
       `UPDATE scraped_deals
-       SET confidence=?, dest_type=COALESCE(?,dest_type), badge=COALESCE(?,badge), updated_at=unixepoch()
+       SET confidence=?, dest_type=COALESCE(?,dest_type), badge=COALESCE(?,badge),
+           ai_copy=COALESCE(?,ai_copy), updated_at=unixepoch()
        WHERE id=? AND status='pending'`
-    ).bind(confidence, destType, badge, s.id));
+    ).bind(confidence, destType, badge, aiCopy, s.id));
     enriched++;
   }
   if (stmts.length) await context.env.DB.batch(stmts);
 
-  // Auto-approve high-confidence deals (≥80) as draft deals
+  // Auto-approve high-confidence deals (≥80) as drafts. With AUTO_PUBLISH=1,
+  // deals at ≥90 confidence skip the dashboard entirely and go straight live.
+  const autoPublish = context.env.AUTO_PUBLISH === '1';
   const { results: highConf } = await context.env.DB.prepare(
-    `SELECT id, source_url, flag, route, dates, price, badge, region, dest_type
+    `SELECT id, source_url, flag, route, dates, price, badge, region, dest_type, confidence, ai_copy
      FROM scraped_deals WHERE status='pending' AND confidence >= 80`
   ).all();
 
   let autoApproved = 0;
+  let autoPublished = 0;
   if (highConf?.length) {
     const aStmts = [];
     for (const row of highConf) {
@@ -144,23 +154,27 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
       if (!row.source_url || !row.source_url.startsWith('https://')) continue;
 
       const slug = slugify(row.route) + '-' + String(row.price).replace(/[^0-9]/g, '');
+      const goLive = autoPublish && row.confidence >= 90;
+      const status = goLive ? 'live' : 'draft';
 
       aStmts.push(context.env.DB.prepare(
-        `INSERT INTO deals (flag, route, dates, price, badge, url, slug, region, status, dest_type)
-         VALUES (?,?,?,?,?,?,?,?,'draft',?)
+        `INSERT INTO deals (flag, route, dates, price, badge, url, slug, region, status, dest_type, ai_copy)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)
          ON CONFLICT(slug,region) DO UPDATE SET
-           price=excluded.price, dates=excluded.dates, badge=excluded.badge, updated_at=unixepoch()`
+           price=excluded.price, dates=excluded.dates, badge=excluded.badge,
+           ai_copy=COALESCE(excluded.ai_copy, deals.ai_copy), updated_at=unixepoch()`
       ).bind(row.flag || '✈️', row.route, row.dates || '', row.price, row.badge || '🔥 Hot',
-             row.source_url, slug, row.region, row.dest_type || 'city'));
+             row.source_url, slug, row.region, status, row.dest_type || 'city', row.ai_copy || null));
 
       aStmts.push(context.env.DB.prepare(
         'UPDATE scraped_deals SET status=?,updated_at=unixepoch() WHERE id=?'
       ).bind('approved', row.id));
 
       autoApproved++;
+      if (goLive) autoPublished++;
     }
     if (aStmts.length) await context.env.DB.batch(aStmts);
   }
 
-  return Response.json({ enriched, auto_approved: autoApproved });
+  return Response.json({ enriched, auto_approved: autoApproved, auto_published: autoPublished });
 }

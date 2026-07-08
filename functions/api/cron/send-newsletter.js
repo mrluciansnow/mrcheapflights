@@ -100,6 +100,12 @@ async function handle(context) {
         to: sub.email,
         subject,
         html: html.replaceAll('%%UNSUB_URL%%', unsubUrl),
+        // RFC 8058 one-click unsubscribe — Gmail/Yahoo surface a native
+        // Unsubscribe button and it materially helps deliverability.
+        headers: {
+          'List-Unsubscribe': `<${unsubUrl}>`,
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        },
       });
       if (res.ok) { sent++; sendBudget--; }
     }

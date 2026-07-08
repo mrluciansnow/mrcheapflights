@@ -125,6 +125,7 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
       <button class="act-btn" id="btn-enrich" onclick="runEnrich()">🤖 Enrich</button>
     </div>
   </div>
+  <div id="source-health" style="display:none;margin:-0.7rem 0 1.2rem;padding:7px 14px;border-radius:8px;font-size:10px;letter-spacing:0.3px;"></div>
 
   <div class="step-bar">
     <div class="step active" id="stp1">① Select deals</div>
@@ -341,6 +342,31 @@ async function loadStats() {
     var badge = document.getElementById('scraped-count-badge');
     if (badge) badge.textContent = pending ? ' (' + pending + ')' : '';
   } catch(e) { /* stats are non-critical */ }
+  loadSourceHealth();
+}
+
+async function loadSourceHealth() {
+  var el = document.getElementById('source-health');
+  if (!el) return;
+  try {
+    var res = await fetch('/api/admin/scrape-status');
+    if (!res.ok) return;
+    var s = await res.json();
+    if (!s.available) return;
+    var when = s.ran_at ? new Date(s.ran_at).toLocaleString('en-IE', {weekday:'short', hour:'2-digit', minute:'2-digit'}) : '?';
+    var errCount = (s.errors || []).length;
+    var healthy = errCount === 0 && s.deals_found > 0;
+    el.style.display = 'block';
+    el.style.background = healthy ? 'rgba(34,197,94,0.06)' : 'rgba(248,113,113,0.07)';
+    el.style.border = '1px solid ' + (healthy ? 'rgba(34,197,94,0.2)' : 'rgba(248,113,113,0.3)');
+    el.style.color = healthy ? 'rgba(255,255,255,0.55)' : '#f87171';
+    var msg = (healthy ? '🟢' : '🔴') + ' Last scrape ' + when + ' — ' +
+      s.sources_checked + ' sources · ' + s.deals_found + ' found · ' + s.deals_new + ' new';
+    if (errCount) msg += ' · ' + errCount + ' source error' + (errCount > 1 ? 's' : '') + ': ' +
+      escHtml((s.errors || []).join(' | ').slice(0, 200));
+    if (!errCount && s.deals_found === 0) msg += ' · ⚠️ zero results — check feeds';
+    el.innerHTML = msg;
+  } catch(e) { /* best-effort */ }
 }
 
 // ── Scraped queue ─────────────────────────────────────────────────────────────
@@ -558,6 +584,7 @@ function renderDeals() {
           ${save?`<span class="deal-save">-${save}%</span>`:''}
         </div>
         <div class="deal-meta">${d.airline||''} ${d.airline?'·':''} ${d.dates||''}</div>
+        <div class="deal-meta">${d.ai_copy?'🤖 AI copy ready':''}${d.published_email?' · 📧 emailed':''}${d.published_social?' · 📱 posted':''}</div>
       </div>`;
     }).join('');
   }
@@ -678,9 +705,19 @@ function loadCopy() {
   renderQueue('dqueue4','var(--t)');
   var d = queuedDeals[queueIdx];
   document.getElementById('s4-dealname').textContent = d.route.toUpperCase() + ' · ' + d.price;
-  document.getElementById('s4-sub').textContent = 'Choose the tone that fits — or approve as-is';
   activeCopyTab = 0;
-  dealMeta[queueIdx].copies = buildCopy(d);
+  // Prefer the AI-written captions from the enrichment pass; fall back to templates.
+  var aiVariants = null;
+  if (d.ai_copy) {
+    try {
+      var parsed = JSON.parse(d.ai_copy);
+      if (Array.isArray(parsed) && parsed.length && parsed.every(function(c){ return typeof c === 'string'; })) aiVariants = parsed;
+    } catch(e) { /* malformed — use templates */ }
+  }
+  dealMeta[queueIdx].copies = aiVariants || buildCopy(d);
+  document.getElementById('s4-sub').textContent = aiVariants
+    ? '🤖 AI-written for this deal — urgent / cheeky / straight. Pick the tone.'
+    : 'Choose the tone that fits — or approve as-is';
   renderCopyTabs();
   document.getElementById('approve-lbl').textContent = queueIdx < queuedDeals.length-1 ? 'APPROVE & NEXT ›' : 'APPROVE & FINISH ›';
 }

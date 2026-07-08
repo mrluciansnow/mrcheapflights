@@ -22,6 +22,13 @@ export async function onRequestPost(context) {
 
   try {
     const summary = await runScraper(context.env);
+    // Persist the run summary so the pipeline dashboard can show source health.
+    try {
+      await context.env.DB.prepare(
+        `INSERT INTO settings (key, value, updated_at) VALUES ('scrape_last_summary', ?, unixepoch())
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=unixepoch()`
+      ).bind(JSON.stringify({ ...summary, ran_at: Date.now() })).run();
+    } catch { /* health display is best-effort — never fail the scrape for it */ }
     return Response.json(summary);
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });

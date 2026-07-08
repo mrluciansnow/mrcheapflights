@@ -677,6 +677,8 @@ async function continueToPayment(){var name=el('su-prem-name').value.trim(),emai
   var billingValue=selectedBilling==='annual'?39.99:4.99;
   // ── GA: begin checkout ──
   mcfTrack('begin_checkout',{plan:'premium',currency:'EUR',value:billingValue});
+  // Survive the Stripe redirect so the purchase event reports the right amount.
+  try{sessionStorage.setItem('mcf_billing',selectedBilling);}catch(e){}
   el('details-step').classList.add('hidden');el('stripe-step').classList.add('visible');el('stripe-email-display').textContent=email;el('stripe-config-notice').style.display='none';el('stripe-payment-link-btn').style.display='flex';el('stripe-payment-link-btn').textContent='Redirecting to secure payment…';
   try{
     var res=await fetch('/api/stripe/checkout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,name:name,billing:selectedBilling,region:currentRegion})});
@@ -840,6 +842,9 @@ async function boot(){
   if(qs.get('checkout')==='success'){
     // Optimistically mark as premium — the Stripe webhook may not have fired yet.
     premiumState={premium:true,tier:'premium'};
+    // ── GA: purchase (completes the begin_checkout funnel) ──
+    var mcfBilling='monthly';try{mcfBilling=sessionStorage.getItem('mcf_billing')||'monthly';sessionStorage.removeItem('mcf_billing');}catch(e){}
+    mcfTrack('purchase',{transaction_id:'mcf_'+Date.now(),plan:'premium_'+mcfBilling,currency:'EUR',value:mcfBilling==='annual'?39.99:4.99});
     renderPublic();
     setTimeout(function(){toast('🎉 Welcome to Premium! Your account is now active.');openSignup(null,'premium');el('payment-success').classList.add('visible');el('details-step').style.display='none';el('stripe-step').style.display='none';},600);
     history.replaceState({},'',window.location.pathname);

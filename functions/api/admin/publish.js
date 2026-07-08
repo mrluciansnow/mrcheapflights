@@ -105,9 +105,11 @@ export async function onRequestPost(context) {
         if (context.env.NEWSLETTER_ENABLED !== '1') {
           dealResult.email = { shellMode: true, reason: 'NEWSLETTER_ENABLED not set' };
         } else {
+          // Instant error-fare blasts are a premium perk — free subscribers
+          // see the deal on the site and in the next morning's digest.
           const { results: subs } = await context.env.DB.prepare(
             `SELECT email, member_token FROM subscribers
-             WHERE region=? AND newsletter_opt_out=0 LIMIT ?`
+             WHERE region=? AND newsletter_opt_out=0 AND tier='premium' LIMIT ?`
           ).bind(deal.region, MAX_BLAST_RECIPIENTS).all();
 
           let sent = 0;
@@ -121,10 +123,14 @@ export async function onRequestPost(context) {
               to: sub.email,
               subject: urgentSubject(deal),
               html,
+              headers: {
+                'List-Unsubscribe': `<${unsub}>`,
+                'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+              },
             });
             if (res.ok) sent++;
           }
-          dealResult.email = { blast: true, sent, recipients: (subs || []).length };
+          dealResult.email = { blast: true, premium_only: true, sent, recipients: (subs || []).length };
           if (sent > 0) {
             await context.env.DB.prepare(
               'UPDATE deals SET published_email=1, updated_at=unixepoch() WHERE id=?'

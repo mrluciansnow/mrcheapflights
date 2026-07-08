@@ -63,7 +63,7 @@ export async function onRequestPost(context) {
 
   // approve — validate and copy to `deals`
   const row = await context.env.DB.prepare(
-    'SELECT id, source_name, source_url, flag, route, dates, price, badge, region, dest_type FROM scraped_deals WHERE id=?'
+    'SELECT id, source_name, source_url, flag, route, dates, price, badge, region, dest_type, ai_copy FROM scraped_deals WHERE id=?'
   ).bind(id).first();
   if (!row) return new Response('Not found', { status: 404 });
 
@@ -82,11 +82,12 @@ export async function onRequestPost(context) {
 
   await context.env.DB.batch([
     context.env.DB.prepare(
-      `INSERT INTO deals (flag, route, dates, price, badge, url, slug, region, dest_type)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO deals (flag, route, dates, price, badge, url, slug, region, dest_type, ai_copy)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(slug, region) DO UPDATE SET
-         price=excluded.price, dates=excluded.dates, dest_type=excluded.dest_type, updated_at=unixepoch()`
-    ).bind(row.flag || '✈️', row.route, row.dates || '', row.price, row.badge || '🔥 Hot', dealUrl, slug, row.region, row.dest_type || null),
+         price=excluded.price, dates=excluded.dates, dest_type=excluded.dest_type,
+         ai_copy=COALESCE(excluded.ai_copy, deals.ai_copy), updated_at=unixepoch()`
+    ).bind(row.flag || '✈️', row.route, row.dates || '', row.price, row.badge || '🔥 Hot', dealUrl, slug, row.region, row.dest_type || null, row.ai_copy || null),
     context.env.DB.prepare(
       'UPDATE scraped_deals SET status=?, updated_at=unixepoch() WHERE id=?'
     ).bind('approved', id),
