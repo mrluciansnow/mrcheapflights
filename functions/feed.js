@@ -1,8 +1,11 @@
-// Public RSS 2.0 feed — /feed?region=ie|uk
-// Lists the 20 most recent non-expired deals for the requested region.
+// Public RSS 2.0 feed — /feed (region defaults by host) or /feed?region=ie|uk
+// Lists the 20 most recent non-expired deals for the region.
 export async function onRequestGet(context) {
-  const rawRegion = new URL(context.request.url).searchParams.get('region') || 'ie';
-  const region = ['ie', 'uk'].includes(rawRegion) ? rawRegion : 'ie';
+  const url = new URL(context.request.url);
+  // Default by domain — co.uk visitors get UK deals — with ?region= override.
+  const hostDefault = url.hostname.includes('co.uk') ? 'uk' : 'ie';
+  const rawRegion = url.searchParams.get('region') || hostDefault;
+  const region = ['ie', 'uk'].includes(rawRegion) ? rawRegion : hostDefault;
   const siteUrl = region === 'uk' ? 'https://mrcheapflights.co.uk' : 'https://mrcheapflights.ie';
   const siteTitle = region === 'uk' ? 'Mr Cheap Flights UK' : 'Mr Cheap Flights Ireland';
 
