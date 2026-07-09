@@ -10,6 +10,7 @@
 
 import { requireAdmin } from '../../_lib/auth.js';
 import { generateDealImage } from '../../_lib/imagegen.js';
+import { logOp } from '../../_lib/oplog.js';
 
 const MAX_PER_RUN = 2;
 
@@ -32,6 +33,7 @@ async function handle(context) {
   ).bind(MAX_PER_RUN).all();
 
   if (!deals || deals.length === 0) {
+    await logOp(context.env, 'images', true, { generated: 0, reason: 'all live deals have images' });
     return Response.json({ ok: true, generated: 0, reason: 'all live deals have images' });
   }
 
@@ -48,7 +50,9 @@ async function handle(context) {
     }
   }
 
-  return Response.json({ ok: true, generated: results.filter((r) => r.url).length, results });
+  const generated = results.filter((r) => r.url).length;
+  await logOp(context.env, 'images', results.every((r) => !r.error), { generated, results });
+  return Response.json({ ok: true, generated, results });
 }
 
 export async function onRequestPost(context) { return handle(context); }

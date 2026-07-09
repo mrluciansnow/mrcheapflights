@@ -9,6 +9,7 @@
 //   stripe_events  — idempotency rows older than 90 days
 
 import { requireAdmin } from '../../_lib/auth.js';
+import { logOp } from '../../_lib/oplog.js';
 
 export async function onRequestPost(context) {
   const session = await requireAdmin(context);
@@ -22,28 +23,40 @@ export async function onRequestPost(context) {
   }
 
   const results = {};
+  // D1 run() reports affected rows on meta.changes (top-level .changes is
+  // undefined on current wrangler — counts silently vanished from responses).
+  const changes = (r) => r?.meta?.changes ?? r?.changes ?? 0;
 
   // Rate-limit counters are per-minute and have no timestamp column — wipe all.
   const rl = await context.env.DB.prepare('DELETE FROM kv_rate_limit').run();
-  results.rate_limit_purged = rl.changes;
+  results.rate_limit_purged = changes(rl);
 
   // Rejected scraped deals older than 30 days
   const rej = await context.env.DB.prepare(
     `DELETE FROM scraped_deals WHERE status='rejected' AND updated_at < unixepoch() - 2592000`
   ).run();
-  results.scraped_rejected_purged = rej.changes;
+  results.scraped_rejected_purged = changes(rej);
 
   // Approved scraped deals older than 90 days (already in deals table, safe to remove reference)
   const app = await context.env.DB.prepare(
     `DELETE FROM scraped_deals WHERE status='approved' AND created_at < unixepoch() - 7776000`
   ).run();
-  results.scraped_approved_purged = app.changes;
+  results.scraped_approved_purged = changes(app);
 
   // Stripe event idempotency rows older than 90 days
   const se = await context.env.DB.prepare(
     `DELETE FROM stripe_events WHERE processed_at < unixepoch() - 7776000`
   ).run();
-  results.stripe_events_purged = se.changes;
+  results.stripe_events_purged = changes(se);
 
+  // Operations log older than 30 days
+  try {
+    const ol = await context.env.DB.prepare(
+      `DELETE FROM op_log WHERE created_at < unixepoch() - 2592000`
+    ).run();
+    results.op_log_purged = changes(ol);
+  } catch { /* table may not exist yet on first run after deploy */ }
+
+  await logOp(context.env, 'cleanup', true, results);
   return Response.json({ ok: true, ...results });
 }

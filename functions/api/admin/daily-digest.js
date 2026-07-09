@@ -34,10 +34,11 @@ export async function onRequestPost(context) {
     subscriberStats,
     recentSubs,
     newPremium,
+    opLog,
   ] = await Promise.all([
-    db.prepare(`SELECT id, source_name, route, price, badge, region, created_at
+    db.prepare(`SELECT id, source_name, route, price, badge, region, confidence, created_at
                 FROM scraped_deals WHERE status='pending'
-                ORDER BY created_at DESC LIMIT 20`).all(),
+                ORDER BY confidence DESC, created_at DESC LIMIT 20`).all(),
     db.prepare(`SELECT id, route, price, badge, region, expiry
                 FROM deals WHERE status='live' AND expiry IS NOT NULL
                 AND date(expiry) BETWEEN date('now') AND date('now', '+7 days')
@@ -56,19 +57,67 @@ export async function onRequestPost(context) {
                 WHERE tier='premium'
                 AND date(updated_at,'unixepoch') >= date('now','-24 hours')
                 ORDER BY updated_at DESC LIMIT 10`).all(),
+    db.prepare(`SELECT kind, ok, detail, created_at FROM op_log
+                WHERE created_at >= unixepoch() - 86400
+                ORDER BY created_at DESC LIMIT 20`).all().catch(() => ({ results: [] })),
   ]);
 
   const today = new Date().toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
+  const confPill = (c) => {
+    if (c == null) return '<span style="color:#bbb;font-size:11px">—</span>';
+    const col = c >= 80 ? '#22c55e' : c >= 50 ? '#f59e0b' : '#ef4444';
+    return `<span style="color:${col};font-weight:800;font-size:12px">${c}%</span>`;
+  };
   const pendingHtml = pendingDeals.results.length
     ? pendingDeals.results.map(d => `
         <tr>
           <td style="padding:8px 12px;border-bottom:1px solid #eee">${d.badge} ${d.route}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #eee;font-weight:700;color:#e0004d">${d.price}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #eee">${confPill(d.confidence)}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #eee;font-size:12px;color:#666">${d.source_name}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #eee"><span style="background:${d.region==='ie'?'#169b62':'#012169'};color:#fff;padding:2px 8px;border-radius:10px;font-size:11px">${d.region.toUpperCase()}</span></td>
         </tr>`).join('')
-    : `<tr><td colspan="4" style="padding:12px;color:#888;text-align:center">No pending deals</td></tr>`;
+    : `<tr><td colspan="5" style="padding:12px;color:#888;text-align:center">No pending deals</td></tr>`;
+
+  // ── Automation health (last 24h, from op_log) ──
+  const OP_META = {
+    scrape:     { icon: '🔄', label: 'Scrape' },
+    enrich:     { icon: '🤖', label: 'AI enrich' },
+    newsletter: { icon: '📧', label: 'Newsletter' },
+    images:     { icon: '🎨', label: 'Images' },
+    cleanup:    { icon: '🧹', label: 'Cleanup' },
+    publish:    { icon: '🚀', label: 'Publish' },
+  };
+  const opSummary = (kind, detail) => {
+    let d; try { d = JSON.parse(detail); } catch { return ''; }
+    if (!d) return '';
+    switch (kind) {
+      case 'scrape': return `${d.sources_checked ?? '?'} sources · ${d.deals_found ?? 0} found · ${d.deals_new ?? 0} new${d.errors?.length ? ` · ⚠️ ${d.errors.length} source error(s)` : ''}`;
+      case 'enrich': return d.error ? d.error : `${d.enriched ?? 0} scored · ${d.auto_approved ?? 0} auto-approved${d.auto_published ? ` · ${d.auto_published} straight to live` : ''}`;
+      case 'newsletter': return d.armed
+        ? `IE ${d.ie?.sent ?? 0}/${d.ie?.subscribers ?? 0} sent · UK ${d.uk?.sent ?? 0}/${d.uk?.subscribers ?? 0} sent`
+        : 'shell mode (not armed)';
+      case 'images': return `${d.generated ?? 0} hero image(s) generated`;
+      case 'cleanup': return `${d.rate_limit_purged ?? 0} rate-limit rows · ${d.scraped_rejected_purged ?? 0} rejected deals purged`;
+      case 'publish': return `${d.deals ?? 0} deal(s) fanned out`;
+      default: return String(detail).slice(0, 80);
+    }
+  };
+  const opsRows = (opLog.results || []).map(r => {
+    const meta = OP_META[r.kind] || { icon: '⚙️', label: r.kind };
+    const time = new Date(r.created_at * 1000).toLocaleTimeString('en-IE', { timeZone: 'Europe/Dublin', hour: '2-digit', minute: '2-digit' });
+    return `<tr>
+      <td style="padding:7px 12px;border-bottom:1px solid #eee;white-space:nowrap">${r.ok ? '✅' : '❌'} ${meta.icon} <strong>${meta.label}</strong></td>
+      <td style="padding:7px 12px;border-bottom:1px solid #eee;font-size:12px;color:${r.ok ? '#555' : '#e0004d'}">${opSummary(r.kind, r.detail)}</td>
+      <td style="padding:7px 12px;border-bottom:1px solid #eee;font-size:12px;color:#999;white-space:nowrap">${time}</td>
+    </tr>`;
+  }).join('');
+  const opsFailed = (opLog.results || []).filter(r => !r.ok).length;
+  const opsHtml = (opLog.results || []).length
+    ? `<h2>${opsFailed ? '🚨' : '⚙️'} Automation — last 24h${opsFailed ? ` (${opsFailed} FAILED)` : ' (all green)'}</h2>
+       <table><tbody>${opsRows}</tbody></table>`
+    : '';
 
   const expiringHtml = expiringDeals.results.length
     ? expiringDeals.results.map(d => {
@@ -126,6 +175,7 @@ export async function onRequestPost(context) {
   </div>
   <div class="body">
     ${scrapeHtml}
+    ${opsHtml}
 
     <div class="stat-row">
       <div class="stat"><div class="num">${stats.total || 0}</div><div class="lbl">Total Members</div></div>
@@ -139,6 +189,7 @@ export async function onRequestPost(context) {
       <thead><tr style="background:#f8fafc">
         <th style="padding:8px 12px;text-align:left;font-size:12px;color:#888">Route</th>
         <th style="padding:8px 12px;text-align:left;font-size:12px;color:#888">Price</th>
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#888">AI Score</th>
         <th style="padding:8px 12px;text-align:left;font-size:12px;color:#888">Source</th>
         <th style="padding:8px 12px;text-align:left;font-size:12px;color:#888">Region</th>
       </tr></thead>
@@ -177,7 +228,9 @@ Open https://mrcheapflights.ie/pipeline.html to review pending deals.`;
   const to = context.env.DIGEST_TO_EMAIL || 'mrluciansnow@gmail.com';
   const result = await sendEmail(context.env, {
     to,
-    subject: `✈ MCF Daily Digest — ${pendingDeals.results.length} pending · ${stats.premium} premium`,
+    subject: opsFailed
+      ? `🚨 MCF Daily Digest — ${opsFailed} automation failure(s) · ${pendingDeals.results.length} pending`
+      : `✈ MCF Daily Digest — ${pendingDeals.results.length} pending · ${stats.premium} premium`,
     html,
     text: plainText,
   });

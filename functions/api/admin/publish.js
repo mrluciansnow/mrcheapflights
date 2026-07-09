@@ -16,6 +16,7 @@
 
 import { requireAdmin } from '../../_lib/auth.js';
 import { sendEmail } from '../../_lib/email.js';
+import { logOp } from '../../_lib/oplog.js';
 import { routeSearchUrl } from '../../_lib/affiliate.js';
 import { publishSocial, dealEmailBlock, urgentSubject } from '../../_lib/publishers.js';
 
@@ -152,5 +153,6 @@ export async function onRequestPost(context) {
     results[id] = dealResult;
   }
 
+  await logOp(context.env, 'publish', true, { deals: dealIds.length });
   return Response.json({ ok: true, results });
 }

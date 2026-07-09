@@ -21,6 +21,7 @@
 import { requireAdmin } from '../../_lib/auth.js';
 import { sendEmail } from '../../_lib/email.js';
 import { buildDigestHtml, digestSubject } from '../../_lib/publishers.js';
+import { logOp } from '../../_lib/oplog.js';
 
 const MAX_SENDS_PER_RUN = 90; // Resend free tier: 100 emails/day
 const MAX_DEALS_PER_DIGEST = 8;
@@ -165,6 +166,7 @@ async function handle(context) {
     }
   }
 
+  await logOp(context.env, 'newsletter', true, { armed, ...summary });
   return Response.json({ ok: true, armed, ...summary });
 }
 

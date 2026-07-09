@@ -7,6 +7,7 @@
 // Deals with confidence >= 80 are automatically promoted to deals table as drafts.
 
 import { requireAdmin } from '../../_lib/auth.js';
+import { logOp } from '../../_lib/oplog.js';
 
 const VALID_TYPES  = new Set(['sun', 'city', 'longhaul', 'wintersun']);
 const VALID_BADGES = new Set(['🔥 Hot', '⚡ Flash', '✈ Long Haul', '⭐ Featured', '⚠️ Mistake Fare']);
@@ -29,6 +30,7 @@ export async function onRequestPost(context) {
 
   const apiKey = context.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
+    await logOp(context.env, 'enrich', false, { error: 'ANTHROPIC_API_KEY not configured' });
     return Response.json({
       enriched: 0,
       reason: 'ANTHROPIC_API_KEY not configured — set it via: wrangler pages secret put ANTHROPIC_API_KEY --project-name mrcheap',
@@ -90,12 +92,14 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
   } catch (err) {
     clearTimeout(to);
     const reason = err.name === 'AbortError' ? 'timeout after 30s' : err.message;
+    await logOp(context.env, 'enrich', false, { error: reason });
     return Response.json({ enriched: 0, error: reason }, { status: 502 });
   }
   clearTimeout(to);
 
   if (!aiRes.ok) {
     const body = await aiRes.text().catch(() => '');
+    await logOp(context.env, 'enrich', false, { error: `Anthropic ${aiRes.status}: ${body.slice(0, 120)}` });
     return Response.json({ enriched: 0, error: `Anthropic ${aiRes.status}: ${body.slice(0, 200)}` }, { status: 502 });
   }
 
@@ -176,5 +180,6 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
     if (aStmts.length) await context.env.DB.batch(aStmts);
   }
 
+  await logOp(context.env, 'enrich', true, { enriched, auto_approved: autoApproved, auto_published: autoPublished });
   return Response.json({ enriched, auto_approved: autoApproved, auto_published: autoPublished });
 }

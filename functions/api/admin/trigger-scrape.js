@@ -1,5 +1,6 @@
 import { requireAdmin } from '../../_lib/auth.js';
 import { runScraper } from '../../_lib/scraper.js';
+import { logOp } from '../../_lib/oplog.js';
 
 // POST /api/admin/trigger-scrape
 // Two auth modes:
@@ -29,8 +30,10 @@ export async function onRequestPost(context) {
          ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=unixepoch()`
       ).bind(JSON.stringify({ ...summary, ran_at: Date.now() })).run();
     } catch { /* health display is best-effort — never fail the scrape for it */ }
+    await logOp(context.env, 'scrape', summary.errors.length === 0, summary);
     return Response.json(summary);
   } catch (err) {
+    await logOp(context.env, 'scrape', false, { error: err.message });
     return Response.json({ error: err.message }, { status: 500 });
   }
 }
