@@ -28,10 +28,46 @@ const TYPE_DEFAULT_STYLE = {
   wintersun: 'Golden paradise',
 };
 
+// Destination → landmark/scene hints. Generic "destination: Rome" prompts
+// produce anonymous coastlines; a landmark anchor makes the image unmistakably
+// *that* place, which is what makes tiles and shares feel editorial.
+const DEST_HINTS = {
+  'lisbon': 'Alfama rooftops and the 25 de Abril bridge', 'porto': 'Ribeira riverfront and Dom Luís bridge',
+  'faro': 'Algarve sea cliffs and golden beaches', 'barcelona': 'Sagrada Família skyline and Gothic quarter rooftops',
+  'madrid': 'Gran Vía architecture at dusk', 'malaga': 'Andalusian old town and Mediterranean shore',
+  'alicante': 'Santa Bárbara castle above the marina', 'palma': 'Palma cathedral over the bay', 'mallorca': 'Serra de Tramuntana coves',
+  'ibiza': 'Dalt Vila old town above a turquoise cove', 'tenerife': 'Mount Teide above the clouds',
+  'lanzarote': 'volcanic Timanfaya landscape', 'gran canaria': 'Maspalomas dunes at sunset',
+  'rome': 'Colosseum and terracotta rooftops', 'milan': 'Duomo spires', 'venice': 'gondolas on the Grand Canal',
+  'naples': 'Vesuvius across the bay', 'amsterdam': 'canal houses and bridges', 'paris': 'Eiffel Tower over Haussmann rooftops',
+  'nice': 'Promenade des Anglais and azure water', 'berlin': 'Brandenburg Gate', 'munich': 'Marienplatz and Alps horizon',
+  'prague': 'Charles Bridge and castle', 'budapest': 'Parliament on the Danube', 'krakow': 'Old Town square',
+  'vienna': 'Schönbrunn and baroque skyline', 'athens': 'the Acropolis at golden hour', 'santorini': 'white and blue cliffside houses',
+  'mykonos': 'windmills and whitewashed lanes', 'rhodes': 'medieval old town harbour', 'crete': 'Balos lagoon',
+  'split': 'Diocletian palace waterfront', 'dubrovnik': 'walled old town above the Adriatic', 'malta': 'Valletta harbour bastions',
+  'istanbul': 'Hagia Sophia and Bosphorus', 'marrakech': 'medina rooftops and Koutoubia minaret',
+  'new york': 'Manhattan skyline and Brooklyn Bridge', 'boston': 'brownstones and harbour', 'miami': 'Ocean Drive art deco neon',
+  'orlando': 'palm-lined lakes at dusk', 'los angeles': 'palm trees and Hollywood hills', 'san francisco': 'Golden Gate Bridge in fog',
+  'chicago': 'the Loop skyline from the river', 'las vegas': 'the Strip glowing at night', 'toronto': 'CN Tower skyline',
+  'vancouver': 'mountains meeting the harbour', 'dubai': 'Burj Khalifa above the marina', 'doha': 'West Bay skyline',
+  'bangkok': 'temples and tuk-tuks at dusk', 'singapore': 'Marina Bay Sands and supertrees', 'tokyo': 'Shibuya neon and Mount Fuji horizon',
+  'hong kong': 'Victoria Harbour skyline', 'bali': 'rice terraces and temple gates', 'phuket': 'longtail boats on limestone bays',
+  'cape town': 'Table Mountain over the city', 'sydney': 'Opera House and Harbour Bridge', 'melbourne': 'laneway lights and trams',
+  'cancun': 'Caribbean shoreline and Mayan ruins', 'reykjavik': 'Hallgrímskirkja and northern lights',
+};
+
 export function styleForDeal(deal, styleName) {
   return STYLE_PROMPTS[styleName]
     || STYLE_PROMPTS[TYPE_DEFAULT_STYLE[deal.dest_type]]
     || 'vibrant travel photography, inviting light, wanderlust mood';
+}
+
+export function destHint(dest) {
+  const clean = String(dest || '').toLowerCase().trim();
+  for (const key of Object.keys(DEST_HINTS)) {
+    if (clean.includes(key)) return DEST_HINTS[key];
+  }
+  return null;
 }
 
 /**
@@ -42,8 +78,9 @@ export async function generateDealImage(env, deal, styleName) {
   if (!env.AI) throw new Error('AI binding not available on this deployment');
 
   const dest = (String(deal.route).split(/→|->/)[1] || deal.route).trim();
-  const prompt = `${styleForDeal(deal, styleName)}, destination: ${dest}, travel deal hero image, ` +
-    `high quality, no text, no words, no letters, no watermark`;
+  const hint = destHint(dest);
+  const prompt = `${styleForDeal(deal, styleName)}, ${hint ? `featuring ${hint}, ` : ''}destination: ${dest}, ` +
+    `travel deal hero image, high quality, no text, no words, no letters, no watermark`;
 
   const result = await env.AI.run('@cf/black-forest-labs/flux-1-schnell', { prompt, steps: 6 });
   const b64 = result?.image;

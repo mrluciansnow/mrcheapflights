@@ -12,7 +12,7 @@ import { requireAdmin } from '../../_lib/auth.js';
 import { generateDealImage } from '../../_lib/imagegen.js';
 import { logOp } from '../../_lib/oplog.js';
 
-const MAX_PER_RUN = 2;
+const MAX_PER_RUN = 3; // generations run ~2-5s each — 3 fits the 30s cron timeout
 
 async function handle(context) {
   const session = await requireAdmin(context);
@@ -25,16 +25,18 @@ async function handle(context) {
     }
   }
 
+  // Live deals first (visitor-facing), then drafts — so by the time the
+  // pipeline is opened, Step 3 already has a generated image waiting.
   const { results: deals } = await context.env.DB.prepare(
     `SELECT id, route, dest_type FROM deals
-     WHERE status='live' AND (image_url IS NULL OR image_url = '')
+     WHERE status IN ('live','draft') AND (image_url IS NULL OR image_url = '')
        AND (expiry IS NULL OR date(expiry) >= date('now'))
-     ORDER BY created_at DESC LIMIT ?`
+     ORDER BY CASE status WHEN 'live' THEN 0 ELSE 1 END, created_at DESC LIMIT ?`
   ).bind(MAX_PER_RUN).all();
 
   if (!deals || deals.length === 0) {
-    await logOp(context.env, 'images', true, { generated: 0, reason: 'all live deals have images' });
-    return Response.json({ ok: true, generated: 0, reason: 'all live deals have images' });
+    await logOp(context.env, 'images', true, { generated: 0, reason: 'all live and draft deals have images' });
+    return Response.json({ ok: true, generated: 0, reason: 'all live and draft deals have images' });
   }
 
   const results = [];

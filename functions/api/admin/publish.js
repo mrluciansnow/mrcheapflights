@@ -19,9 +19,11 @@ import { sendEmail } from '../../_lib/email.js';
 import { logOp } from '../../_lib/oplog.js';
 import { routeSearchUrl } from '../../_lib/affiliate.js';
 import { publishSocial, dealEmailBlock, urgentSubject } from '../../_lib/publishers.js';
+import { generateDealImage } from '../../_lib/imagegen.js';
 
 const MAX_BATCH = 20;
 const MAX_BLAST_RECIPIENTS = 90; // Resend free tier: 100 emails/day
+const MAX_INLINE_IMAGES = 4;     // ~2-5s each — bounds publish latency
 
 export async function onRequestPost(context) {
   const session = await requireAdmin(context);
@@ -47,6 +49,7 @@ export async function onRequestPost(context) {
 
   const marker = context.env.TRAVELPAYOUTS_MARKER || '';
   const results = {};
+  let imagesGenerated = 0;
 
   for (const rawId of dealIds) {
     const id = parseInt(rawId);
@@ -62,6 +65,22 @@ export async function onRequestPost(context) {
 
     const dealResult = {};
     const siteUrl = deal.region === 'uk' ? 'https://mrcheapflights.co.uk' : 'https://mrcheapflights.ie';
+
+    // ── IMAGE: publish never ships an imageless deal if we can help it ──
+    if (!deal.image_url && context.env.AI && imagesGenerated < MAX_INLINE_IMAGES) {
+      try {
+        const img = await generateDealImage(context.env, deal);
+        await context.env.DB.prepare(
+          'UPDATE deals SET image_url=?, updated_at=unixepoch() WHERE id=?'
+        ).bind(img.url, id).run();
+        deal.image_url = img.url;
+        imagesGenerated++;
+        dealResult.image = { generated: true, url: img.url };
+      } catch (e) {
+        // Never block a publish on image generation — backfill cron retries daily
+        dealResult.image = { generated: false, error: e.message };
+      }
+    }
 
     // ── WEBSITE (skip if already live — idempotency) ──
     try {

@@ -57,6 +57,16 @@ export async function onRequestPost(context) {
     results.op_log_purged = changes(ol);
   } catch { /* table may not exist yet on first run after deploy */ }
 
+  // Orphaned generated images (deal deleted, bytes still in D1).
+  // Keys are 'deals/<id>-<ts>.<ext>' — CAST grabs the leading digits.
+  try {
+    const oi = await context.env.DB.prepare(
+      `DELETE FROM images WHERE key LIKE 'deals/%'
+       AND CAST(substr(key, 7) AS INTEGER) NOT IN (SELECT id FROM deals)`
+    ).run();
+    results.orphan_images_purged = changes(oi);
+  } catch { /* images table may not exist yet */ }
+
   await logOp(context.env, 'cleanup', true, results);
   return Response.json({ ok: true, ...results });
 }
