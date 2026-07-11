@@ -66,22 +66,10 @@ const SOURCES = [
     type: 'rss',
     filter: (title) => UK_FILTER.test(title),
   },
-  // Secret Flying — its category *HTML* pages hard-block bots (HTTP 403), but
-  // the WordPress category RSS feeds are region-specific and answer cleanly.
-  // No keyword filter: the category already guarantees IE/UK relevance, so
-  // filtering on title keywords would only drop valid deals.
-  {
-    name: 'Secret Flying IE',
-    url: 'https://www.secretflying.com/posts/category/ireland/feed/',
-    region: 'ie',
-    type: 'rss',
-  },
-  {
-    name: 'Secret Flying UK',
-    url: 'https://www.secretflying.com/posts/category/united-kingdom/feed/',
-    region: 'uk',
-    type: 'rss',
-  },
+  // NOTE: Secret Flying was removed 2026-07-11 — it hard-blocks Cloudflare
+  // Worker IPs with HTTP 403 on both its HTML pages and RSS feeds. Expanding
+  // deal flow is handled by the email-ingest worker (forwarded newsletters)
+  // rather than fighting bot protection. Add new RSS sources here.
 ];
 
 // ── Main entry point ─────────────────────────────────────────────────────────
@@ -168,50 +156,6 @@ function extractTag(text, tag) {
   const re = new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\\/${tag}>`, 'i');
   const m = text.match(re);
   return m ? m[1].trim().replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"') : null;
-}
-
-// ── HTML parsers ─────────────────────────────────────────────────────────────
-
-async function parseSecretFlying(url, region) {
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MrCheapFlightsBot/1.0)' },
-    cf: { cacheEverything: true, cacheTtl: 3600 },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-  const deals = [];
-  const seen = new Set();
-  let currentTitle = '';
-  let currentLink = '';
-  let capturing = false;
-
-  await new HTMLRewriter()
-    .on('h2.entry-title a, h3.entry-title a, h2 a, h3 a', {
-      element(el) {
-        currentLink = el.getAttribute('href') || '';
-        currentTitle = '';
-        capturing = true;
-      },
-      text(chunk) {
-        if (capturing) currentTitle += chunk.text;
-      },
-    })
-    .on('article', {
-      element() {
-        if (currentTitle && currentLink && !seen.has(currentLink)) {
-          seen.add(currentLink);
-          const deal = parseDealTitle(currentTitle.trim(), currentLink, region, '');
-          if (deal) deals.push(deal);
-          capturing = false;
-          currentTitle = '';
-          currentLink = '';
-        }
-      },
-    })
-    .transform(res)
-    .text();
-
-  return deals.slice(0, 20);
 }
 
 // ── Deal title parser ────────────────────────────────────────────────────────
