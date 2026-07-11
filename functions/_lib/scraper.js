@@ -66,20 +66,21 @@ const SOURCES = [
     type: 'rss',
     filter: (title) => UK_FILTER.test(title),
   },
-  // ── HTML scrapers — fallback for sites without reliable RSS ───────────────
+  // Secret Flying — its category *HTML* pages hard-block bots (HTTP 403), but
+  // the WordPress category RSS feeds are region-specific and answer cleanly.
+  // No keyword filter: the category already guarantees IE/UK relevance, so
+  // filtering on title keywords would only drop valid deals.
   {
     name: 'Secret Flying IE',
-    url: 'https://www.secretflying.com/posts/category/ireland/',
+    url: 'https://www.secretflying.com/posts/category/ireland/feed/',
     region: 'ie',
-    type: 'html',
-    parser: parseSecretFlying,
+    type: 'rss',
   },
   {
     name: 'Secret Flying UK',
-    url: 'https://www.secretflying.com/posts/category/united-kingdom/',
+    url: 'https://www.secretflying.com/posts/category/united-kingdom/feed/',
     region: 'uk',
-    type: 'html',
-    parser: parseSecretFlying,
+    type: 'rss',
   },
 ];
 
