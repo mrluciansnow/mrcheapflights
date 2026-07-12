@@ -74,13 +74,10 @@ export function destHint(dest) {
  * Generate a hero image for a deal and store it. Returns { key, url,
  * content_type } or throws with a descriptive message.
  */
-export async function generateDealImage(env, deal, styleName) {
+// Shared core: run flux, store the base64 in the images table under
+// `<folder>/<id>-<ts>.<ext>`, prune to the newest N for that id, return url.
+async function runAndStore(env, folder, id, prompt, keepNewest = 3) {
   if (!env.AI) throw new Error('AI binding not available on this deployment');
-
-  const dest = (String(deal.route).split(/→|->/)[1] || deal.route).trim();
-  const hint = destHint(dest);
-  const prompt = `${styleForDeal(deal, styleName)}, ${hint ? `featuring ${hint}, ` : ''}destination: ${dest}, ` +
-    `travel deal hero image, high quality, no text, no words, no letters, no watermark`;
 
   const result = await env.AI.run('@cf/black-forest-labs/flux-1-schnell', { prompt, steps: 6 });
   const b64 = result?.image;
@@ -91,17 +88,33 @@ export async function generateDealImage(env, deal, styleName) {
   const head = Uint8Array.from(atob(b64.slice(0, 8)), (c) => c.charCodeAt(0));
   const contentType = head[0] === 0x89 && head[1] === 0x50 ? 'image/png' : 'image/jpeg';
   const ext = contentType === 'image/png' ? 'png' : 'jpg';
-  const key = `deals/${deal.id}-${Date.now()}.${ext}`;
+  const key = `${folder}/${id}-${Date.now()}.${ext}`;
 
   await env.DB.prepare(
     'INSERT INTO images (key, content_type, bytes) VALUES (?, ?, ?)'
   ).bind(key, contentType, b64).run();
 
-  // Keep at most the 3 newest images per deal.
   await env.DB.prepare(
     `DELETE FROM images WHERE key LIKE ? AND key NOT IN (
-       SELECT key FROM images WHERE key LIKE ? ORDER BY created_at DESC LIMIT 3)`
-  ).bind(`deals/${deal.id}-%`, `deals/${deal.id}-%`).run();
+       SELECT key FROM images WHERE key LIKE ? ORDER BY created_at DESC LIMIT ?)`
+  ).bind(`${folder}/${id}-%`, `${folder}/${id}-%`, keepNewest).run();
 
   return { key, url: `/images/${key}`, content_type: contentType };
+}
+
+export async function generateDealImage(env, deal, styleName) {
+  const dest = (String(deal.route).split(/→|->/)[1] || deal.route).trim();
+  const hint = destHint(dest);
+  const prompt = `${styleForDeal(deal, styleName)}, ${hint ? `featuring ${hint}, ` : ''}destination: ${dest}, ` +
+    `travel deal hero image, high quality, no text, no words, no letters, no watermark`;
+  return runAndStore(env, 'deals', deal.id, prompt);
+}
+
+// Evergreen hero for a destination hub page. `dest` is a registry entry
+// ({ slug, name, landmark, type }). Wider, editorial, landmark-anchored.
+export async function generateDestinationImage(env, dest) {
+  const style = STYLE_PROMPTS[TYPE_DEFAULT_STYLE?.[dest.type]] || 'vibrant editorial travel photography, inviting golden light';
+  const prompt = `${style}, featuring ${dest.landmark}, ${dest.name} ${dest.country || ''}, ` +
+    `wide cinematic travel hero, high quality, no text, no words, no letters, no watermark`;
+  return runAndStore(env, 'dest', dest.slug, prompt, 2);
 }

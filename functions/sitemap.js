@@ -1,11 +1,23 @@
 // Dynamic XML sitemap at /sitemap.xml
-// Lists the homepage + all non-expired deals as /deals/:slug
+// Homepage + evergreen destination hubs (/flights-to) + non-expired deals.
+import { allDestinations } from './_lib/destinations.js';
+
 export async function onRequestGet(context) {
   const host = new URL(context.request.url).hostname;
   const isUk = host.includes('co.uk');
   const region = isUk ? 'uk' : 'ie';
   const base = isUk ? 'https://mrcheapflights.co.uk' : 'https://mrcheapflights.ie';
   const now = new Date().toISOString().slice(0, 10);
+
+  // Evergreen SEO surface: the hub index + one page per destination. These
+  // are permanent (unlike deal pages), so they carry the site's ranking.
+  const destUrls = allDestinations().map((d) => `
+  <url>
+    <loc>${base}/flights-to/${d.slug}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>`).join('');
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
 
@@ -49,11 +61,17 @@ export async function onRequestGet(context) {
     <priority>1.0</priority>
   </url>
   <url>
+    <loc>${base}/flights-to</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
     <loc>${base}/privacy.html</loc>
     <lastmod>${now}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.3</priority>
-  </url>${dealUrls}
+  </url>${destUrls}${dealUrls}
 </urlset>`;
 
   return new Response(xml, {

@@ -10,6 +10,7 @@
 // Windows browsers show "PT"/"US" text for flag emojis, which looks broken.
 
 import { routeSearchUrl } from '../_lib/affiliate.js';
+import { destSlugForText, getDestination } from '../_lib/destinations.js';
 
 function esc(s) {
   return String(s == null ? '' : s)
@@ -80,6 +81,8 @@ export async function onRequestGet(context) {
 
   const dest = (String(deal.route).split(/→|->/)[1] || deal.route).trim();
   const origin = (String(deal.route).split(/→|->/)[0] || '').trim();
+  const hubSlug = destSlugForText(deal.route);
+  const hub = hubSlug ? getDestination(hubSlug) : null;
   const title = `${deal.route} for ${deal.price} return – Mr Cheap Flights`;
   const desc = `${deal.route} from just ${deal.price} return${deal.airline ? ' with ' + deal.airline : ''}. ${deal.dates || ''}${deal.expiry ? ' · Book by ' + deal.expiry : ''}. Hand-picked ${regionName} flight deal — book direct, no commission.`;
   const pageUrl = `${base}/deals/${encodeURIComponent(deal.slug)}`;
@@ -282,6 +285,8 @@ ${heroImg ? `.hero-img{position:absolute;inset:0;width:100%;height:100%;object-f
   </section>
 
   ${related.length ? `<section class="section"><h2>MORE ${esc(regionName.toUpperCase())} <em>DEALS</em></h2><div class="rel-grid">${relatedHtml}</div></section>` : ''}
+
+  ${hub ? `<section class="section"><a href="${base}/flights-to/${hub.slug}" style="display:block;background:linear-gradient(135deg,rgba(0,229,204,.12),rgba(255,210,0,.08));border:1px solid rgba(0,229,204,.3);border-radius:16px;padding:1.2rem 1.4rem;text-align:center;font-weight:800;color:#fff">🌍 Explore all cheap flights to ${esc(hub.name)} — deals, best times to go & FAQs →</a></section>` : ''}
 
   <section class="section">
     <h2>BOOKING <em>TIPS</em></h2>
