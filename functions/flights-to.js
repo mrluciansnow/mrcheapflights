@@ -112,6 +112,15 @@ a{color:inherit;text-decoration:none}
 .foot a{color:rgba(255,255,255,.65);text-decoration:underline}
 .tag{font-style:italic;color:rgba(255,255,255,.3);margin-top:.5rem}
 </style>
+<!-- Travelpayouts attribution/verification (marker 551733) -->
+<script data-cfasync="false">
+  (function () {
+      var script = document.createElement("script");
+      script.async = 1;
+      script.src = 'https://emrldtp.cc/NTUxNzMz.js?t=551733';
+      document.head.appendChild(script);
+  })();
+</script>
 </head>
 <body>
 <nav class="nav">

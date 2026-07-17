@@ -238,6 +238,15 @@ ${heroImg ? `.hero-img{position:absolute;inset:0;width:100%;height:100%;object-f
 .sticky-bar a{flex:1;text-align:center;background:var(--yellow);color:var(--navy);font-weight:900;font-size:1rem;padding:.85rem;border-radius:12px;}
 @media(max-width:720px){.sticky-bar{display:flex;}.deal-card{padding:1.4rem 1.15rem;margin-top:-95px;}.hero{height:240px;}}
 </style>
+<!-- Travelpayouts attribution/verification (marker 551733) -->
+<script data-cfasync="false">
+  (function () {
+      var script = document.createElement("script");
+      script.async = 1;
+      script.src = 'https://emrldtp.cc/NTUxNzMz.js?t=551733';
+      document.head.appendChild(script);
+  })();
+</script>
 </head>
 <body>
 <nav class="nav">
