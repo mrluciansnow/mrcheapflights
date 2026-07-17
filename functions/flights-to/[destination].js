@@ -246,13 +246,13 @@ ul.hl li::before{content:'★ ';color:var(--yellow)}
   </section>
 
   <section class="section signup">
-    <h3>Never miss a ${esc(dest.name)} deal</h3>
-    <p>Free ${esc(dest.name)} flight alerts straight to your inbox — unsubscribe anytime.</p>
+    <h3>🔔 Get ${esc(dest.name)} price alerts</h3>
+    <p>We'll email you the moment a cheap ${esc(dest.name)} flight drops — free, unsubscribe anytime.</p>
     <form class="signup-row" id="su-form">
       <input type="email" id="su-email" placeholder="Your email address…" autocomplete="email" required>
-      <button type="submit">Get ${esc(dest.name)} Deals ✈</button>
+      <button type="submit">Set ${esc(dest.name)} Alert 🔔</button>
     </form>
-    <div class="signup-ok" id="su-ok">🎉 You're in! We'll email you the next ${esc(dest.name)} drop.</div>
+    <div class="signup-ok" id="su-ok">🎉 Alert set! We'll email you the next ${esc(dest.name)} deal.</div>
   </section>
 
   ${(guide.best_time || guide.airlines || guide.price_from) ? `<section class="section">
@@ -279,13 +279,22 @@ ul.hl li::before{content:'★ ';color:var(--yellow)}
 <script>
 (function(){
   var f=document.getElementById('su-form');if(!f)return;
+  var reset='Set ${esc(dest.name)} Alert 🔔';
   f.addEventListener('submit',function(e){e.preventDefault();
     var email=document.getElementById('su-email').value.trim();if(!email)return;
-    var b=f.querySelector('button');b.disabled=true;b.textContent='Joining…';
-    fetch('/api/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,region:'${region}'})})
-      .then(function(r){if(r.ok){f.style.display='none';document.getElementById('su-ok').style.display='block';gtag('event','sign_up',{method:'destination_hub',destination:'${slug}'});}
-        else{b.disabled=false;b.textContent='Get ${esc(dest.name)} Deals ✈';}})
-      .catch(function(){b.disabled=false;b.textContent='Get ${esc(dest.name)} Deals ✈';});
+    var b=f.querySelector('button');b.disabled=true;b.textContent='Setting…';
+    fetch('/api/watch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,region:'${region}',dest:'${slug}'})})
+      .then(function(r){return r.ok?r.json():null;})
+      .then(function(data){
+        if(data&&data.ok){
+          f.style.display='none';
+          var ok=document.getElementById('su-ok');
+          if(data.already){ok.innerHTML='🎉 Alert set — and there\\'s one live right now! <a href="/deals/'+encodeURIComponent(data.already.slug)+'" style="color:#FFD700;text-decoration:underline;font-weight:900">'+data.already.route+' from '+data.already.price+' →</a>';}
+          ok.style.display='block';
+          gtag('event','sign_up',{method:'destination_alert',destination:'${slug}'});
+        } else {b.disabled=false;b.textContent=reset;}
+      })
+      .catch(function(){b.disabled=false;b.textContent=reset;});
   });
 })();
 </script>

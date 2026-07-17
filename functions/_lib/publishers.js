@@ -94,6 +94,28 @@ export function urgentSubject(deal) {
   return `🚨 ERROR FARE: ${dest} ${deal.price} return — GO NOW`;
 }
 
+/** Destination price-alert subject: personal and specific. */
+export function alertSubject(deal, destName) {
+  return `🔔 ${destName} alert: ${deal.route} from ${deal.price} return`;
+}
+
+/** Single-deal alert email for a destination watcher. `unsubUrl` opts them
+ *  out of THIS destination's alerts. */
+export function buildAlertHtml(deal, destName, siteUrl, marker, unsubUrl) {
+  return `<div style="background:#060B1F;padding:24px;">
+    <div style="text-align:center;padding-bottom:14px;">
+      <span style="font-family:Impact,Arial,sans-serif;font-size:24px;color:#FFD700;letter-spacing:1px;">🔔 ${esc(destName)} DEAL ALERT</span>
+      <div style="font-family:Arial,sans-serif;font-size:12px;color:#00E5CC;letter-spacing:2px;margin-top:2px;">YOU ASKED — HERE IT IS</div>
+    </div>
+    ${dealEmailBlock(deal, siteUrl, marker)}
+    <div style="text-align:center;font-family:Georgia,serif;font-style:italic;color:#FFD700;font-size:13px;padding:12px;">Cheap never looked this good.</div>
+    <div style="text-align:center;font-family:Arial,sans-serif;font-size:11px;color:rgba(255,255,255,0.35);padding-bottom:8px;">
+      You're getting this because you set a ${esc(destName)} alert.
+      <a href="${esc(unsubUrl)}" style="color:rgba(255,255,255,0.5);">Turn off ${esc(destName)} alerts</a>.
+    </div>
+  </div>`;
+}
+
 // ── SOCIAL ────────────────────────────────────────────────────────────────────
 // ── SOCIAL SHELL ──────────────────────────────────────────────────
 // Option A (recommended): Buffer — https://buffer.com/developers
