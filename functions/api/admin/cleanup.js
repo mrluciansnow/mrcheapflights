@@ -67,6 +67,14 @@ export async function onRequestPost(context) {
     results.orphan_images_purged = changes(oi);
   } catch { /* images table may not exist yet */ }
 
+  // Click log older than 90 days
+  try {
+    const ck = await context.env.DB.prepare(
+      `DELETE FROM clicks WHERE created_at < unixepoch() - 7776000`
+    ).run();
+    results.clicks_purged = changes(ck);
+  } catch { /* clicks table may not exist yet */ }
+
   await logOp(context.env, 'cleanup', true, results);
   return Response.json({ ok: true, ...results });
 }

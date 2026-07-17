@@ -86,7 +86,8 @@ export async function onRequestGet(context) {
   const title = `${deal.route} for ${deal.price} return – Mr Cheap Flights`;
   const desc = `${deal.route} from just ${deal.price} return${deal.airline ? ' with ' + deal.airline : ''}. ${deal.dates || ''}${deal.expiry ? ' · Book by ' + deal.expiry : ''}. Hand-picked ${regionName} flight deal — book direct, no commission.`;
   const pageUrl = `${base}/deals/${encodeURIComponent(deal.slug)}`;
-  const bookUrl = /^https?:\/\//.test(deal.url || '') ? deal.url : `${base}/`;
+  // Booking + fares links route through /api/go (logs the click, then 302s to
+  // the real airline/affiliate URL). searchUrl here is only the presence check.
   const searchUrl = routeSearchUrl(deal.route, deal.region, context.env.TRAVELPAYOUTS_MARKER || '');
 
   const flag = flagInfo(deal.flag);
@@ -268,8 +269,8 @@ ${heroImg ? `.hero-img{position:absolute;inset:0;width:100%;height:100%;object-f
 
     ${deal.expiry ? `<div class="countdown" id="countdown" data-expiry="${esc(deal.expiry)}">⏳ Book by ${esc(deal.expiry)}</div>` : ''}
 
-    <a class="cta-book" href="${esc(bookUrl)}" rel="noopener noreferrer" onclick="gtag('event','deal_book_click',{deal_route:'${esc(deal.route).replace(/'/g, '')}',location:'landing'})">Book This Deal ✈</a>
-    ${searchUrl ? `<a class="cta-fares" href="${esc(searchUrl)}" rel="noopener noreferrer">🔍 Compare live fares for these dates</a>` : ''}
+    <a class="cta-book" href="/api/go?deal=${deal.id}&kind=book" rel="noopener noreferrer" onclick="gtag('event','deal_book_click',{deal_route:'${esc(deal.route).replace(/'/g, '')}',location:'landing'})">Book This Deal ✈</a>
+    ${searchUrl ? `<a class="cta-fares" href="/api/go?deal=${deal.id}&kind=fares" rel="noopener noreferrer">🔍 Compare live fares for these dates</a>` : ''}
 
     <div class="trust-strip"><span>Book direct with the airline</span><span>No commission, ever</span><span>Deals checked daily</span></div>
   </main>
@@ -306,7 +307,7 @@ ${heroImg ? `.hero-img{position:absolute;inset:0;width:100%;height:100%;object-f
 
 <div class="sticky-bar">
   <div class="sticky-price">${esc(deal.price)}<small>PER PERSON · RETURN</small></div>
-  <a href="${esc(bookUrl)}" rel="noopener noreferrer" onclick="gtag('event','deal_book_click',{deal_route:'${esc(deal.route).replace(/'/g, '')}',location:'landing_sticky'})">Book Now ✈</a>
+  <a href="/api/go?deal=${deal.id}&kind=book" rel="noopener noreferrer" onclick="gtag('event','deal_book_click',{deal_route:'${esc(deal.route).replace(/'/g, '')}',location:'landing_sticky'})">Book Now ✈</a>
 </div>
 
 <script>

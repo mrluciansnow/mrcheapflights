@@ -1,6 +1,7 @@
 import { requireAdmin } from '../../_lib/auth.js';
 import { runScraper } from '../../_lib/scraper.js';
 import { sendEmail } from '../../_lib/email.js';
+import { getDestination } from '../../_lib/destinations.js';
 
 // POST /api/admin/daily-digest
 // Compiles a deal intelligence report and emails it to DIGEST_TO_EMAIL.
@@ -35,6 +36,10 @@ export async function onRequestPost(context) {
     recentSubs,
     newPremium,
     opLog,
+    clickStats,
+    topClickedDests,
+    watchStats,
+    topWatchedDests,
   ] = await Promise.all([
     db.prepare(`SELECT id, source_name, route, price, badge, region, confidence, created_at
                 FROM scraped_deals WHERE status='pending'
@@ -60,6 +65,23 @@ export async function onRequestPost(context) {
     db.prepare(`SELECT kind, ok, detail, created_at FROM op_log
                 WHERE created_at >= unixepoch() - 86400
                 ORDER BY created_at DESC LIMIT 20`).all().catch(() => ({ results: [] })),
+    // Business metrics — clicks, alert watchlists, engagement
+    db.prepare(`SELECT
+                  SUM(CASE WHEN created_at >= unixepoch()-86400 THEN 1 ELSE 0 END) AS clicks_24h,
+                  SUM(CASE WHEN created_at >= unixepoch()-604800 THEN 1 ELSE 0 END) AS clicks_7d,
+                  SUM(CASE WHEN kind='book' AND created_at >= unixepoch()-86400 THEN 1 ELSE 0 END) AS book_24h,
+                  SUM(CASE WHEN kind='fares' AND created_at >= unixepoch()-86400 THEN 1 ELSE 0 END) AS fares_24h
+                FROM clicks`).first().catch(() => null),
+    db.prepare(`SELECT dest_slug, COUNT(*) AS n FROM clicks
+                WHERE created_at >= unixepoch()-604800 AND dest_slug IS NOT NULL
+                GROUP BY dest_slug ORDER BY n DESC LIMIT 5`).all().catch(() => ({ results: [] })),
+    db.prepare(`SELECT
+                  COUNT(*) AS total,
+                  SUM(CASE WHEN active=1 THEN 1 ELSE 0 END) AS active,
+                  SUM(CASE WHEN created_at >= unixepoch()-86400 THEN 1 ELSE 0 END) AS new_24h
+                FROM watchlists`).first().catch(() => null),
+    db.prepare(`SELECT dest_slug, COUNT(*) AS n FROM watchlists WHERE active=1
+                GROUP BY dest_slug ORDER BY n DESC LIMIT 5`).all().catch(() => ({ results: [] })),
   ]);
 
   const today = new Date().toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -149,6 +171,38 @@ export async function onRequestPost(context) {
        </p>`
     : '';
 
+  // ── Business metrics — booking-intent clicks + alert watchlists ──
+  const destName = (slug) => getDestination(slug)?.name
+    || String(slug || '').replace(/_lh$/, '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const cs = clickStats || { clicks_24h: 0, clicks_7d: 0, book_24h: 0, fares_24h: 0 };
+  const ws = watchStats || { total: 0, active: 0, new_24h: 0 };
+  const destList = (rows, colour) => (rows?.results || []).length
+    ? `<ol style="margin:6px 0 0;padding-left:22px;font-size:13px;color:#333">${
+        rows.results.map(r => `<li style="margin:3px 0">${destName(r.dest_slug)} <span style="color:${colour};font-weight:800">${r.n}</span></li>`).join('')
+      }</ol>`
+    : '<p style="margin:6px 0 0;color:#aaa;font-size:12px">— none yet —</p>';
+  const bizHtml = `
+    <h2>💷 Business — engagement &amp; intent</h2>
+    <div class="stat-row">
+      <div class="stat"><div class="num">${cs.clicks_24h || 0}</div><div class="lbl">Clicks 24h</div></div>
+      <div class="stat"><div class="num" style="color:#888">${cs.clicks_7d || 0}</div><div class="lbl">Clicks 7d</div></div>
+      <div class="stat"><div class="num" style="color:#e0004d">${ws.active || 0}</div><div class="lbl">Live Alerts</div></div>
+      <div class="stat"><div class="num" style="color:#22c55e">+${ws.new_24h || 0}</div><div class="lbl">New Alerts 24h</div></div>
+    </div>
+    <p style="font-size:12px;color:#888;margin:0 0 16px">
+      Last 24h intent split: <strong style="color:#0a1628">${cs.book_24h || 0}</strong> book · <strong style="color:#0a1628">${cs.fares_24h || 0}</strong> browse-fares.
+    </p>
+    <div style="display:flex;gap:20px;flex-wrap:wrap">
+      <div style="flex:1;min-width:200px">
+        <div style="font-size:12px;font-weight:800;color:#0a1628;text-transform:uppercase;letter-spacing:.3px">🔥 Top clicked (7d)</div>
+        ${destList(topClickedDests, '#e0004d')}
+      </div>
+      <div style="flex:1;min-width:200px">
+        <div style="font-size:12px;font-weight:800;color:#0a1628;text-transform:uppercase;letter-spacing:.3px">🔔 Most-wanted alerts</div>
+        ${destList(topWatchedDests, '#0a1628')}
+      </div>
+    </div>`;
+
   const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><style>
@@ -183,6 +237,8 @@ export async function onRequestPost(context) {
       <div class="stat"><div class="num" style="color:#22c55e">+${stats.new_7d || 0}</div><div class="lbl">New (7d)</div></div>
       <div class="stat"><div class="num" style="color:#f59e0b">${pendingDeals.results.length}</div><div class="lbl">Pending Deals</div></div>
     </div>
+
+    ${bizHtml}
 
     <h2>🔍 Deals Pending Review (${pendingDeals.results.length})</h2>
     <table>

@@ -242,7 +242,7 @@ ul.hl li::before{content:'★ ';color:var(--yellow)}
     <h2>LIVE ${esc(dest.name.toUpperCase())} <em>DEALS</em></h2>
     ${liveDeals.length
       ? `<div class="deals">${dealsHtml}</div>`
-      : `<div class="empty"><b>✈ No live deals to ${esc(dest.name)} right this minute</b><p>New fares drop daily. Get on the list below and we'll email you the moment a cheap ${esc(dest.name)} flight appears.</p>${searchUrl ? `<a class="cta-fares" href="${esc(searchUrl)}" rel="noopener noreferrer">🔍 Check live fares to ${esc(dest.name)} now →</a>` : ''}</div>`}
+      : `<div class="empty"><b>✈ No live deals to ${esc(dest.name)} right this minute</b><p>New fares drop daily. Get on the list below and we'll email you the moment a cheap ${esc(dest.name)} flight appears.</p>${searchUrl ? `<a class="cta-fares" href="/api/go?dest=${slug}&kind=fares" rel="noopener noreferrer">🔍 Check live fares to ${esc(dest.name)} now →</a>` : ''}</div>`}
   </section>
 
   <section class="section signup">
