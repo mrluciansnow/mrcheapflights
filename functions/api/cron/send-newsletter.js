@@ -22,6 +22,7 @@ import { requireAdmin } from '../../_lib/auth.js';
 import { sendEmail } from '../../_lib/email.js';
 import { buildDigestHtml, digestSubject } from '../../_lib/publishers.js';
 import { logOp } from '../../_lib/oplog.js';
+import { dispatchAlerts } from './send-alerts.js';
 
 const MAX_SENDS_PER_RUN = 90; // Resend free tier: 100 emails/day
 const MAX_DEALS_PER_DIGEST = 8;
@@ -167,7 +168,14 @@ async function handle(context) {
   }
 
   await logOp(context.env, 'newsletter', true, { armed, ...summary });
-  return Response.json({ ok: true, armed, ...summary });
+
+  // Fire destination price alerts in the same daily run — no separate cron
+  // needed. Its own throttle + alerted-once flag keep it independent of the
+  // digest's per-region dedup. Never let an alert failure fail the digest.
+  let alerts = null;
+  try { alerts = await dispatchAlerts(context.env); } catch (e) { alerts = { error: e.message }; }
+
+  return Response.json({ ok: true, armed, ...summary, alerts });
 }
 
 export async function onRequestPost(context) { return handle(context); }
