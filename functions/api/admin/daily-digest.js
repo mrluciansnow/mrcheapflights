@@ -110,6 +110,8 @@ export async function onRequestPost(context) {
     images:     { icon: '🎨', label: 'Images' },
     cleanup:    { icon: '🧹', label: 'Cleanup' },
     publish:    { icon: '🚀', label: 'Publish' },
+    alerts:     { icon: '🔔', label: 'Price alerts' },
+    dest_content: { icon: '🗺️', label: 'Destination SEO' },
   };
   const opSummary = (kind, detail) => {
     let d; try { d = JSON.parse(detail); } catch { return ''; }
@@ -121,6 +123,10 @@ export async function onRequestPost(context) {
         ? `IE ${d.ie?.sent ?? 0}/${d.ie?.subscribers ?? 0} sent · UK ${d.uk?.sent ?? 0}/${d.uk?.subscribers ?? 0} sent`
         : 'shell mode (not armed)';
       case 'images': return `${d.generated ?? 0} hero image(s) generated`;
+      case 'alerts': return d.reason
+        ? d.reason
+        : `${d.deals_scanned ?? 0} deal(s) scanned · ${d.matched ?? 0} matched · ${d.sent ?? 0} alert(s) sent${d.skipped_throttle ? ` · ${d.skipped_throttle} throttled` : ''}`;
+      case 'dest_content': return `${d.generated ?? 0} destination guide(s) generated`;
       case 'cleanup': return `${d.rate_limit_purged ?? 0} rate-limit rows · ${d.scraped_rejected_purged ?? 0} rejected deals purged`;
       case 'publish': return `${d.deals ?? 0} deal(s) fanned out`;
       default: return String(detail).slice(0, 80);
