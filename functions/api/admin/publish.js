@@ -18,7 +18,7 @@ import { requireAdmin } from '../../_lib/auth.js';
 import { sendEmail } from '../../_lib/email.js';
 import { logOp } from '../../_lib/oplog.js';
 import { routeSearchUrl } from '../../_lib/affiliate.js';
-import { publishSocial, dealEmailBlock, urgentSubject } from '../../_lib/publishers.js';
+import { publishSocial, dealEmailBlock, urgentSubject, igCaption } from '../../_lib/publishers.js';
 import { generateDealImage } from '../../_lib/imagegen.js';
 
 const MAX_BATCH = 20;
@@ -47,6 +47,14 @@ export async function onRequestPost(context) {
     return Response.json({ error: `max ${MAX_BATCH} deals per publish` }, { status: 400 });
   }
 
+  // Optional channel filter: {"channels": ["social"]} fires just that channel
+  // (used by the pipeline's "Post socials now" test button). Default = all.
+  const ALL_CHANNELS = ['website', 'social', 'email'];
+  const channels = Array.isArray(body?.channels) && body.channels.length
+    ? ALL_CHANNELS.filter((c) => body.channels.includes(c))
+    : ALL_CHANNELS;
+  const wants = (c) => channels.includes(c);
+
   const marker = context.env.TRAVELPAYOUTS_MARKER || '';
   const results = {};
   let imagesGenerated = 0;
@@ -67,7 +75,8 @@ export async function onRequestPost(context) {
     const siteUrl = deal.region === 'uk' ? 'https://mrcheapflights.co.uk' : 'https://mrcheapflights.ie';
 
     // ── IMAGE: publish never ships an imageless deal if we can help it ──
-    if (!deal.image_url && context.env.AI && imagesGenerated < MAX_INLINE_IMAGES) {
+    // (needed for site tiles AND social — Instagram posts require media)
+    if ((wants('website') || wants('social')) && !deal.image_url && context.env.AI && imagesGenerated < MAX_INLINE_IMAGES) {
       try {
         const img = await generateDealImage(context.env, deal);
         await context.env.DB.prepare(
@@ -84,7 +93,9 @@ export async function onRequestPost(context) {
 
     // ── WEBSITE (skip if already live — idempotency) ──
     try {
-      if (deal.status !== 'live') {
+      if (!wants('website')) {
+        dealResult.website = { skipped: 'channel not requested' };
+      } else if (deal.status !== 'live') {
         await context.env.DB.prepare(
           `UPDATE deals SET status='live', updated_at=unixepoch() WHERE id=?`
         ).bind(id).run();
@@ -98,10 +109,14 @@ export async function onRequestPost(context) {
 
     // ── SOCIAL ──
     try {
-      if (!deal.published_social) {
+      if (!wants('social')) {
+        dealResult.social = { skipped: 'channel not requested' };
+      } else if (!deal.published_social) {
         const searchUrl = routeSearchUrl(deal.route, deal.region, marker);
-        const dealPageUrl = deal.slug ? `${siteUrl}/#deal/${encodeURIComponent(deal.slug)}` : siteUrl;
-        const copy = (deal.pipeline_copy || `${deal.flag || '✈️'} ${deal.route} — ${deal.price} return! ${deal.dates || ''}`)
+        const dealPageUrl = deal.slug ? `${siteUrl}/deals/${encodeURIComponent(deal.slug)}` : siteUrl;
+        // Chosen pipeline copy wins; otherwise the IG-structured template —
+        // never the bare one-liner that used to go out for express publishes.
+        const copy = (deal.pipeline_copy || igCaption(deal))
           + `\n\n${dealPageUrl}` + (searchUrl ? `\n${searchUrl}` : '');
         const socialImg = deal.image_url
           ? (String(deal.image_url).startsWith('/') ? siteUrl + deal.image_url : deal.image_url)
@@ -124,7 +139,9 @@ export async function onRequestPost(context) {
     //    for the daily digest cron (send-newsletter) ──
     try {
       const isErrorFare = String(deal.badge || '').includes('Mistake');
-      if (isErrorFare && !deal.published_email) {
+      if (!wants('email')) {
+        dealResult.email = { skipped: 'channel not requested' };
+      } else if (isErrorFare && !deal.published_email) {
         if (context.env.NEWSLETTER_ENABLED !== '1') {
           dealResult.email = { shellMode: true, reason: 'NEWSLETTER_ENABLED not set' };
         } else {

@@ -38,9 +38,12 @@ export async function onRequestGet(context) {
     ...d,
     search_url: routeSearchUrl(d.route, d.region, marker),
   }));
+  // Vary: Cookie — without it, a browser that cached the public (logged-out)
+  // response re-serves it to a logged-in admin for 5 minutes, which locked the
+  // pipeline page behind its auth gate with stale data.
   const cacheHeaders = session
-    ? { 'Cache-Control': 'private, no-store' }
-    : { 'Cache-Control': 'public, max-age=300, stale-while-revalidate=60' };
+    ? { 'Cache-Control': 'private, no-store', 'Vary': 'Cookie' }
+    : { 'Cache-Control': 'public, max-age=300, stale-while-revalidate=60', 'Vary': 'Cookie' };
   return Response.json(withLinks, { headers: cacheHeaders });
 }
 

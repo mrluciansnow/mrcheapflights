@@ -37,14 +37,19 @@ export async function onRequestPost(context) {
     });
   }
 
-  // Fetch up to 30 un-enriched pending deals
+  // Small batches: 3 Instagram-length captions per deal ≈ 700 output tokens
+  // each — 6 deals stays well inside max_tokens. (The old 12-deal batch could
+  // truncate the JSON mid-array, which surfaced as "unparseable JSON" errors.)
+  const BATCH = 6;
   const { results: pending } = await context.env.DB.prepare(
     `SELECT id, source_name, route, price, badge, region, raw_snippet, dates
      FROM scraped_deals WHERE status='pending' AND confidence IS NULL
-     ORDER BY created_at DESC LIMIT 12`
+     ORDER BY created_at DESC LIMIT ${BATCH}`
   ).all();
 
-  if (!pending.length) return Response.json({ enriched: 0, reason: 'nothing_to_enrich' });
+  if (!pending.length) {
+    return Response.json({ enriched: 0, remaining: 0, reason: 'Queue already scored — nothing new to enrich. Scrape first if you expected fresh deals.' });
+  }
 
   const dealList = pending.map(d => ({
     id: d.id,
@@ -62,7 +67,12 @@ For each flight deal, return a JSON array where every element has:
 - "confidence": 0-100 (100 = unmistakably a genuine cheap flight deal with a clear route and price; 0 = spam, non-flight, unclear, or irrelevant)
 - "dest_type": one of "sun" (warm beach holiday), "city" (European city break), "longhaul" (>6h flight e.g. USA/Asia/Australia), "wintersun" (Canaries/warm winter beach)
 - "badge": one of "🔥 Hot", "⚡ Flash", "✈ Long Haul", "⭐ Featured", "⚠️ Mistake Fare"
-- "copy": array of exactly 3 short social captions (each 2-4 sentences, energetic Irish/UK voice, includes the route and price, ends with "Link in bio ✈"; vary the tone: 1=urgent FOMO, 2=cheeky/funny, 3=straight value). Use plain text, emojis welcome, no hashtags.
+- "copy": array of exactly 3 Instagram-ready captions. Each caption MUST follow this structure:
+  Line 1: a scroll-stopping hook with the price (this is all users see before "…more")
+  Blank line, then 2-3 short punchy paragraphs: the route, the price vs what it normally costs, the dates, why this destination slaps right now. Energetic Irish/UK voice, emojis welcome.
+  Blank line, then the CTA: "🔗 Link in bio to grab it before it's gone ✈"
+  Final line: 6-9 hashtags mixing big and niche, always including #MrCheapFlights and #CheapFlights plus destination-specific tags.
+  Aim for 500-850 characters per caption. Vary the tone across the 3: 1=urgent FOMO, 2=cheeky/funny, 3=straight-value expert.
 
 Confidence guide: ≥80 = excellent deal, clear route, credible price. 50-79 = plausible but uncertain. <50 = poor quality or off-topic.
 
@@ -84,7 +94,7 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 4096,
+        max_tokens: 8192,
         messages: [{ role: 'user', content: prompt }],
       }),
       signal: controller.signal,
@@ -128,7 +138,9 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
     // 3 caption variants → JSON string; discard malformed shapes
     let aiCopy = null;
     if (Array.isArray(s.copy) && s.copy.length && s.copy.every((c) => typeof c === 'string')) {
-      aiCopy = JSON.stringify(s.copy.slice(0, 3).map((c) => c.slice(0, 600)));
+      // IG captions run 500-850 chars by design; 1100 leaves headroom without
+      // letting a runaway response bloat the row (IG's own cap is 2200).
+      aiCopy = JSON.stringify(s.copy.slice(0, 3).map((c) => c.slice(0, 1100)));
     }
 
     stmts.push(context.env.DB.prepare(
@@ -181,5 +193,11 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
   }
 
   await logOp(context.env, 'enrich', true, { enriched, auto_approved: autoApproved, auto_published: autoPublished });
-  return Response.json({ enriched, auto_approved: autoApproved, auto_published: autoPublished });
+
+  // How many un-scored deals are still queued — lets the UI drain in one click.
+  const left = await context.env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM scraped_deals WHERE status='pending' AND confidence IS NULL`
+  ).first();
+
+  return Response.json({ enriched, auto_approved: autoApproved, auto_published: autoPublished, remaining: left?.n || 0 });
 }

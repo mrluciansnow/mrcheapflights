@@ -46,8 +46,10 @@ export async function onRequestPost(context) {
     { role: 'admin', exp: Date.now() + SESSION_SECONDS * 1000 },
     context.env.SESSION_SIGNING_SECRET
   );
+  // Secure except on plain-http local dev, where browsers drop Secure cookies.
+  const isHttps = new URL(context.request.url).protocol === 'https:';
   return new Response(null, {
     status: 204,
-    headers: { 'Set-Cookie': setCookieHeader('mcf_admin', token, { maxAgeSeconds: SESSION_SECONDS }) },
+    headers: { 'Set-Cookie': setCookieHeader('mcf_admin', token, { maxAgeSeconds: SESSION_SECONDS, secure: isHttps }) },
   });
 }

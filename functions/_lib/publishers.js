@@ -30,7 +30,9 @@ function esc(s) {
 /** One deal's HTML block for the digest/blast emails.
  *  Text-first (no image pipeline yet), matching the site's dark/gold brand. */
 export function dealEmailBlock(deal, siteUrl, marker) {
-  const dealUrl = deal.slug ? `${siteUrl}/#deal/${encodeURIComponent(deal.slug)}` : siteUrl;
+  // Server-rendered landing pages live at /deals/:slug (the old /#deal/ hash
+  // predates them and just dumped people on the homepage).
+  const dealUrl = deal.slug ? `${siteUrl}/deals/${encodeURIComponent(deal.slug)}` : siteUrl;
   const searchUrl = routeSearchUrl(deal.route, deal.region, marker);
   const wasLine = deal.was_price ? ` · was ${esc(deal.was_price)}` : '';
   const airlineLine = deal.airline ? `${esc(deal.airline)} · ` : '';
@@ -117,6 +119,32 @@ export function buildAlertHtml(deal, destName, siteUrl, marker, unsubUrl) {
 }
 
 // ── SOCIAL ────────────────────────────────────────────────────────────────────
+
+/** Instagram-ready caption for a deal — the server-side fallback when no
+ *  AI-written pipeline copy was chosen. Hook line → body → CTA → hashtags,
+ *  mirroring the enrich prompt's structure so hand-published and auto-published
+ *  deals read the same. */
+export function igCaption(deal) {
+  const dest = (String(deal.route || '').split(/→|->/)[1] || deal.route || '').trim();
+  const destTag = dest.replace(/[^a-zA-Z0-9]/g, '');
+  const airline = deal.airline || null;
+  const wasLine = deal.was_price
+    ? `Normally ${deal.was_price} — right now it's ${deal.price} RETURN. Not a typo. 🤯`
+    : `${deal.price} RETURN. That's less than a night out. 🤯`;
+
+  return `🚨 ${dest.toUpperCase()} FOR ${deal.price} RETURN?! 🚨
+
+${deal.flag || '✈️'} ${deal.route}${airline ? ` with ${airline}` : ''} — and yes, it's live right now.
+
+${wasLine}
+
+📅 ${deal.dates || 'Flexible dates'} · fares like this vanish in days, sometimes hours. Pack a carry-on, grab the passport, thank us from the beach.
+
+🔗 Link in bio to grab it before it's gone ✈
+
+#MrCheapFlights #CheapFlights #${destTag} #FlightDeals #TravelDeals #${destTag}Deals #BudgetTravel${airline ? ` #${airline.replace(/[^a-zA-Z0-9]/g, '')}` : ''}`;
+}
+
 // ── SOCIAL SHELL ──────────────────────────────────────────────────
 // Option A (recommended): Buffer — https://buffer.com/developers
 //   Env var: BUFFER_ACCESS_TOKEN
@@ -129,24 +157,34 @@ export function buildAlertHtml(deal, destName, siteUrl, marker, unsubUrl) {
 // ──────────────────────────────────────────────────────────────────
 
 async function publishViaBuffer(copy, imageUrl, token) {
-  const result = { instagram: false, facebook: false, shellMode: false };
+  const result = { instagram: false, facebook: false, shellMode: false, detail: [] };
   const profilesRes = await fetch(
     `https://api.bufferapp.com/1/profiles.json?access_token=${encodeURIComponent(token)}`
   );
-  if (!profilesRes.ok) return result;
+  if (!profilesRes.ok) {
+    result.detail.push(`Buffer profiles fetch failed: HTTP ${profilesRes.status} — token invalid/expired?`);
+    return result;
+  }
   const profiles = await profilesRes.json();
-  if (!Array.isArray(profiles)) return result;
+  if (!Array.isArray(profiles)) {
+    result.detail.push('Buffer returned no profile list — is the token for the right app?');
+    return result;
+  }
+  if (!profiles.length) {
+    result.detail.push('Buffer token works but has no connected channels — connect Instagram/Facebook in Buffer first.');
+    return result;
+  }
 
   for (const profile of profiles) {
     const isIG = profile.service === 'instagram';
     const isFB = profile.service === 'facebook';
-    if (!isIG && !isFB) continue;
+    if (!isIG && !isFB) { result.detail.push(`${profile.service}: skipped (unsupported)`); continue; }
 
     const params = new URLSearchParams({
       access_token: token,
       'profile_ids[]': profile.id,
       text: copy,
-      now: 'true',
+      now: 'true', // post immediately — never sit in Buffer's schedule queue
     });
     if (imageUrl) params.set('media[photo]', imageUrl);
 
@@ -157,6 +195,12 @@ async function publishViaBuffer(copy, imageUrl, token) {
     });
     if (res.ok && isIG) result.instagram = true;
     if (res.ok && isFB) result.facebook = true;
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      result.detail.push(`${profile.service}: HTTP ${res.status} ${errBody.slice(0, 140)}`);
+    } else {
+      result.detail.push(`${profile.service}: posted ✓`);
+    }
   }
   return result;
 }

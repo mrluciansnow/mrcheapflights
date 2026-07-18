@@ -103,8 +103,12 @@ export function getCookie(request, name) {
   return null;
 }
 
-export function setCookieHeader(name, value, { maxAgeSeconds, httpOnly = true, sameSite = 'Strict' } = {}) {
-  const parts = [`${name}=${encodeURIComponent(value)}`, 'Path=/', 'Secure', `SameSite=${sameSite}`];
+export function setCookieHeader(name, value, { maxAgeSeconds, httpOnly = true, sameSite = 'Strict', secure = true } = {}) {
+  // secure:false exists ONLY for plain-http local dev (wrangler pages dev) —
+  // embedded browsers refuse to store Secure cookies over http, which made the
+  // admin pipeline untestable locally. Production is always https.
+  const parts = [`${name}=${encodeURIComponent(value)}`, 'Path=/', `SameSite=${sameSite}`];
+  if (secure) parts.splice(1, 0, 'Secure');
   if (httpOnly) parts.push('HttpOnly');
   if (maxAgeSeconds != null) parts.push(`Max-Age=${maxAgeSeconds}`);
   return parts.join('; ');

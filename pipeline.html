@@ -103,9 +103,40 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
 .btn-no{background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);color:#f87171;border-radius:6px;padding:5px 9px;font-family:'Bebas Neue',cursive;font-size:9px;letter-spacing:1px;cursor:pointer;}
 .btn-no:hover{background:rgba(248,113,113,0.18);}
 .bulk-bar{display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap;}
+/* ── Toasts ── */
+#toasts{position:fixed;top:14px;right:14px;z-index:999;display:flex;flex-direction:column;gap:8px;max-width:340px;}
+.toast{background:#0A0F2E;border:1px solid rgba(0,229,204,0.4);border-radius:10px;padding:10px 14px;font-size:12px;color:#fff;box-shadow:0 6px 24px rgba(0,0,0,0.5);animation:tin .18s ease-out;line-height:1.5;}
+.toast.err{border-color:rgba(248,113,113,0.55);}
+.toast.warn{border-color:rgba(251,191,36,0.5);}
+@keyframes tin{from{transform:translateX(20px);opacity:0;}to{transform:none;opacity:1;}}
+/* ── Deal card extras ── */
+.deal-thumb{width:100%;height:54px;object-fit:cover;border-radius:6px;margin-bottom:6px;display:block;background:#000;}
+.chip-row{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;}
+.chip-s{font-size:8.5px;font-weight:700;padding:2px 6px;border-radius:8px;letter-spacing:0.3px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.45);border:1px solid rgba(255,255,255,0.12);}
+.chip-s.c-live{background:rgba(34,197,94,0.12);color:#4ade80;border-color:rgba(34,197,94,0.3);}
+.chip-s.c-ai{background:rgba(0,229,204,0.1);color:var(--t);border-color:rgba(0,229,204,0.3);}
+.chip-s.c-soc{background:rgba(255,45,120,0.12);color:#ff7aa8;border-color:rgba(255,45,120,0.3);}
+.card-actions{display:flex;gap:5px;margin-top:8px;}
+.btn-mini{flex:1;background:rgba(255,215,0,0.1);border:1px solid rgba(255,215,0,0.3);color:var(--y);border-radius:6px;padding:5px 7px;font-family:'Bebas Neue',cursive;font-size:9px;letter-spacing:1px;cursor:pointer;}
+.btn-mini:hover{background:rgba(255,215,0,0.22);}
+.btn-mini.alt{background:rgba(255,45,120,0.08);border-color:rgba(255,45,120,0.28);color:#ff7aa8;}
+.btn-mini.alt:hover{background:rgba(255,45,120,0.18);}
+.btn-mini:disabled{opacity:0.3;cursor:not-allowed;}
+/* ── Publish result panel ── */
+.result-panel{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:12px 14px;margin:10px 0;font-size:11px;line-height:1.7;color:rgba(255,255,255,0.75);display:none;}
+.result-panel b{color:#fff;}
+.result-panel .rp-deal{border-bottom:1px dashed rgba(255,255,255,0.1);padding:5px 0;}
+.result-panel .rp-deal:last-child{border-bottom:none;}
+/* ── Wizard nav ── */
+.step.clickable:hover{border-color:rgba(255,215,0,0.5);color:var(--y);}
+.btn-back{background:transparent;color:rgba(255,255,255,0.45);border:1px solid rgba(255,255,255,0.18);border-radius:8px;padding:9px 16px;font-family:'Bebas Neue',cursive;font-size:12px;letter-spacing:2px;cursor:pointer;margin-top:8px;width:100%;}
+.btn-back:hover{color:#fff;border-color:rgba(255,255,255,0.4);}
+.qrow.jumpable{cursor:pointer;}
+.qrow.jumpable:hover{border-color:rgba(255,255,255,0.35);}
 </style>
 </head>
 <body>
+<div id="toasts"></div>
 <div class="w" id="main-w">
   <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1.25rem;">
     <div>
@@ -121,20 +152,23 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
     <div class="stat"><b id="stat-live">—</b><small>Live</small></div>
     <div class="stat"><b id="stat-sources">8</b><small>Sources</small></div>
     <div class="stat-actions">
-      <button class="act-btn" id="btn-scrape" onclick="runScraper()">🔄 Scrape</button>
-      <button class="act-btn" id="btn-enrich" onclick="runEnrich()">🤖 Enrich</button>
+      <button class="act-btn" id="btn-scrape" onclick="runScraper()" title="Fetch fresh deals from the 8 RSS sources right now">🔄 Scrape</button>
+      <button class="act-btn" id="btn-enrich" onclick="runEnrich()" title="AI scores every un-scored deal (0-100 confidence, destination type) and writes 3 Instagram captions each. ≥80 auto-approves to drafts.">🤖 Enrich</button>
+      <button class="act-btn" id="btn-images" onclick="runImages()" title="Generate hero images now for live deals missing one (normally runs 09:20 daily)">🎨 Images</button>
+      <button class="act-btn" id="btn-alerts" onclick="runAlerts()" title="Match new live deals to subscriber price alerts and send them now (normally hourly at :35)">🔔 Alerts</button>
+      <button class="act-btn" id="btn-digest" onclick="runDigest()" title="Compile + email the admin briefing now (normally 09:15 daily)">📋 Briefing</button>
     </div>
   </div>
   <div id="source-health" style="display:none;margin:-0.7rem 0 1.2rem;padding:7px 14px;border-radius:8px;font-size:10px;letter-spacing:0.3px;"></div>
 
   <div class="step-bar">
-    <div class="step active" id="stp1">① Select deals</div>
+    <div class="step active" id="stp1" onclick="navStep(1)">① Select deals</div>
     <div class="step-arrow">›</div>
-    <div class="step" id="stp2">② Style</div>
+    <div class="step" id="stp2" onclick="navStep(2)">② Style</div>
     <div class="step-arrow">›</div>
-    <div class="step" id="stp3">③ Images</div>
+    <div class="step" id="stp3" onclick="navStep(3)">③ Images</div>
     <div class="step-arrow">›</div>
-    <div class="step" id="stp4">④ Ad copy</div>
+    <div class="step" id="stp4" onclick="navStep(4)">④ Ad copy</div>
   </div>
 
   <!-- STEP 1: DEAL SELECTION -->
@@ -142,7 +176,9 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
     <div class="tab-bar">
       <button class="tab active" id="tab-draft" onclick="switchTab('draft')">Draft Deals</button>
       <button class="tab" id="tab-scraped" onclick="switchTab('scraped')">Scraped Queue<span id="scraped-count-badge"></span></button>
+      <button class="tab" id="tab-live" onclick="switchTab('live')">Live<span id="live-count-badge"></span></button>
     </div>
+    <div class="result-panel" id="result-panel"></div>
 
     <!-- Draft Deals pane -->
     <div id="draft-pane">
@@ -180,6 +216,15 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
       </div>
       <div class="deal-grid" id="scraped-dg"></div>
     </div><!-- /scraped-pane -->
+
+    <!-- Live deals pane -->
+    <div id="live-pane" style="display:none">
+      <div class="bulk-bar">
+        <button class="act-btn" onclick="loadLiveDeals()">↻ Refresh</button>
+        <span style="font-size:10px;color:rgba(255,255,255,0.35);align-self:center;">Live on the site — post any of them to socials on demand.</span>
+      </div>
+      <div class="deal-grid" id="live-dg"></div>
+    </div><!-- /live-pane -->
   </div>
 
   <!-- STEP 2: STYLE SELECTION (per deal) -->
@@ -191,6 +236,7 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
       <div class="panel-sub" id="s2-dealsub"></div>
       <div class="style-grid" id="sgrid"></div>
       <button class="next-btn" id="style-next" onclick="confirmStyle()" disabled style="opacity:0.3;">Use this style ›</button>
+      <button class="btn-back" onclick="goBack(2)">‹ Back</button>
     </div>
   </div>
 
@@ -205,6 +251,7 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
       <button class="act-btn" id="btn-genimg" onclick="generateDealImage()" style="width:100%;margin-bottom:8px;">✨ Generate real AI image (uses the chosen style)</button>
       <div style="font-size:9px;color:rgba(255,255,255,0.3);margin-bottom:8px;" id="img-note">Variants A–C are layout placeholders — or generate a real image above.</div>
       <button class="next-btn" id="img-next" onclick="confirmImg()" disabled style="opacity:0.3;">Use this image ›</button>
+      <button class="btn-back" onclick="goBack(3)">‹ Back</button>
     </div>
   </div>
 
@@ -222,6 +269,7 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
         <button class="btn-skip" onclick="skipCopy()">Skip</button>
         <button class="btn-approve" onclick="confirmCopy()">Approve ›</button>
       </div>
+      <button class="btn-back" onclick="goBack(4)">‹ Back</button>
     </div>
     <div class="all-done-box" id="all-done" style="display:none;">
       <div class="big">ALL DEALS READY!</div>
@@ -317,22 +365,32 @@ let chosenStyle = null;
 let chosenImg = null;
 let scrapedDeals = [];
 
+// ── Toasts (replaces every alert) ─────────────────────────────────────────────
+function toast(msg, kind, ms) {
+  var box = document.getElementById('toasts');
+  var t = document.createElement('div');
+  t.className = 'toast' + (kind === 'err' ? ' err' : kind === 'warn' ? ' warn' : '');
+  t.innerHTML = msg;
+  box.appendChild(t);
+  setTimeout(function(){ t.style.transition = 'opacity .3s'; t.style.opacity = '0'; setTimeout(function(){ t.remove(); }, 320); }, ms || (kind === 'err' ? 9000 : 5000));
+}
+
 // ── Tab switching ─────────────────────────────────────────────────────────────
 function switchTab(tab) {
-  var isDraft = tab === 'draft';
-  document.getElementById('draft-pane').style.display = isDraft ? 'block' : 'none';
-  document.getElementById('scraped-pane').style.display = isDraft ? 'none' : 'block';
-  document.getElementById('tab-draft').className = 'tab' + (isDraft ? ' active' : '');
-  document.getElementById('tab-scraped').className = 'tab' + (!isDraft ? ' active' : '');
-  if (!isDraft) loadScrapedQueue();
+  ['draft', 'scraped', 'live'].forEach(function(t) {
+    document.getElementById(t + '-pane').style.display = t === tab ? 'block' : 'none';
+    document.getElementById('tab-' + t).className = 'tab' + (t === tab ? ' active' : '');
+  });
+  if (tab === 'scraped') loadScrapedQueue();
+  if (tab === 'live') loadLiveDeals();
 }
 
 // ── Stats bar ─────────────────────────────────────────────────────────────────
 async function loadStats() {
   try {
     var [scrapedRes, dealsRes] = await Promise.all([
-      fetch('/api/admin/scraped-deals?status=pending'),
-      fetch('/api/deals'),
+      fetch('/api/admin/scraped-deals?status=pending', {cache: 'no-store'}),
+      fetch('/api/deals', {cache: 'no-store'}),
     ]);
     var scraped = scrapedRes.ok ? await scrapedRes.json() : [];
     var deals   = dealsRes.ok  ? await dealsRes.json()   : [];
@@ -376,7 +434,7 @@ async function loadScrapedQueue() {
   if (!grid) return;
   grid.innerHTML = '<div class="empty-note">Loading…</div>';
   try {
-    var res = await fetch('/api/admin/scraped-deals?status=pending');
+    var res = await fetch('/api/admin/scraped-deals?status=pending', {cache: 'no-store'});
     if (!res.ok) throw new Error('HTTP ' + res.status);
     scrapedDeals = await res.json();
     renderScrapedQueue();
@@ -421,32 +479,44 @@ function renderScrapedQueue() {
       '<div class="scrape-deal-meta">' + escHtml(d.source_name) + ' · ' + escHtml(d.dates || '—') + '</div>' +
       '<div class="scrape-deal-meta">' + escHtml(d.badge || '') + (d.dest_type ? ' · ' + d.dest_type : '') + '</div>' +
       '<div class="scrape-actions">' +
-        '<button class="btn-ok" onclick="approveScraped(' + d.id + ')">✓ Approve</button>' +
+        '<button class="btn-ok" onclick="approveScraped(' + d.id + ')" title="Move to Draft Deals for the full wizard">✓ Approve</button>' +
+        '<button class="btn-ok" style="background:rgba(255,215,0,0.1);border-color:rgba(255,215,0,0.3);color:var(--y);" onclick="approveAndPublish(' + d.id + ')" title="One click: approve AND put it live on the site now. Image + socials + email fan out automatically.">🚀 Approve &amp; publish</button>' +
         '<button class="btn-no" onclick="rejectScraped(' + d.id + ')">✕</button>' +
       '</div>' +
     '</div>';
   }).join('');
 }
 
-async function approveScraped(id) {
+async function approveScraped(id, opts) {
   var el = document.getElementById('sd-' + id);
   if (el) el.style.opacity = '0.4';
   try {
     var res = await fetch('/api/admin/scraped-deals/' + id + '/approve', { method: 'POST' });
     if (!res.ok) {
       var body = await res.text();
-      alert('Cannot approve: ' + body);
+      toast('❌ Cannot approve: ' + escHtml(body.slice(0, 160)), 'err');
       if (el) el.style.opacity = '1';
-      return;
+      return null;
     }
+    var data = await res.json().catch(function(){ return {}; });
     scrapedDeals = scrapedDeals.filter(function(d){ return d.id !== id; });
     renderScrapedQueue();
     loadStats();
     loadDraftDeals();
+    if (!opts || !opts.quiet) toast('✅ Approved → now in Draft Deals');
+    return data.dealId || null;
   } catch(e) {
-    alert('Network error.');
+    toast('❌ Network error approving deal', 'err');
     if (el) el.style.opacity = '1';
+    return null;
   }
+}
+
+async function approveAndPublish(id) {
+  var dealId = await approveScraped(id, { quiet: true });
+  if (!dealId) { toast('Approved, but could not resolve the draft to publish — check Draft Deals.', 'warn'); return; }
+  toast('✅ Approved — publishing to the site…');
+  await expressPublish(dealId, null, '🚀');
 }
 
 async function rejectScraped(id) {
@@ -464,59 +534,164 @@ async function rejectScraped(id) {
 
 async function approveAllHighConf() {
   var hi = scrapedDeals.filter(function(d){ return d.confidence !== null && d.confidence !== undefined && d.confidence >= 80; });
-  if (!hi.length) { alert('No deals with confidence ≥ 80. Run 🤖 Enrich first.'); return; }
+  if (!hi.length) { toast('No deals scored ≥ 80 yet — run 🤖 Enrich first.', 'warn'); return; }
   if (!confirm('Approve ' + hi.length + ' high-confidence deal' + (hi.length > 1 ? 's' : '') + '?')) return;
-  for (var i = 0; i < hi.length; i++) await approveScraped(hi[i].id);
+  for (var i = 0; i < hi.length; i++) await approveScraped(hi[i].id, { quiet: true });
+  toast('✅ Approved ' + hi.length + ' deal' + (hi.length > 1 ? 's' : '') + ' → Draft Deals');
 }
 
 async function rejectAllLowConf() {
   var lo = scrapedDeals.filter(function(d){ return d.confidence !== null && d.confidence !== undefined && d.confidence < 40; });
-  if (!lo.length) { alert('No deals with confidence < 40.'); return; }
+  if (!lo.length) { toast('No deals scored < 40.', 'warn'); return; }
   if (!confirm('Reject ' + lo.length + ' low-confidence deal' + (lo.length > 1 ? 's' : '') + '?')) return;
   for (var i = 0; i < lo.length; i++) await rejectScraped(lo[i].id);
+  toast('🗑️ Rejected ' + lo.length + ' low-confidence deal' + (lo.length > 1 ? 's' : ''));
+}
+
+// ── Express publish (single deal, optional channel filter) ────────────────────
+function describeChannelResult(id, r) {
+  if (!r) return '';
+  var bits = [];
+  if (r.website) bits.push(r.website.published ? '🌐 site: LIVE' : r.website.skipped ? '🌐 site: ' + r.website.skipped : '🌐 site: ⚠ ' + (r.website.error || '?'));
+  if (r.image) bits.push(r.image.generated ? '🎨 image: generated' : '🎨 image: ' + (r.image.error || 'skipped'));
+  if (r.social) {
+    if (r.social.skipped) bits.push('📱 social: ' + r.social.skipped);
+    else if (r.social.shellMode) bits.push('📱 social: shell mode (no keys)');
+    else {
+      var ok = [];
+      if (r.social.instagram) ok.push('IG');
+      if (r.social.facebook) ok.push('FB');
+      bits.push('📱 social: ' + (ok.length ? 'posted to ' + ok.join('+') : '⚠ nothing posted'));
+      if (r.social.detail && r.social.detail.length) bits.push('<span style="color:rgba(255,255,255,0.4);">' + escHtml(r.social.detail.join(' · ')) + '</span>');
+    }
+  }
+  if (r.email) bits.push(r.email.blast ? '📧 email: blast sent (' + r.email.sent + ')' : '📧 email: ' + (r.email.queued ? 'queued for daily digest' : r.email.skipped || r.email.reason || '—'));
+  if (r.error) bits.push('❌ ' + escHtml(r.error));
+  return bits.join(' &nbsp;·&nbsp; ');
+}
+
+function showResultPanel(results, label) {
+  var panel = document.getElementById('result-panel');
+  var rows = Object.keys(results || {}).map(function(id) {
+    return '<div class="rp-deal"><b>Deal #' + id + '</b> — ' + describeChannelResult(id, results[id]) + '</div>';
+  });
+  panel.innerHTML = '<b>' + (label || 'Publish') + ' results</b>' + rows.join('');
+  panel.style.display = 'block';
+}
+
+async function expressPublish(dealId, channels, icon) {
+  try {
+    var body = { dealIds: [dealId] };
+    if (channels) body.channels = channels;
+    var res = await fetch('/api/admin/publish', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) { toast('❌ Publish failed: HTTP ' + res.status, 'err'); return; }
+    var data = await res.json();
+    showResultPanel(data.results, (icon || '🚀') + ' Publish');
+    var r = data.results && data.results[dealId];
+    if (r && r.website && r.website.published) toast('🚀 Deal is LIVE on the site — image, socials &amp; email fanned out. Details below the tabs.');
+    else if (channels && channels.length === 1 && channels[0] === 'social') {
+      var s = r && r.social;
+      if (s && (s.instagram || s.facebook)) toast('📱 Posted to socials!');
+      else if (s && s.shellMode) toast('📱 Social in shell mode — Buffer token applies on next deploy.', 'warn');
+      else toast('📱 Social attempt finished — see details below the tabs.', 'warn');
+    } else toast('Publish finished — see per-channel results below the tabs.');
+    loadStats(); loadDraftDeals();
+    if (document.getElementById('live-pane').style.display !== 'none') loadLiveDeals();
+  } catch(e) { toast('❌ Network error during publish', 'err'); }
 }
 
 // ── Automation controls ───────────────────────────────────────────────────────
+function busy(btnId, label) {
+  var btn = document.getElementById(btnId);
+  if (!btn) return function(){};
+  var orig = btn.textContent;
+  btn.classList.add('act-loading'); btn.disabled = true; btn.textContent = label;
+  return function(){ btn.classList.remove('act-loading'); btn.disabled = false; btn.textContent = orig; };
+}
+
 async function runScraper() {
-  var btn = document.getElementById('btn-scrape');
-  if (btn) { btn.classList.add('act-loading'); btn.textContent = 'Scraping…'; }
+  var done = busy('btn-scrape', 'Scraping…');
   try {
     var res  = await fetch('/api/admin/trigger-scrape', { method: 'POST' });
     var data = res.ok ? await res.json() : null;
     if (data) {
-      var msg = 'Found ' + data.deals_found + ' deals · ' + data.deals_new + ' new';
-      if (data.errors && data.errors.length) msg += ' · ' + data.errors.length + ' source error(s)';
-      alert(msg);
-    } else {
-      alert('Scraper error: HTTP ' + res.status);
-    }
-  } catch(e) { alert('Network error: ' + e.message); }
-  if (btn) { btn.classList.remove('act-loading'); btn.textContent = '🔄 Scrape'; }
+      var msg = '🔄 Scrape: ' + data.deals_found + ' found · <b>' + data.deals_new + ' new</b>';
+      if (data.errors && data.errors.length) msg += ' · ⚠ ' + data.errors.length + ' source error(s)';
+      toast(msg, data.errors && data.errors.length ? 'warn' : 'ok');
+    } else toast('❌ Scraper error: HTTP ' + res.status, 'err');
+  } catch(e) { toast('❌ Network error: ' + escHtml(e.message), 'err'); }
+  done();
   loadStats();
   if (document.getElementById('scraped-pane').style.display !== 'none') loadScrapedQueue();
 }
 
+// Enrich = AI scoring + caption writing. Batches of 6 — keep going until the
+// queue is drained so one click always finishes the job.
 async function runEnrich() {
-  var btn = document.getElementById('btn-enrich');
-  if (btn) { btn.classList.add('act-loading'); btn.textContent = 'Enriching…'; }
+  var done = busy('btn-enrich', 'Scoring…');
+  var total = 0, approved = 0, rounds = 0;
   try {
-    var res  = await fetch('/api/admin/enrich-pending', { method: 'POST' });
-    var data = res.ok ? await res.json() : null;
-    if (data) {
-      if (data.reason) { alert(data.reason); }
-      else {
-        var msg = 'Enriched ' + data.enriched + ' deal' + (data.enriched !== 1 ? 's' : '');
-        if (data.auto_approved) msg += ' · Auto-approved ' + data.auto_approved + ' high-confidence deal' + (data.auto_approved !== 1 ? 's' : '');
-        alert(msg);
+    while (rounds < 8) {
+      rounds++;
+      var res  = await fetch('/api/admin/enrich-pending', { method: 'POST' });
+      var data = res.ok ? await res.json() : null;
+      if (!data) { toast('❌ Enrich error: HTTP ' + (res ? res.status : '?'), 'err'); break; }
+      if (data.error) { toast('❌ Enrich: ' + escHtml(String(data.error).slice(0, 160)), 'err'); break; }
+      total += data.enriched || 0;
+      approved += data.auto_approved || 0;
+      if (!data.remaining) {
+        if (total === 0) toast('🤖 ' + escHtml(data.reason || 'Queue already scored — nothing new to enrich.'), 'warn');
+        break;
       }
-    } else {
-      alert('Enrich error: HTTP ' + res.status);
+      toast('🤖 Scored ' + total + ' so far — ' + data.remaining + ' to go…', 'ok', 2500);
     }
-  } catch(e) { alert('Network error: ' + e.message); }
-  if (btn) { btn.classList.remove('act-loading'); btn.textContent = '🤖 Enrich'; }
+    if (total > 0) {
+      var msg = '🤖 Enrich done: <b>' + total + ' deal' + (total !== 1 ? 's' : '') + ' scored</b> + 3 IG captions each';
+      if (approved) msg += ' · ' + approved + ' auto-approved (≥80)';
+      toast(msg);
+    }
+  } catch(e) { toast('❌ Network error: ' + escHtml(e.message), 'err'); }
+  done();
   await loadStats();
   await loadDraftDeals();
   if (document.getElementById('scraped-pane').style.display !== 'none') await loadScrapedQueue();
+}
+
+async function runImages() {
+  var done = busy('btn-images', 'Generating…');
+  try {
+    var res = await fetch('/api/cron/generate-images', { method: 'POST' });
+    var data = res.ok ? await res.json() : null;
+    if (data) toast('🎨 ' + (data.generated || 0) + ' image(s) generated' + (data.remaining ? ' · ' + data.remaining + ' still queued — run again' : ' — all live deals covered'));
+    else toast('❌ Image run error: HTTP ' + res.status, 'err');
+  } catch(e) { toast('❌ Network error: ' + escHtml(e.message), 'err'); }
+  done(); loadStats();
+}
+
+async function runAlerts() {
+  var done = busy('btn-alerts', 'Matching…');
+  try {
+    var res = await fetch('/api/cron/send-alerts', { method: 'POST' });
+    var data = res.ok ? await res.json() : null;
+    if (data) toast('🔔 Alerts: ' + (data.deals_scanned || 0) + ' deal(s) scanned · ' + (data.matched || 0) + ' matched · <b>' + (data.sent || 0) + ' sent</b>' + (data.reason ? ' · ' + escHtml(data.reason) : ''));
+    else toast('❌ Alerts error: HTTP ' + res.status, 'err');
+  } catch(e) { toast('❌ Network error: ' + escHtml(e.message), 'err'); }
+  done();
+}
+
+async function runDigest() {
+  if (!confirm('Compile and email the admin briefing now?')) return;
+  var done = busy('btn-digest', 'Compiling…');
+  try {
+    var res = await fetch('/api/admin/daily-digest', { method: 'POST' });
+    var data = res.ok ? await res.json() : null;
+    if (data && data.ok) toast('📋 Briefing sent' + (data.email && data.email.ok ? ' ✓' : ' (email ' + escHtml((data.email && data.email.reason) || 'not configured') + ')'));
+    else toast('❌ Briefing error: HTTP ' + res.status, 'err');
+  } catch(e) { toast('❌ Network error: ' + escHtml(e.message), 'err'); }
+  done();
 }
 
 function toggleAddForm(){
@@ -548,7 +723,7 @@ async function submitCandidate(){
 
 async function loadDraftDeals(){
   try {
-    var res = await fetch('/api/deals');
+    var res = await fetch('/api/deals', {cache: 'no-store'});
     if(!res.ok) throw new Error('not ok');
     var data = await res.json();
     var isAdmin = data.length > 0 && Object.prototype.hasOwnProperty.call(data[0], 'status');
@@ -568,16 +743,27 @@ function showAuthGate(){
     '</div>';
 }
 
+function dealChips(d) {
+  var chips = [];
+  chips.push(d.status === 'live' ? '<span class="chip-s c-live">LIVE</span>' : '<span class="chip-s">DRAFT</span>');
+  if (d.ai_copy) chips.push('<span class="chip-s c-ai">🤖 AI copy</span>');
+  if (d.image_url) chips.push('<span class="chip-s c-ai">🎨 image</span>');
+  if (d.published_social) chips.push('<span class="chip-s c-soc">📱 posted</span>');
+  if (d.published_email) chips.push('<span class="chip-s">📧 emailed</span>');
+  return '<div class="chip-row">' + chips.join('') + '</div>';
+}
+
 function renderDeals() {
   var dg = document.getElementById('dg');
   if(!draftDeals.length){
-    dg.innerHTML = '<div class="empty-note">No candidate deals yet — add one above.</div>';
+    dg.innerHTML = '<div class="empty-note">No candidate deals yet — approve some from the Scraped Queue or add one above.</div>';
   } else {
     dg.innerHTML = draftDeals.map(function(d){
       var save = saveOf(d);
       return `
       <div class="deal${selDeals.has(d.id)?' sel':''}" onclick="toggleDeal(${d.id})">
         <div class="chk">✓</div>
+        ${d.image_url?`<img class="deal-thumb" src="${d.image_url}" alt="" loading="lazy"/>`:''}
         <div class="deal-route">${d.route}</div>
         <div style="display:flex;align-items:baseline;gap:4px;margin-top:3px;">
           <span class="deal-price">${d.price}</span>
@@ -585,7 +771,11 @@ function renderDeals() {
           ${save?`<span class="deal-save">-${save}%</span>`:''}
         </div>
         <div class="deal-meta">${d.airline||''} ${d.airline?'·':''} ${d.dates||''}</div>
-        <div class="deal-meta">${d.ai_copy?'🤖 AI copy ready':''}${d.published_email?' · 📧 emailed':''}${d.published_social?' · 📱 posted':''}</div>
+        ${dealChips(d)}
+        <div class="card-actions">
+          <button class="btn-mini" onclick="event.stopPropagation();expressPublish(${d.id})" title="Skip the wizard: live on the site immediately. Missing image is generated inline; socials + email fan out too.">🚀 Publish now</button>
+          <button class="btn-mini alt" onclick="event.stopPropagation();expressPublish(${d.id},['social'],'📱')" title="Testing: fire ONLY the social post for this deal, right now (posts immediately via Buffer, no schedule)">📱 Socials only</button>
+        </div>
       </div>`;
     }).join('');
   }
@@ -594,27 +784,113 @@ function renderDeals() {
   document.getElementById('n1btn').disabled = c === 0;
 }
 
+// ── Live pane ─────────────────────────────────────────────────────────────────
+var liveDeals = [];
+async function loadLiveDeals() {
+  var grid = document.getElementById('live-dg');
+  grid.innerHTML = '<div class="empty-note">Loading…</div>';
+  try {
+    var res = await fetch('/api/deals', {cache: 'no-store'});
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    var data = await res.json();
+    liveDeals = data.filter(function(d){ return d.status === 'live'; });
+    var badge = document.getElementById('live-count-badge');
+    if (badge) badge.textContent = liveDeals.length ? ' (' + liveDeals.length + ')' : '';
+    if (!liveDeals.length) { grid.innerHTML = '<div class="empty-note">Nothing live right now.</div>'; return; }
+    grid.innerHTML = liveDeals.map(function(d){
+      return `
+      <div class="deal" style="cursor:default;">
+        ${d.image_url?`<img class="deal-thumb" src="${d.image_url}" alt="" loading="lazy"/>`:''}
+        <div class="deal-route">${d.route}</div>
+        <div style="display:flex;align-items:baseline;gap:4px;margin-top:3px;">
+          <span class="deal-price">${d.price}</span>
+        </div>
+        <div class="deal-meta">${d.dates||''} ${d.region?'· '+d.region.toUpperCase():''}</div>
+        ${dealChips(d)}
+        <div class="card-actions">
+          <button class="btn-mini alt" onclick="expressPublish(${d.id},['social'],'📱')" ${d.published_social?'disabled title="Already posted — idempotency guard will skip it"':'title="Post this deal to Instagram/Facebook right now via Buffer"'}>📱 Post socials now</button>
+          <a class="btn-mini" style="text-align:center;text-decoration:none;line-height:1.6;" href="/deals/${encodeURIComponent(d.slug||'')}" target="_blank" rel="noopener">👁 View page</a>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    grid.innerHTML = '<div class="empty-note">Could not load live deals.</div>';
+  }
+}
+
 function toggleDeal(id) {
   if(selDeals.has(id)){selDeals.delete(id);}
   else if(selDeals.size<6){selDeals.add(id);}
   renderDeals();
 }
 
+var currentStep = 1;
 function goStep(n) {
+  currentStep = n;
   ['s1','s2','s3','s4'].forEach(function(id,i){
     document.getElementById(id).className = 'section'+(i+1===n?' vis':'');
   });
   ['stp1','stp2','stp3','stp4'].forEach(function(id,i){
-    document.getElementById(id).className = 'step'+(i+1<n?' done':i+1===n?' active':'');
+    var cls = 'step'+(i+1<n?' done':i+1===n?' active':'');
+    // Steps behind you (and step 1 always) are clickable once a queue exists
+    if (i+1 < n || i+1 === 1 || (queuedDeals.length && i+1 <= 4)) cls += ' clickable';
+    document.getElementById(id).className = cls;
   });
 }
 
-function renderQueue(elId, activeAccent) {
+// Step-bar navigation — the wizard used to be forward-only ("stuck").
+function navStep(n) {
+  if (n === currentStep) return;
+  if (n === 1) { goStep(1); return; }
+  if (!queuedDeals.length) { toast('Select deals on step ① first.', 'warn'); return; }
+  // Prerequisite: styles must exist before images/copy make sense
+  if (n >= 3 && !(dealMeta[0] && dealMeta[0].style)) { toast('Pick styles (step ②) before jumping ahead.', 'warn'); return; }
+  queueIdx = 0;
+  resetStep4Panels();
+  goStep(n);
+  if (n === 2) loadStyle(); else if (n === 3) loadImg(); else loadCopy();
+}
+
+function resetStep4Panels() {
+  document.getElementById('copy-panel').style.display = '';
+  document.getElementById('all-done').style.display = 'none';
+}
+
+// Back button: previous deal in this step, or the previous step's last deal.
+function goBack(step) {
+  if (step === 4 && document.getElementById('all-done').style.display === 'block') {
+    // Finished state → reopen the last deal's copy
+    resetStep4Panels();
+    queueIdx = queuedDeals.length - 1;
+    loadCopy();
+    return;
+  }
+  if (queueIdx > 0) {
+    queueIdx--;
+    if (step === 2) loadStyle(); else if (step === 3) loadImg(); else loadCopy();
+  } else if (step === 2) {
+    goStep(1);
+  } else {
+    queueIdx = queuedDeals.length - 1;
+    goStep(step - 1);
+    if (step - 1 === 2) loadStyle(); else loadImg();
+  }
+}
+
+// Queue rows: click any already-done deal to revisit it.
+function jumpQueue(step, i) {
+  if (i > queueIdx) { toast('Finish the current deal first — you can only jump back.', 'warn'); return; }
+  queueIdx = i;
+  resetStep4Panels();
+  if (step === 2) loadStyle(); else if (step === 3) loadImg(); else loadCopy();
+}
+
+function renderQueue(elId, activeAccent, stepN) {
   document.getElementById(elId).innerHTML = queuedDeals.map(function(d,i){
     var isDone = i < queueIdx, isNow = i === queueIdx;
-    var tag = isDone ? `<span class="qstatus" style="color:var(--t);">DONE ✓</span>`
+    var tag = isDone ? `<span class="qstatus" style="color:var(--t);">DONE ✓ — click to edit</span>`
             : isNow  ? `<span class="qstatus" style="color:${activeAccent};">NOW</span>` : '';
-    return `<div class="qrow ${isDone?'done-q':isNow?'active-q':''}">
+    return `<div class="qrow ${isDone?'done-q jumpable':isNow?'active-q':''}" ${isDone?`onclick="jumpQueue(${stepN},${i})"`:''}>
       <span class="qnum">${i+1}</span><span>${d.route}</span>
       <span style="margin-left:6px;font-size:9px;color:rgba(255,255,255,0.25);">${d.price}</span>${tag}
     </div>`;
@@ -631,7 +907,7 @@ function startStylePhase() {
 }
 
 function loadStyle() {
-  renderQueue('dqueue2','var(--y)');
+  renderQueue('dqueue2','var(--y)',2);
   var d = queuedDeals[queueIdx];
   document.getElementById('s2-dealname').textContent = d.route.toUpperCase() + ' · ' + d.price;
   document.getElementById('s2-dealsub').textContent = 'Pick the aesthetic that fits ' + destOf(d) + ' best';
@@ -664,7 +940,7 @@ function confirmStyle() {
 
 /* ---- STEP 3: IMAGES ---- */
 function loadImg() {
-  renderQueue('dqueue3','var(--p)');
+  renderQueue('dqueue3','var(--p)',3);
   var d = queuedDeals[queueIdx];
   document.getElementById('s3-dealname').textContent = d.route.toUpperCase() + ' · ' + d.price;
   document.getElementById('s3-style').textContent = 'Style: ' + (dealMeta[queueIdx]?.style||'');
@@ -737,7 +1013,7 @@ function confirmImg() {
 
 /* ---- STEP 4: AD COPY ---- */
 function loadCopy() {
-  renderQueue('dqueue4','var(--t)');
+  renderQueue('dqueue4','var(--t)',4);
   var d = queuedDeals[queueIdx];
   document.getElementById('s4-dealname').textContent = d.route.toUpperCase() + ' · ' + d.price;
   activeCopyTab = 0;
@@ -809,6 +1085,7 @@ async function publishAll() {
     });
     if (res.ok) {
       var data = await res.json();
+      showResultPanel(data.results, '🚀 Wizard publish');
       var social = 0, blasts = 0, queued = 0;
       Object.keys(data.results || {}).forEach(function(k){
         var r = data.results[k];
@@ -820,7 +1097,8 @@ async function publishAll() {
       if (social) bits.push(social + ' posted to social');
       if (blasts) bits.push(blasts + ' error-fare blast' + (blasts > 1 ? 's' : '') + ' sent');
       if (queued) bits.push(queued + ' queued for the daily digest');
-      channelNote = bits.length ? bits.join(' · ') : 'Social &amp; email channels in shell mode (keys not set)';
+      channelNote = bits.length ? bits.join(' · ') : 'Social &amp; email in shell mode (keys not set)';
+      channelNote += '<br><span style="color:rgba(255,255,255,0.35);">Full per-channel breakdown on step ① below the tabs.</span>';
     } else {
       channelNote = 'Channel fan-out failed (HTTP ' + res.status + ') — deals are still live';
     }
@@ -828,7 +1106,8 @@ async function publishAll() {
     channelNote = 'Channel fan-out unreachable — deals are still live';
   }
   document.getElementById('all-done').innerHTML =
-    '<div class="big">PUBLISHED! ✈</div><div class="smol">Live on mrcheapflights.ie / .co.uk now.<br>' + channelNote + '</div>';
+    '<div class="big">PUBLISHED! ✈</div><div class="smol">Live on mrcheapflights.ie / .co.uk now.<br>' + channelNote + '</div>' +
+    '<button class="next-btn" style="max-width:340px;" onclick="location.reload()">Start a new batch ↺</button>';
 }
 
 loadDraftDeals();
