@@ -75,17 +75,20 @@ export function buildBrief({ price, currency, airline, stops, departDate, return
 
 // ── Provider: Travelpayouts Data API (cached Aviasales fares) ────────────────
 export async function checkTravelpayouts(env, deal, pair) {
-  const token = env.TRAVELPAYOUTS_TOKEN;
+  // trim(): a trailing newline from a terminal paste 401s the whole provider.
+  const token = (env.TRAVELPAYOUTS_TOKEN || '').trim();
   if (!token) return { skipped: 'TRAVELPAYOUTS_TOKEN not set' };
   const currency = currencyFor(deal.region);
 
+  // Token sent both ways — some TP endpoints only honour the X-Access-Token
+  // header, others the query param. Belt and braces beats a 401.
   const url = `https://api.travelpayouts.com/v1/prices/cheap?origin=${pair.origin}&destination=${pair.dest}` +
     `&currency=${currency.toLowerCase()}&token=${encodeURIComponent(token)}`;
   const controller = new AbortController();
   const to = setTimeout(() => controller.abort(), 12000);
   let res;
   try {
-    res = await fetch(url, { signal: controller.signal, headers: { 'Accept-Encoding': 'gzip' } });
+    res = await fetch(url, { signal: controller.signal, headers: { 'X-Access-Token': token } });
   } catch (e) {
     clearTimeout(to);
     return { error: e.name === 'AbortError' ? 'timeout' : e.message };
@@ -121,7 +124,7 @@ export async function checkTravelpayouts(env, deal, pair) {
 
 // ── Provider: Google Flights via SerpApi ─────────────────────────────────────
 export async function checkGoogle(env, deal, pair, departDate, returnDate) {
-  const key = env.SERPAPI_KEY;
+  const key = (env.SERPAPI_KEY || '').trim();
   if (!key) return { skipped: 'SERPAPI_KEY not set' };
   const currency = currencyFor(deal.region);
 
@@ -177,8 +180,11 @@ export async function checkGoogle(env, deal, pair, departDate, returnDate) {
 
 async function upsertCheck(env, dealId, source, listedPrice, r) {
   const status = r.error ? 'error' : r.status === 'not_found' ? 'not_found' : verdict(listedPrice, r.price);
+  // Errors are stored in `brief` (NULL otherwise for non-display rows) so a
+  // failing provider is diagnosable from the table instead of vanishing.
   const brief = (status === 'verified' || status === 'price_changed')
     ? buildBrief({ price: r.price, currency: r.currency, airline: r.airline, stops: r.stops, departDate: r.departDate, returnDate: r.returnDate })
+    : status === 'error' ? String(r.error).slice(0, 140)
     : null;
   await env.DB.prepare(
     `INSERT INTO fare_checks (deal_id, source, status, price_found, currency, depart_date, return_date,
