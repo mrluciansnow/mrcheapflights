@@ -95,15 +95,26 @@ function cityToIata(name) {
 }
 
 /**
- * Derive an affiliate-wrapped Aviasales search link from a deal's route text
- * ("Dublin → Lisbon"). Returns null when the destination can't be mapped —
- * callers treat null as "no fares link available", never an error.
+ * Resolve a deal's route text ("Dublin → Lisbon") to IATA codes.
+ * Returns { origin, dest } or null when the destination can't be mapped.
+ * Shared by the affiliate links and the fare-verification engine.
  */
-export function routeSearchUrl(route, region, marker) {
+export function routeIatas(route, region) {
   const parts = String(route || '').split(/→|->/);
   if (parts.length < 2) return null;
   const origin = cityToIata(parts[0]) || (region === 'uk' ? 'LON' : 'DUB');
   const dest = cityToIata(parts[1]);
   if (!dest || dest === origin) return null;
-  return buildSearchLink(origin, dest, marker);
+  return { origin, dest };
+}
+
+/**
+ * Derive an affiliate-wrapped Aviasales search link from a deal's route text
+ * ("Dublin → Lisbon"). Returns null when the destination can't be mapped —
+ * callers treat null as "no fares link available", never an error.
+ */
+export function routeSearchUrl(route, region, marker) {
+  const pair = routeIatas(route, region);
+  if (!pair) return null;
+  return buildSearchLink(pair.origin, pair.dest, marker);
 }

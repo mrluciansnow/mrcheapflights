@@ -8,19 +8,21 @@ import { getCookie, verifySession } from '../_lib/auth.js';
 export async function onRequestGet(context) {
   const cookie = getCookie(context.request, 'mcf_member');
   const noCache = { headers: { 'Cache-Control': 'private, no-store' } };
-  if (!cookie) return Response.json({ premium: false, tier: 'free' }, noCache);
+  // member:false = guest — distinct from a logged-in free member, which the
+  // fare-details gating needs ("log in to see" vs "upgrade to see").
+  if (!cookie) return Response.json({ premium: false, tier: 'free', member: false }, noCache);
 
   const session = await verifySession(cookie, context.env.SESSION_SIGNING_SECRET);
-  if (!session) return Response.json({ premium: false, tier: 'free' }, noCache);
+  if (!session) return Response.json({ premium: false, tier: 'free', member: false }, noCache);
 
   const row = await context.env.DB.prepare(
     'SELECT email, current_period_end FROM subscribers WHERE member_token = ?'
   ).bind(session.sub).first();
-  if (!row) return Response.json({ premium: false, tier: 'free' }, noCache);
+  if (!row) return Response.json({ premium: false, tier: 'free', member: false }, noCache);
 
   const now = Math.floor(Date.now() / 1000);
   const premium = row.current_period_end != null && row.current_period_end > now;
-  return Response.json({ premium, tier: premium ? 'premium' : 'free', email: row.email }, {
+  return Response.json({ premium, tier: premium ? 'premium' : 'free', member: true, email: row.email }, {
     headers: { 'Cache-Control': 'private, no-store' },
   });
 }

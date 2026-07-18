@@ -11,6 +11,8 @@
 
 import { routeSearchUrl } from '../_lib/affiliate.js';
 import { destSlugForText, getDestination } from '../_lib/destinations.js';
+import { resolveMemberTier, isPremiumBadge } from '../_lib/auth.js';
+import { fareMapForDeals, publicFare } from '../_lib/fares.js';
 
 function esc(s) {
   return String(s == null ? '' : s)
@@ -39,6 +41,60 @@ const TYPE_GRADIENTS = {
 };
 
 function parsePrice(s) { const n = parseFloat(String(s || '').replace(/[^0-9.]/g, '')); return isNaN(n) ? null : n; }
+
+function timeAgo(unix) {
+  if (!unix) return '';
+  const h = Math.floor((Date.now() / 1000 - unix) / 3600);
+  if (h < 1) return 'just now';
+  if (h < 24) return h + 'h ago';
+  const d = Math.floor(h / 24);
+  return d + ' day' + (d > 1 ? 's' : '') + ' ago';
+}
+
+// The "✓ Verified flight details" block. Three renders:
+//   entitled + data → brief + Google/booking links
+//   entitled, unchecked yet → Google link + "first check pending"
+//   gated → blurred placeholder + login/upgrade overlay (real data is
+//   withheld server-side; the blur is cosmetic over FAKE text)
+function fareBlockHtml(fare, gate, deal, base) {
+  if (gate === 'none') {
+    if (fare && (fare.status === 'verified' || fare.status === 'price_changed')) {
+      const ok = fare.status === 'verified';
+      const src = fare.source === 'google' ? 'Google Flights' : 'Aviasales';
+      return `
+    <div class="fare-verify">
+      <div class="fv-head">🔎 FLIGHT DETAILS <span class="fv-badge ${ok ? 'ok' : 'warn'}">${ok ? '✓ Verified on ' + src : '⚠ Price moved since listing'}</span></div>
+      <div class="fv-brief">${esc(fare.brief || '')}</div>
+      <div class="fv-meta">Independently checked ${timeAgo(fare.checked_at)} · source: ${src}</div>
+      <div class="fv-links">
+        ${fare.google_url ? `<a class="fv-g" href="${esc(fare.google_url)}" target="_blank" rel="noopener noreferrer">Open in Google Flights ↗</a>` : ''}
+        ${fare.book_url ? `<a class="fv-b" href="/api/go?deal=${deal.id}&kind=fares" rel="noopener noreferrer">Book these dates →</a>` : ''}
+      </div>
+    </div>`;
+    }
+    const gUrl = fare && fare.google_url;
+    return `
+    <div class="fare-verify">
+      <div class="fv-head">🔎 FLIGHT DETAILS <span class="fv-badge warn">First automated check runs within 8h</span></div>
+      <div class="fv-meta" style="margin-top:.4rem;">Our fare robots verify every deal against live Google Flights data.</div>
+      ${gUrl ? `<div class="fv-links"><a class="fv-g" href="${esc(gUrl)}" target="_blank" rel="noopener noreferrer">Check it yourself on Google Flights ↗</a></div>` : ''}
+    </div>`;
+  }
+  // Gated: fake blurred rows + CTA. No real data anywhere in this branch.
+  const cta = gate === 'login'
+    ? `<a href="#su-form">Log in free to see flight details</a>`
+    : `<a href="${base}/#premium">Premium unlocks error-fare details</a>`;
+  const msg = gate === 'login' ? '🔒 Log in to see flight details' : '⭐ Premium members see these details';
+  return `
+    <div class="fare-verify">
+      <div class="fv-head">🔎 FLIGHT DETAILS <span class="fv-badge ok">✓ Verified</span></div>
+      <div class="fv-lock">
+        <div class="fv-brief">€## · Airline hidden · direct · ## Oct → ## Oct</div>
+        <div class="fv-meta">Independently checked · source: Google Flights</div>
+      </div>
+      <div class="fv-overlay"><b>${msg}</b>${cta}</div>
+    </div>`;
+}
 
 export async function onRequestGet(context) {
   const url = new URL(context.request.url);
@@ -103,6 +159,19 @@ export async function onRequestGet(context) {
   const wasNum = parsePrice(deal.was_price);
   const savePct = priceNum && wasNum && wasNum > priceNum ? Math.round((1 - priceNum / wasNum) * 100) : null;
   const currency = String(deal.price).trim().startsWith('£') ? 'GBP' : 'EUR';
+
+  // ── Verified flight details — server-side gated by membership tier ──
+  const tier = await resolveMemberTier(context);
+  const premiumDeal = isPremiumBadge(deal.badge);
+  const fareEntitled = tier === 'premium' || (tier === 'free' && !premiumDeal);
+  let fare = null;
+  if (fareEntitled) {
+    try {
+      const fm = await fareMapForDeals(context.env, [deal.id]);
+      fare = publicFare(deal, fm[deal.id], context.env.TRAVELPAYOUTS_MARKER || '');
+    } catch { /* table may not exist yet */ }
+  }
+  const fareGate = fareEntitled ? 'none' : (tier === 'guest' ? 'login' : 'premium');
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -203,6 +272,21 @@ ${heroImg ? `.hero-img{position:absolute;inset:0;width:100%;height:100%;object-f
 .cta-book{display:block;text-align:center;background:var(--yellow);color:var(--navy);font-weight:900;font-size:1.15rem;padding:1.05rem;border-radius:14px;box-shadow:0 10px 30px rgba(255,210,0,.25);transition:transform .15s;}
 .cta-book:hover{transform:translateY(-2px);}
 .cta-fares{display:block;text-align:center;margin-top:.7rem;color:var(--yellow);font-weight:800;font-size:.95rem;text-decoration:underline;}
+.fare-verify{margin-top:1.1rem;background:rgba(0,229,204,.05);border:1px solid rgba(0,229,204,.22);border-radius:14px;padding:1rem 1.15rem;position:relative;overflow:hidden;}
+.fv-head{font-family:'Bebas Neue',sans-serif;font-size:.85rem;letter-spacing:2px;color:var(--teal);display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;}
+.fv-badge{font-family:'Nunito',sans-serif;font-size:.68rem;font-weight:900;padding:2px 9px;border-radius:20px;letter-spacing:.3px;}
+.fv-badge.ok{background:rgba(34,197,94,.15);color:#4ade80;border:1px solid rgba(34,197,94,.35);}
+.fv-badge.warn{background:rgba(251,191,36,.13);color:#fbbf24;border:1px solid rgba(251,191,36,.3);}
+.fv-brief{font-size:1.05rem;font-weight:800;color:#fff;margin:.55rem 0 .2rem;}
+.fv-meta{font-size:.72rem;color:rgba(255,255,255,.38);font-weight:600;}
+.fv-links{display:flex;gap:.6rem;margin-top:.7rem;flex-wrap:wrap;}
+.fv-links a{flex:1;min-width:150px;text-align:center;font-size:.82rem;font-weight:900;padding:.6rem .8rem;border-radius:10px;text-decoration:none;}
+.fv-links .fv-g{background:#fff;color:#1a73e8;border:1px solid rgba(255,255,255,.2);}
+.fv-links .fv-b{background:rgba(255,210,0,.12);color:var(--yellow);border:1px solid rgba(255,210,0,.35);}
+.fv-lock{filter:blur(6px);user-select:none;pointer-events:none;}
+.fv-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.5rem;background:rgba(6,11,31,.55);border-radius:14px;}
+.fv-overlay b{font-size:.95rem;color:#fff;font-weight:900;}
+.fv-overlay a{background:var(--yellow);color:var(--navy);font-weight:900;font-size:.82rem;padding:.55rem 1.2rem;border-radius:50px;text-decoration:none;}
 .trust-strip{display:flex;justify-content:center;gap:1.4rem;flex-wrap:wrap;margin:1.1rem 0 0;color:var(--dim);font-size:.78rem;font-weight:700;}
 .trust-strip span::before{content:'✓ ';color:var(--teal);}
 .section{margin:2.6rem 0;}
@@ -280,6 +364,8 @@ ${heroImg ? `.hero-img{position:absolute;inset:0;width:100%;height:100%;object-f
 
     <a class="cta-book" href="/api/go?deal=${deal.id}&kind=book" rel="noopener noreferrer" onclick="gtag('event','deal_book_click',{deal_route:'${esc(deal.route).replace(/'/g, '')}',location:'landing'})">Book This Deal ✈</a>
     ${searchUrl ? `<a class="cta-fares" href="/api/go?deal=${deal.id}&kind=fares" rel="noopener noreferrer">🔍 Compare live fares for these dates</a>` : ''}
+
+    ${fareBlockHtml(fare, fareGate, deal, base)}
 
     <div class="trust-strip"><span>Book direct with the airline</span><span>No commission, ever</span><span>Deals checked daily</span></div>
   </main>

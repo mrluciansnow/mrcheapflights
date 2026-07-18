@@ -1,5 +1,6 @@
-import { requireAdmin } from '../_lib/auth.js';
+import { requireAdmin, resolveMemberTier, isPremiumBadge } from '../_lib/auth.js';
 import { routeSearchUrl } from '../_lib/affiliate.js';
+import { fareMapForDeals, publicFare } from '../_lib/fares.js';
 
 // Public: list live deals, optionally filtered by region. Mirrors the shape
 // of the old in-memory `deals[]` array so the frontend mapping is 1:1.
@@ -34,14 +35,37 @@ export async function onRequestGet(context) {
   // Affiliate layer: derive a "check live fares" search link per deal.
   // Clean Aviasales link without TRAVELPAYOUTS_MARKER; wrapped once it's set.
   const marker = context.env.TRAVELPAYOUTS_MARKER || '';
-  const withLinks = results.map((d) => ({
-    ...d,
-    search_url: routeSearchUrl(d.route, d.region, marker),
-  }));
+
+  // ── Fare verification payload — SERVER-SIDE gated ──
+  // guest → no fare data at all, fare_gate tells the client what teaser to
+  // render ('login'); free member → details on free-shelf deals, premium
+  // badges stay gated ('premium'); premium member → everything.
+  const tier = session ? 'premium' : await resolveMemberTier(context);
+  let fareMap = {};
+  try {
+    fareMap = await fareMapForDeals(context.env, results.map((d) => d.id));
+  } catch { /* fare_checks may not exist yet — listings degrade gracefully */ }
+
+  const withLinks = results.map((d) => {
+    const premiumDeal = isPremiumBadge(d.badge);
+    const entitled = tier === 'premium' || (tier === 'free' && !premiumDeal);
+    const out = {
+      ...d,
+      search_url: routeSearchUrl(d.route, d.region, marker),
+      fare_gate: entitled ? 'none' : (tier === 'guest' ? 'login' : 'premium'),
+    };
+    if (entitled) {
+      const fare = publicFare(d, fareMap[d.id], marker);
+      if (fare) out.fare = fare;
+    }
+    return out;
+  });
   // Vary: Cookie — without it, a browser that cached the public (logged-out)
   // response re-serves it to a logged-in admin for 5 minutes, which locked the
   // pipeline page behind its auth gate with stale data.
-  const cacheHeaders = session
+  // Only the pure-guest response is publicly cacheable: member responses carry
+  // gated fare data and must never land in a shared cache.
+  const cacheHeaders = (session || tier !== 'guest')
     ? { 'Cache-Control': 'private, no-store', 'Vary': 'Cookie' }
     : { 'Cache-Control': 'public, max-age=300, stale-while-revalidate=60', 'Vary': 'Cookie' };
   return Response.json(withLinks, { headers: cacheHeaders });
