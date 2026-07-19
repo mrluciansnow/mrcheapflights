@@ -158,6 +158,7 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
       <button class="act-btn" id="btn-alerts" onclick="runAlerts()" title="Match new live deals to subscriber price alerts and send them now (normally hourly at :35)">🔔 Alerts</button>
       <button class="act-btn" id="btn-digest" onclick="runDigest()" title="Compile + email the admin briefing now (normally 09:15 daily)">📋 Briefing</button>
     </div>
+    <div id="social-status" style="width:100%;font-size:10px;color:rgba(255,255,255,0.45);letter-spacing:0.5px;"></div>
   </div>
   <div id="source-health" style="display:none;margin:-0.7rem 0 1.2rem;padding:7px 14px;border-radius:8px;font-size:10px;letter-spacing:0.3px;"></div>
 
@@ -402,6 +403,7 @@ async function loadStats() {
     if (badge) badge.textContent = pending ? ' (' + pending + ')' : '';
   } catch(e) { /* stats are non-critical */ }
   loadSourceHealth();
+  loadSocialStatus();
 }
 
 async function loadSourceHealth() {
@@ -603,6 +605,212 @@ async function expressPublish(dealId, channels, icon) {
   } catch(e) { toast('❌ Network error during publish', 'err'); }
 }
 
+// ── Branded ad poster composer ────────────────────────────────────────────────
+// 1080×1080 canvas: AI background photo + dark gradient + wordmark + badge +
+// flag + route + dates + huge price + mascot. Stored server-side; social
+// publishing prefers it over the raw photo.
+function findDealAnywhere(id) {
+  return draftDeals.find(function(d){ return d.id === id; })
+      || liveDeals.find(function(d){ return d.id === id; })
+      || null;
+}
+
+function flagIso(flag) {
+  var cps = Array.from(String(flag || '')).map(function(c){ return c.codePointAt(0); })
+    .filter(function(cp){ return cp >= 0x1F1E6 && cp <= 0x1F1FF; });
+  if (cps.length !== 2) return null;
+  return cps.map(function(cp){ return String.fromCharCode(cp - 0x1F1E6 + 97); }).join('');
+}
+
+function loadImgEl(src, cross) {
+  return new Promise(function(resolve){
+    var img = new Image();
+    if (cross) img.crossOrigin = 'anonymous';
+    img.onload = function(){ resolve(img); };
+    img.onerror = function(){ resolve(null); };
+    img.src = src;
+  });
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+
+async function composePoster(d) {
+  await Promise.all([
+    document.fonts.load('200px Bangers'), document.fonts.load('84px "Bebas Neue"'),
+  ]).catch(function(){});
+  var iso = flagIso(d.flag);
+  var imgs = await Promise.all([
+    loadImgEl(d.image_url, false),                                   // same-origin AI background
+    loadImgEl('/mascot.png', false),                                 // transparent mascot
+    iso ? loadImgEl('https://flagcdn.com/w160/' + iso + '.png', true) : Promise.resolve(null),
+  ]);
+  var bg = imgs[0], mascot = imgs[1], flagImg = imgs[2];
+  if (!bg) return { error: 'Background image failed to load — generate the deal image first (🎨).' };
+
+  var S = 1080;
+  var cv = document.createElement('canvas'); cv.width = S; cv.height = S;
+  var ctx = cv.getContext('2d');
+
+  // Background, cover-fit
+  var scale = Math.max(S / bg.width, S / bg.height);
+  var bw = bg.width * scale, bh = bg.height * scale;
+  ctx.drawImage(bg, (S - bw) / 2, (S - bh) / 2, bw, bh);
+
+  // Legibility gradient
+  var grad = ctx.createLinearGradient(0, S * 0.30, 0, S);
+  grad.addColorStop(0, 'rgba(6,11,31,0)');
+  grad.addColorStop(0.55, 'rgba(6,11,31,0.55)');
+  grad.addColorStop(1, 'rgba(6,11,31,0.94)');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, S, S);
+  // Top scrim for the wordmark/badge
+  var top = ctx.createLinearGradient(0, 0, 0, 170);
+  top.addColorStop(0, 'rgba(6,11,31,0.75)'); top.addColorStop(1, 'rgba(6,11,31,0)');
+  ctx.fillStyle = top; ctx.fillRect(0, 0, S, 170);
+
+  // Wordmark
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = '56px Bangers';
+  ctx.fillStyle = '#FFD700';
+  ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 8;
+  ctx.fillText('MR CHEAP FLIGHTS ✈', 48, 92);
+  ctx.shadowBlur = 0;
+
+  // Badge chip (top-right)
+  var badge = String(d.badge || '').toUpperCase();
+  ctx.font = '38px "Bebas Neue"';
+  var bwid = ctx.measureText(badge).width + 44;
+  ctx.fillStyle = '#FF2D78';
+  roundRect(ctx, S - bwid - 44, 44, bwid, 62, 31); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.fillText(badge, S - bwid - 22, 88);
+
+  // Flag + route
+  var y = 700;
+  if (flagImg) {
+    var fh = 68, fw = fh * (flagImg.width / flagImg.height);
+    ctx.save(); roundRect(ctx, 52, y - 54, fw, fh, 10); ctx.clip();
+    ctx.drawImage(flagImg, 52, y - 54, fw, fh); ctx.restore();
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2;
+    roundRect(ctx, 52, y - 54, fw, fh, 10); ctx.stroke();
+  }
+  // Route auto-shrinks until it clears the mascot zone (right ~330px)
+  var routeTxt = String(d.route || '').toUpperCase();
+  var routeX = 52 + (flagImg ? 118 : 0);
+  var maxRouteW = S - routeX - 340;
+  var fs = 86;
+  ctx.font = fs + 'px "Bebas Neue"';
+  while (fs > 44 && ctx.measureText(routeTxt).width > maxRouteW) {
+    fs -= 4; ctx.font = fs + 'px "Bebas Neue"';
+  }
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 10;
+  ctx.fillText(routeTxt, routeX, y + 8);
+  ctx.shadowBlur = 0;
+
+  // Dates
+  ctx.font = '46px "Bebas Neue"';
+  ctx.fillStyle = 'rgba(255,255,255,0.78)';
+  ctx.fillText((d.dates || 'FLEXIBLE DATES').toUpperCase(), 56, y + 78);
+
+  // Price block
+  ctx.font = '44px "Bebas Neue"'; ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  ctx.fillText('RETURN FROM', 56, y + 168);
+  ctx.font = '210px Bangers'; ctx.fillStyle = '#FFD700';
+  ctx.shadowColor = 'rgba(0,0,0,0.65)'; ctx.shadowBlur = 14;
+  ctx.fillText(String(d.price || ''), 48, S - 62);
+  ctx.shadowBlur = 0;
+  if (d.was_price) {
+    var pw = ctx.measureText(String(d.price || '')).width;
+    ctx.font = '58px "Bebas Neue"'; ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    var wasTxt = 'WAS ' + String(d.was_price).toUpperCase();
+    ctx.fillText(wasTxt, 72 + pw, S - 96);
+    var ww = ctx.measureText(wasTxt).width;
+    ctx.strokeStyle = 'rgba(255,45,120,0.9)'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(72 + pw - 4, S - 116); ctx.lineTo(72 + pw + ww + 4, S - 116); ctx.stroke();
+  }
+
+  // Mascot — the art is circular but the PNG has a baked-in dark square, so
+  // clip to a circle (with a subtle ring) to sit cleanly on the photo.
+  if (mascot) {
+    var md = 330;                       // circle diameter
+    var mcx = S - md / 2 - 40, mcy = S - md / 2 - 40;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(mcx, mcy, md / 2, 0, Math.PI * 2); ctx.clip();
+    var ms = Math.max(md / mascot.width, md / mascot.height) * 1.02;
+    ctx.drawImage(mascot, mcx - mascot.width * ms / 2, mcy - mascot.height * ms / 2,
+                  mascot.width * ms, mascot.height * ms);
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(mcx, mcy, md / 2, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,215,0,0.85)'; ctx.lineWidth = 6; ctx.stroke();
+  }
+
+  // Site URL
+  ctx.font = '34px "Bebas Neue"'; ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillText((d.region === 'uk' ? 'MRCHEAPFLIGHTS.CO.UK' : 'MRCHEAPFLIGHTS.IE'), 56, 152);
+
+  try {
+    return { dataUrl: cv.toDataURL('image/jpeg', 0.85) };
+  } catch(e) {
+    return { error: 'Canvas export blocked (' + e.message + ') — a cross-origin image tainted it.' };
+  }
+}
+
+async function makePoster(id, opts) {
+  var d = findDealAnywhere(id);
+  if (!d) { toast('Deal not loaded — refresh the tab.', 'warn'); return null; }
+  if (!d.image_url) { toast('No AI image yet — hit 🎨 Images (or Step ③ ✨) first, then build the poster.', 'warn'); return null; }
+  if (!opts || !opts.quiet) toast('🖼 Composing poster…', 'ok', 2500);
+  var out = await composePoster(d);
+  if (out.error) { toast('❌ Poster: ' + escHtml(out.error), 'err'); return null; }
+  try {
+    var res = await fetch('/api/admin/save-poster', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ dealId: id, dataUrl: out.dataUrl }),
+    });
+    var data = res.ok ? await res.json() : null;
+    if (!data || !data.url) { toast('❌ Poster save failed: HTTP ' + res.status, 'err'); return null; }
+    d.poster_url = data.url;
+    renderDeals();
+    if (document.getElementById('live-pane').style.display !== 'none') loadLiveDeals();
+    if (!opts || !opts.quiet) {
+      toast('🖼 Poster ready — opening preview.');
+      window.open(data.url, '_blank', 'noopener');
+    }
+    return data.url;
+  } catch(e) { toast('❌ Network error saving poster', 'err'); return null; }
+}
+
+// Socials with the branded creative guaranteed: build the poster first when
+// one doesn't exist yet, then fire the social-only publish.
+async function socialsFire(id) {
+  var d = findDealAnywhere(id);
+  if (d && !d.poster_url && d.image_url) {
+    toast('🖼 No poster yet — composing it first…', 'ok', 3000);
+    await makePoster(id, { quiet: true });
+  }
+  await expressPublish(id, ['social'], '📱');
+}
+
+// ── Buffer connection status (read-only, no posting) ─────────────────────────
+async function loadSocialStatus() {
+  var elx = document.getElementById('social-status');
+  if (!elx) return;
+  try {
+    var res = await fetch('/api/admin/social-status', {cache: 'no-store'});
+    if (!res.ok) return;
+    var s = await res.json();
+    if (!s.armed) { elx.innerHTML = '📱 social: <span style="color:#fbbf24">no token</span>'; return; }
+    if (!s.ok) { elx.innerHTML = '📱 social: <span style="color:#f87171" title="' + escHtml(s.error || '') + '">auth failed</span>'; toast('📱 Buffer: ' + escHtml((s.error || '').slice(0, 140)), 'err'); return; }
+    if (!s.channels.length) { elx.innerHTML = '📱 social: <span style="color:#fbbf24">no channels connected in Buffer</span>'; return; }
+    elx.innerHTML = '📱 ' + s.channels.map(function(c){ return escHtml(c.service) + ' ✓'; }).join(' · ');
+    elx.style.color = '#4ade80';
+  } catch(e) { /* non-critical */ }
+}
+
 // ── Automation controls ───────────────────────────────────────────────────────
 function busy(btnId, label) {
   var btn = document.getElementById(btnId);
@@ -748,6 +956,7 @@ function dealChips(d) {
   chips.push(d.status === 'live' ? '<span class="chip-s c-live">LIVE</span>' : '<span class="chip-s">DRAFT</span>');
   if (d.ai_copy) chips.push('<span class="chip-s c-ai">🤖 AI copy</span>');
   if (d.image_url) chips.push('<span class="chip-s c-ai">🎨 image</span>');
+  if (d.poster_url) chips.push('<span class="chip-s c-soc">🖼 poster</span>');
   if (d.published_social) chips.push('<span class="chip-s c-soc">📱 posted</span>');
   if (d.published_email) chips.push('<span class="chip-s">📧 emailed</span>');
   return '<div class="chip-row">' + chips.join('') + '</div>';
@@ -774,7 +983,8 @@ function renderDeals() {
         ${dealChips(d)}
         <div class="card-actions">
           <button class="btn-mini" onclick="event.stopPropagation();expressPublish(${d.id})" title="Skip the wizard: live on the site immediately. Missing image is generated inline; socials + email fan out too.">🚀 Publish now</button>
-          <button class="btn-mini alt" onclick="event.stopPropagation();expressPublish(${d.id},['social'],'📱')" title="Testing: fire ONLY the social post for this deal, right now (posts immediately via Buffer, no schedule)">📱 Socials only</button>
+          <button class="btn-mini" onclick="event.stopPropagation();makePoster(${d.id})" title="Compose the branded 1080×1080 ad poster: AI background + price + route + flag + mascot. Opens a preview.">🖼 Poster</button>
+          <button class="btn-mini alt" onclick="event.stopPropagation();socialsFire(${d.id})" title="Post ONLY to socials right now (auto-builds the poster first if missing)">📱 Socials</button>
         </div>
       </div>`;
     }).join('');
@@ -808,8 +1018,9 @@ async function loadLiveDeals() {
         <div class="deal-meta">${d.dates||''} ${d.region?'· '+d.region.toUpperCase():''}</div>
         ${dealChips(d)}
         <div class="card-actions">
-          <button class="btn-mini alt" onclick="expressPublish(${d.id},['social'],'📱')" ${d.published_social?'disabled title="Already posted — idempotency guard will skip it"':'title="Post this deal to Instagram/Facebook right now via Buffer"'}>📱 Post socials now</button>
-          <a class="btn-mini" style="text-align:center;text-decoration:none;line-height:1.6;" href="/deals/${encodeURIComponent(d.slug||'')}" target="_blank" rel="noopener">👁 View page</a>
+          <button class="btn-mini" onclick="makePoster(${d.id})" title="Compose the branded ad poster (background + price + flag + mascot). Opens a preview.">🖼 Poster</button>
+          <button class="btn-mini alt" onclick="socialsFire(${d.id})" ${d.published_social?'disabled title="Already posted — idempotency guard will skip it"':'title="Post to Instagram/Facebook right now via Buffer (auto-builds the poster first)"'}>📱 Post now</button>
+          <a class="btn-mini" style="text-align:center;text-decoration:none;line-height:1.6;" href="/deals/${encodeURIComponent(d.slug||'')}" target="_blank" rel="noopener">👁 View</a>
         </div>
       </div>`;
     }).join('');

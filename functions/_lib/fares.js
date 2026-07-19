@@ -74,51 +74,92 @@ export function buildBrief({ price, currency, airline, stops, departDate, return
 }
 
 // ── Provider: Travelpayouts Data API (cached Aviasales fares) ────────────────
+// Current-gen aviasales/v3 endpoint first (legacy v1 401s on newer accounts
+// even with a valid token), v2/prices/latest as the fallback.
+async function tpFetch(url, token) {
+  const controller = new AbortController();
+  const to = setTimeout(() => controller.abort(), 12000);
+  try {
+    const res = await fetch(url, { signal: controller.signal, headers: { 'X-Access-Token': token } });
+    clearTimeout(to);
+    return res;
+  } catch (e) {
+    clearTimeout(to);
+    throw new Error(e.name === 'AbortError' ? 'timeout' : e.message);
+  }
+}
+
 export async function checkTravelpayouts(env, deal, pair) {
   // trim(): a trailing newline from a terminal paste 401s the whole provider.
   const token = (env.TRAVELPAYOUTS_TOKEN || '').trim();
   if (!token) return { skipped: 'TRAVELPAYOUTS_TOKEN not set' };
   const currency = currencyFor(deal.region);
+  const cur = currency.toLowerCase();
 
-  // Token sent both ways — some TP endpoints only honour the X-Access-Token
-  // header, others the query param. Belt and braces beats a 401.
-  const url = `https://api.travelpayouts.com/v1/prices/cheap?origin=${pair.origin}&destination=${pair.dest}` +
-    `&currency=${currency.toLowerCase()}&token=${encodeURIComponent(token)}`;
-  const controller = new AbortController();
-  const to = setTimeout(() => controller.abort(), 12000);
-  let res;
+  let best = null, lastErr = null;
+
+  // v3 prices_for_dates — richest shape: price, airline, transfers, dates
   try {
-    res = await fetch(url, { signal: controller.signal, headers: { 'X-Access-Token': token } });
-  } catch (e) {
-    clearTimeout(to);
-    return { error: e.name === 'AbortError' ? 'timeout' : e.message };
+    const res = await tpFetch(
+      `https://api.travelpayouts.com/aviasales/v3/prices_for_dates?origin=${pair.origin}&destination=${pair.dest}` +
+      `&currency=${cur}&sorting=price&limit=10&one_way=false&token=${encodeURIComponent(token)}`, token);
+    if (res.ok) {
+      const body = await res.json().catch(() => null);
+      for (const o of body?.data || []) {
+        if (o?.price != null && (!best || o.price < best.price)) {
+          best = {
+            price: o.price,
+            airline: o.airline || null,
+            stops: o.transfers ?? null,
+            departDate: (o.depart_date || '').slice(0, 10) || null,
+            returnDate: (o.return_date || '').slice(0, 10) || null,
+          };
+        }
+      }
+      if (!best) return { status: 'not_found' };
+    } else {
+      lastErr = `v3 HTTP ${res.status}`;
+    }
+  } catch (e) { lastErr = `v3 ${e.message}`; }
+
+  // v2/prices/latest fallback (no airline field, but real prices + dates)
+  if (!best) {
+    try {
+      const res = await tpFetch(
+        `https://api.travelpayouts.com/v2/prices/latest?origin=${pair.origin}&destination=${pair.dest}` +
+        `&currency=${cur}&limit=10&one_way=false&token=${encodeURIComponent(token)}`, token);
+      if (res.ok) {
+        const body = await res.json().catch(() => null);
+        for (const o of body?.data || []) {
+          const price = o?.value ?? o?.price;
+          if (price != null && (!best || price < best.price)) {
+            best = {
+              price,
+              airline: null,
+              stops: o.number_of_changes ?? null,
+              departDate: (o.depart_date || '').slice(0, 10) || null,
+              returnDate: (o.return_date || '').slice(0, 10) || null,
+            };
+          }
+        }
+        if (!best) return { status: 'not_found' };
+      } else {
+        return { error: `${lastErr || ''} / v2 HTTP ${res.status}`.trim() };
+      }
+    } catch (e) {
+      return { error: `${lastErr || ''} / v2 ${e.message}`.trim() };
+    }
   }
-  clearTimeout(to);
-  if (!res.ok) return { error: `HTTP ${res.status}` };
 
-  const body = await res.json().catch(() => null);
-  const offers = body?.data?.[pair.dest];
-  if (!offers || !Object.keys(offers).length) return { status: 'not_found' };
-
-  // Offers keyed by "0","1","2" (0 = direct where available) — take cheapest.
-  let best = null;
-  for (const k of Object.keys(offers)) {
-    const o = offers[k];
-    if (o?.price != null && (!best || o.price < best.price)) best = { ...o, stops: parseInt(k) || 0 };
-  }
-  if (!best) return { status: 'not_found' };
-
-  const departDate = (best.departure_at || '').slice(0, 10) || null;
-  const returnDate = (best.return_at || '').slice(0, 10) || null;
   return {
     status: 'ok',
     price: best.price,
     currency,
-    airline: best.airline || null,
+    airline: best.airline,
     stops: best.stops,
-    departDate,
-    returnDate,
-    url: buildSearchLink(pair.origin, pair.dest, env.TRAVELPAYOUTS_MARKER || '', departDate, returnDate),
+    departDate: best.departDate,
+    returnDate: best.returnDate,
+    url: buildSearchLink(pair.origin, pair.dest, (env.TRAVELPAYOUTS_MARKER || '').trim(), best.departDate, best.returnDate),
   };
 }
 

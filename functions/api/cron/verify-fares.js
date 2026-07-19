@@ -21,8 +21,14 @@ async function handle(context) {
   }
 
   const url = new URL(context.request.url);
-  const maxDeals = Math.min(40, parseInt(url.searchParams.get('deals')) || 15);
-  const maxGoogle = Math.min(10, parseInt(url.searchParams.get('google')) || 1);
+  // NaN-safe with explicit zero allowed — `?google=0` must mean zero, not the
+  // default (|| would coerce 0 back to 1 and quietly spend SerpApi budget).
+  const numParam = (name, dflt) => {
+    const n = parseInt(url.searchParams.get(name));
+    return Number.isFinite(n) ? n : dflt;
+  };
+  const maxDeals = Math.min(40, Math.max(1, numParam('deals', 15)));
+  const maxGoogle = Math.min(10, Math.max(0, numParam('google', 1)));
 
   let summary;
   try {
@@ -30,6 +36,14 @@ async function handle(context) {
   } catch (e) {
     await logOp(context.env, 'fares', false, { error: e.message });
     return Response.json({ ok: false, error: e.message }, { status: 500 });
+  }
+
+  // ?debug=1 — NON-REVERSIBLE shape of the stored TP token (length + charset
+  // booleans only, never content). TP tokens are 32-char hex; a mismatched
+  // shape means the paste went wrong, without anyone reading the secret.
+  if (url.searchParams.get('debug') === '1') {
+    const t = (context.env.TRAVELPAYOUTS_TOKEN || '').trim();
+    summary.tp_token_shape = { len: t.length, hex32: /^[a-f0-9]{32}$/i.test(t), had_whitespace: t !== (context.env.TRAVELPAYOUTS_TOKEN || '') };
   }
 
   await logOp(context.env, 'fares', true, summary);

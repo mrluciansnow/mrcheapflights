@@ -65,7 +65,7 @@ export async function onRequestPost(context) {
 
     const deal = await context.env.DB.prepare(
       `SELECT id, flag, route, dates, price, badge, url, expiry, slug, region, status,
-              pipeline_copy, was_price, airline, published_email, published_social, image_url
+              pipeline_copy, was_price, airline, published_email, published_social, image_url, poster_url
        FROM deals WHERE id=?`
     ).bind(id).first();
 
@@ -118,8 +118,11 @@ export async function onRequestPost(context) {
         // never the bare one-liner that used to go out for express publishes.
         const copy = (deal.pipeline_copy || igCaption(deal))
           + `\n\n${dealPageUrl}` + (searchUrl ? `\n${searchUrl}` : '');
-        const socialImg = deal.image_url
-          ? (String(deal.image_url).startsWith('/') ? siteUrl + deal.image_url : deal.image_url)
+        // Branded ad poster (mascot + price + flag composite) beats the raw
+        // destination photo for social; falls back when no poster exists yet.
+        const rawImg = deal.poster_url || deal.image_url;
+        const socialImg = rawImg
+          ? (String(rawImg).startsWith('/') ? siteUrl + rawImg : rawImg)
           : '';
         const social = await publishSocial(copy, socialImg, context.env);
         dealResult.social = social;

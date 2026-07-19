@@ -156,51 +156,73 @@ ${wasLine}
 // Set via: wrangler pages secret put <NAME> --project-name mrcheap
 // ──────────────────────────────────────────────────────────────────
 
+// Buffer's NEW GraphQL API (2026): POST https://api.buffer.com with a Bearer
+// token. The legacy api.bufferapp.com v1 this used to call rejects new-portal
+// keys with 401 — that was the silent "social does nothing".
+async function bufferGraphQL(token, query, variables) {
+  const res = await fetch('https://api.buffer.com', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ query, variables }),
+  });
+  const body = await res.json().catch(() => null);
+  return { status: res.status, body };
+}
+
+/** List the account's connected channels — also used by the pipeline's
+ *  social-status check. Returns { channels: [...] } or { error }. */
+export async function bufferChannels(token) {
+  const org = await bufferGraphQL(token, `query { account { organizations { id } } }`);
+  if (org.status !== 200 || org.body?.errors) {
+    return { error: `Buffer auth failed: HTTP ${org.status} ${JSON.stringify(org.body?.errors || org.body || '').slice(0, 140)}` };
+  }
+  const orgId = org.body?.data?.account?.organizations?.[0]?.id;
+  if (!orgId) return { error: 'Buffer token valid but no organization on the account' };
+
+  const ch = await bufferGraphQL(token,
+    `query C($input: ChannelsInput!) { channels(input: $input) { id name service } }`,
+    { input: { organizationId: orgId } });
+  if (ch.status !== 200 || ch.body?.errors) {
+    return { error: `Buffer channels query failed: ${JSON.stringify(ch.body?.errors || '').slice(0, 140)}` };
+  }
+  return { channels: ch.body?.data?.channels || [] };
+}
+
 async function publishViaBuffer(copy, imageUrl, token) {
   const result = { instagram: false, facebook: false, shellMode: false, detail: [] };
-  const profilesRes = await fetch(
-    `https://api.bufferapp.com/1/profiles.json?access_token=${encodeURIComponent(token)}`
-  );
-  if (!profilesRes.ok) {
-    result.detail.push(`Buffer profiles fetch failed: HTTP ${profilesRes.status} — token invalid/expired?`);
-    return result;
-  }
-  const profiles = await profilesRes.json();
-  if (!Array.isArray(profiles)) {
-    result.detail.push('Buffer returned no profile list — is the token for the right app?');
-    return result;
-  }
-  if (!profiles.length) {
-    result.detail.push('Buffer token works but has no connected channels — connect Instagram/Facebook in Buffer first.');
+
+  const list = await bufferChannels(token);
+  if (list.error) { result.detail.push(list.error); return result; }
+  if (!list.channels.length) {
+    result.detail.push('Buffer works but has NO connected channels — connect Instagram/Facebook inside Buffer first.');
     return result;
   }
 
-  for (const profile of profiles) {
-    const isIG = profile.service === 'instagram';
-    const isFB = profile.service === 'facebook';
-    if (!isIG && !isFB) { result.detail.push(`${profile.service}: skipped (unsupported)`); continue; }
+  for (const ch of list.channels) {
+    const svc = String(ch.service || '').toLowerCase();
+    const isIG = svc.includes('instagram');
+    const isFB = svc.includes('facebook');
+    if (!isIG && !isFB) { result.detail.push(`${ch.service}: skipped (unsupported)`); continue; }
+    if (isIG && !imageUrl) { result.detail.push('instagram: skipped — IG requires an image'); continue; }
 
-    const params = new URLSearchParams({
-      access_token: token,
-      'profile_ids[]': profile.id,
+    const input = {
+      channelId: ch.id,
       text: copy,
-      now: 'true', // post immediately — never sit in Buffer's schedule queue
-    });
-    if (imageUrl) params.set('media[photo]', imageUrl);
+      schedulingType: 'automatic',  // publish directly, not a notification
+      mode: 'shareNow',             // immediately — never sit in the queue
+      assets: imageUrl ? [{ image: { url: imageUrl } }] : [],
+      source: 'mrcheapflights',
+    };
+    const mu = await bufferGraphQL(token,
+      `mutation CP($input: CreatePostInput!) {
+         createPost(input: $input) { __typename ... on PostActionSuccess { post { id } } }
+       }`, { input });
 
-    const res = await fetch('https://api.bufferapp.com/1/updates/create.json', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params,
-    });
-    if (res.ok && isIG) result.instagram = true;
-    if (res.ok && isFB) result.facebook = true;
-    if (!res.ok) {
-      const errBody = await res.text().catch(() => '');
-      result.detail.push(`${profile.service}: HTTP ${res.status} ${errBody.slice(0, 140)}`);
-    } else {
-      result.detail.push(`${profile.service}: posted ✓`);
-    }
+    const typeName = mu.body?.data?.createPost?.__typename;
+    const ok = mu.status === 200 && !mu.body?.errors && typeName === 'PostActionSuccess';
+    if (ok && isIG) result.instagram = true;
+    if (ok && isFB) result.facebook = true;
+    result.detail.push(`${svc}: ${ok ? 'posted ✓' : (JSON.stringify(mu.body?.errors || typeName || `HTTP ${mu.status}`).slice(0, 160))}`);
   }
   return result;
 }
@@ -250,7 +272,8 @@ async function publishViaMeta(copy, imageUrl, env) {
 }
 
 export async function publishSocial(copy, imageUrl, env) {
-  if (env.BUFFER_ACCESS_TOKEN) return publishViaBuffer(copy, imageUrl, env.BUFFER_ACCESS_TOKEN);
+  const bufferToken = (env.BUFFER_ACCESS_TOKEN || '').trim();
+  if (bufferToken) return publishViaBuffer(copy, imageUrl, bufferToken);
   if (env.META_PAGE_ACCESS_TOKEN) return publishViaMeta(copy, imageUrl, env);
   return { instagram: false, facebook: false, shellMode: true }; // SHELL: no keys yet
 }
