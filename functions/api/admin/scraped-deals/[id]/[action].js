@@ -8,6 +8,7 @@
 // auto-approve.)
 
 import { requireAdmin } from '../../../../_lib/auth.js';
+import { destSlugForText, getDestination } from '../../../../_lib/destinations.js';
 
 function slugify(s) {
   return String(s).toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').slice(0, 100);
@@ -63,6 +64,12 @@ export async function onRequestPost(context) {
 
   const slug = slugify(row.route) + '-' + String(row.price).replace(/[^0-9]/g, '');
 
+  // Scraped flags are unreliable (feeds tag wrong countries constantly —
+  // "Hawaii" arrived flying a Mexican flag). The destinations registry is the
+  // source of truth whenever the route maps to a known destination.
+  const destHub = destSlugForText(row.route) ? getDestination(destSlugForText(row.route)) : null;
+  const flag = destHub?.flag || row.flag || '✈️';
+
   await context.env.DB.batch([
     context.env.DB.prepare(
       // status must be EXPLICIT: the table default is 'live', which would put
@@ -73,7 +80,7 @@ export async function onRequestPost(context) {
        ON CONFLICT(slug, region) DO UPDATE SET
          price=excluded.price, dates=excluded.dates, dest_type=excluded.dest_type,
          ai_copy=COALESCE(excluded.ai_copy, deals.ai_copy), updated_at=unixepoch()`
-    ).bind(row.flag || '✈️', row.route, row.dates || '', row.price, row.badge || '🔥 Hot', dealUrl, slug, row.region, row.dest_type || null, row.ai_copy || null),
+    ).bind(flag, row.route, row.dates || '', row.price, row.badge || '🔥 Hot', dealUrl, slug, row.region, row.dest_type || null, row.ai_copy || null),
     context.env.DB.prepare(
       'UPDATE scraped_deals SET status=?, updated_at=unixepoch() WHERE id=?'
     ).bind('approved', id),

@@ -367,7 +367,8 @@ ${heroImg ? `.hero-img{position:absolute;inset:0;width:100%;height:100%;object-f
 
     ${fareBlockHtml(fare, fareGate, deal, base)}
 
-    <div class="trust-strip"><span>Book direct with the airline</span><span>No commission, ever</span><span>Deals checked daily</span></div>
+    <div class="trust-strip"><span>Book direct with the airline</span><span>Fares independently verified</span><span>Deals checked daily</span></div>
+    <p style="font-size:.68rem;color:rgba(255,255,255,.3);text-align:center;margin-top:.6rem;">Some links are affiliate links — they may earn us a small commission at no extra cost to you.</p>
   </main>
 
   <section class="section signup">
