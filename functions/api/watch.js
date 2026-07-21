@@ -69,6 +69,12 @@ export async function onRequestPost(context) {
     if (match) already = { route: match.route, price: match.price, slug: match.slug };
   } catch { /* non-critical */ }
 
+  // Branded welcome (mentions their armed alert), once per address —
+  // fire-and-forget so the watch response stays instant.
+  context.waitUntil(sendWelcomeIfNew(context.env, {
+    subscriberId: sub.id, email, memberToken: sub.member_token, region, destName: dest.name,
+  }));
+
   const cookie = await signSession({ sub: sub.member_token }, context.env.SESSION_SIGNING_SECRET);
   return Response.json({ ok: true, already, destination: dest.name }, {
     headers: { 'Set-Cookie': setCookieHeader('mcf_member', cookie, { maxAgeSeconds: YEAR, sameSite: 'Lax' }) },

@@ -1,4 +1,5 @@
 import { randomHex, signSession, setCookieHeader } from '../_lib/auth.js';
+import { sendWelcomeIfNew } from '../_lib/welcome.js';
 
 const YEAR_IN_SECONDS = 60 * 60 * 24 * 400;
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,253}\.[^\s@]{2,}$/;
@@ -49,6 +50,11 @@ export async function onRequestPost(context) {
     ).bind(normalizedEmail, region || 'ie', memberToken, safeName).run();
     row = { id: result.meta.last_row_id, member_token: memberToken };
   }
+
+  // Branded welcome, exactly once per address — never blocks the response.
+  context.waitUntil(sendWelcomeIfNew(context.env, {
+    subscriberId: row.id, email: normalizedEmail, memberToken: row.member_token, region: region || 'ie',
+  }));
 
   const cookieToken = await signSession({ sub: row.member_token }, context.env.SESSION_SIGNING_SECRET);
   return Response.json({ ok: true }, {
