@@ -18,6 +18,8 @@ export async function onRequestPost(context) {
   const destSlug = String(body.dest || '').toLowerCase();
   const dest = getDestination(destSlug);
   const maxPrice = Number.isFinite(+body.maxPrice) && +body.maxPrice > 0 ? Math.round(+body.maxPrice) : null;
+  const source = typeof body.source === 'string' && /^[a-z0-9][a-z0-9-]{0,48}$/i.test(body.source)
+    ? body.source.toLowerCase() : null;
 
   if (!EMAIL_RE.test(email) || email.length > 254) return new Response('Invalid email', { status: 400 });
   if (!dest) return new Response('Unknown destination', { status: 400 });
@@ -40,8 +42,8 @@ export async function onRequestPost(context) {
   if (!sub) {
     const token = randomHex(24);
     const r = await context.env.DB.prepare(
-      `INSERT INTO subscribers (email, region, tier, member_token) VALUES (?, ?, 'free', ?)`
-    ).bind(email, region, token).run();
+      `INSERT INTO subscribers (email, region, tier, member_token, source) VALUES (?, ?, 'free', ?, ?)`
+    ).bind(email, region, token, source).run();
     sub = { id: r.meta.last_row_id, member_token: token };
   }
 

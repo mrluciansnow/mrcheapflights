@@ -11,6 +11,9 @@ export async function onRequestPost(context) {
   }
 
   const { email, name, region } = body;
+  // Campaign attribution: /c/<slug> landing pages post source=<slug>.
+  const source = typeof body.source === 'string' && /^[a-z0-9][a-z0-9-]{0,48}$/i.test(body.source)
+    ? body.source.toLowerCase() : null;
 
   if (!email || typeof email !== 'string' || !EMAIL_RE.test(email.trim()) || email.length > 254) {
     return new Response('Invalid email', { status: 400 });
@@ -46,8 +49,8 @@ export async function onRequestPost(context) {
   if (!row) {
     const memberToken = randomHex(24);
     const result = await context.env.DB.prepare(
-      `INSERT INTO subscribers (email, region, tier, member_token, name) VALUES (?, ?, 'free', ?, ?)`
-    ).bind(normalizedEmail, region || 'ie', memberToken, safeName).run();
+      `INSERT INTO subscribers (email, region, tier, member_token, name, source) VALUES (?, ?, 'free', ?, ?, ?)`
+    ).bind(normalizedEmail, region || 'ie', memberToken, safeName, source).run();
     row = { id: result.meta.last_row_id, member_token: memberToken };
   }
 
