@@ -1,0 +1,23 @@
+name: Prod smoke test
+
+# Runs the public smoke test after every push to main. The site deploys via
+# `wrangler pages deploy` (not git-triggered), so by the time this runs prod is
+# already updated — this catches regressions the deploy didn't. No secrets: it
+# only hits public endpoints.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run smoke test against production
+        run: node scripts/smoke.mjs
+        env:
+          BASE_URL: https://mrcheapflights.ie
