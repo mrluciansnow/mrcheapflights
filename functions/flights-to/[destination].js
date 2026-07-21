@@ -281,7 +281,7 @@ ul.hl li::before{content:'★ ';color:var(--yellow)}
 </main>
 
 <footer class="foot">
-  <a href="${base}/">Mr Cheap Flights</a> · <a href="${base}/flights-to">All destinations</a> · <a href="${base}/privacy.html">Privacy</a>
+  <a href="${base}/">Mr Cheap Flights</a> · <a href="${base}/flights-to">All destinations</a> · <a href="${base}/privacy.html">Privacy</a> · <a href="${base}/terms.html">Terms</a>
   <div class="tag">Cheap never looked this good.</div>
 </footer>
 

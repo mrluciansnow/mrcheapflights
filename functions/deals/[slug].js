@@ -140,7 +140,7 @@ export async function onRequestGet(context) {
   const hubSlug = destSlugForText(deal.route);
   const hub = hubSlug ? getDestination(hubSlug) : null;
   const title = `${deal.route} for ${deal.price} return – Mr Cheap Flights`;
-  const desc = `${deal.route} from just ${deal.price} return${deal.airline ? ' with ' + deal.airline : ''}. ${deal.dates || ''}${deal.expiry ? ' · Book by ' + deal.expiry : ''}. Hand-picked ${regionName} flight deal — book direct, no commission.`;
+  const desc = `${deal.route} from just ${deal.price} return${deal.airline ? ' with ' + deal.airline : ''}. ${deal.dates || ''}${deal.expiry ? ' · Book by ' + deal.expiry : ''}. Hand-picked ${regionName} flight deal — book direct with the airline.`;
   const pageUrl = `${base}/deals/${encodeURIComponent(deal.slug)}`;
   // Booking + fares links route through /api/go (logs the click, then 302s to
   // the real airline/affiliate URL). searchUrl here is only the presence check.
@@ -397,7 +397,7 @@ ${heroImg ? `.hero-img{position:absolute;inset:0;width:100%;height:100%;object-f
 </div>
 
 <footer class="foot">
-  <a href="${base}/">Mr Cheap Flights</a> · <a href="${base}/privacy.html">Privacy</a> · Hand-picked ${regionName} flight deals since 2024
+  <a href="${base}/">Mr Cheap Flights</a> · <a href="${base}/privacy.html">Privacy</a> · <a href="${base}/terms.html">Terms</a> · Hand-picked ${regionName} flight deals
   <div class="tag">Cheap never looked this good.</div>
 </footer>
 
