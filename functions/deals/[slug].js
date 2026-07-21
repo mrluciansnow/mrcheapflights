@@ -56,7 +56,7 @@ function timeAgo(unix) {
 //   entitled, unchecked yet → Google link + "first check pending"
 //   gated → blurred placeholder + login/upgrade overlay (real data is
 //   withheld server-side; the blur is cosmetic over FAKE text)
-function fareBlockHtml(fare, gate, deal, base) {
+function fareBlockHtml(fare, gate, deal, base, verified) {
   if (gate === 'none') {
     if (fare && (fare.status === 'verified' || fare.status === 'price_changed')) {
       const ok = fare.status === 'verified';
@@ -81,13 +81,15 @@ function fareBlockHtml(fare, gate, deal, base) {
     </div>`;
   }
   // Gated: fake blurred rows + CTA. No real data anywhere in this branch.
+  // The "✓ Verified" badge only appears when a check actually verified this
+  // fare — a teaser must never claim verification that didn't happen.
   const cta = gate === 'login'
     ? `<a href="#su-form">Log in free to see flight details</a>`
     : `<a href="${base}/#premium">Premium unlocks error-fare details</a>`;
   const msg = gate === 'login' ? '🔒 Log in to see flight details' : '⭐ Premium members see these details';
   return `
     <div class="fare-verify">
-      <div class="fv-head">🔎 FLIGHT DETAILS <span class="fv-badge ok">✓ Verified</span></div>
+      <div class="fv-head">🔎 FLIGHT DETAILS ${verified ? '<span class="fv-badge ok">✓ Fare verified</span>' : ''}</div>
       <div class="fv-lock">
         <div class="fv-brief">€## · Airline hidden · direct · ## Oct → ## Oct</div>
         <div class="fv-meta">Independently checked · source: Google Flights</div>
@@ -164,13 +166,16 @@ export async function onRequestGet(context) {
   const tier = await resolveMemberTier(context);
   const premiumDeal = isPremiumBadge(deal.badge);
   const fareEntitled = tier === 'premium' || (tier === 'free' && !premiumDeal);
-  let fare = null;
-  if (fareEntitled) {
-    try {
-      const fm = await fareMapForDeals(context.env, [deal.id]);
-      fare = publicFare(deal, fm[deal.id], context.env.TRAVELPAYOUTS_MARKER || '');
-    } catch { /* table may not exist yet */ }
-  }
+  let fare = null, fareVerified = false;
+  try {
+    const fm = await fareMapForDeals(context.env, [deal.id]);
+    const rows = fm[deal.id];
+    // Truthful public flag — the gated teaser may only claim "verified"
+    // when a check actually verified this fare.
+    fareVerified = !!(rows && ((rows.google && rows.google.status === 'verified')
+                            || (rows.travelpayouts && rows.travelpayouts.status === 'verified')));
+    if (fareEntitled) fare = publicFare(deal, rows, context.env.TRAVELPAYOUTS_MARKER || '');
+  } catch { /* table may not exist yet */ }
   const fareGate = fareEntitled ? 'none' : (tier === 'guest' ? 'login' : 'premium');
 
   const jsonLd = {
@@ -365,7 +370,7 @@ ${heroImg ? `.hero-img{position:absolute;inset:0;width:100%;height:100%;object-f
     <a class="cta-book" href="/api/go?deal=${deal.id}&kind=book" rel="noopener noreferrer" onclick="gtag('event','deal_book_click',{deal_route:'${esc(deal.route).replace(/'/g, '')}',location:'landing'})">Book This Deal ✈</a>
     ${searchUrl ? `<a class="cta-fares" href="/api/go?deal=${deal.id}&kind=fares" rel="noopener noreferrer">🔍 Compare live fares for these dates</a>` : ''}
 
-    ${fareBlockHtml(fare, fareGate, deal, base)}
+    ${fareBlockHtml(fare, fareGate, deal, base, fareVerified)}
 
     <div class="trust-strip"><span>Book direct with the airline</span><span>Fares independently verified</span><span>Deals checked daily</span></div>
     <p style="font-size:.68rem;color:rgba(255,255,255,.3);text-align:center;margin-top:.6rem;">Some links are affiliate links — they may earn us a small commission at no extra cost to you.</p>

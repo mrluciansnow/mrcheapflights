@@ -54,6 +54,13 @@ export async function onRequestGet(context) {
       search_url: routeSearchUrl(d.route, d.region, marker),
       fare_gate: entitled ? 'none' : (tier === 'guest' ? 'login' : 'premium'),
     };
+    // Public boolean only — "this fare was independently verified" is the
+    // login hook and leaks nothing (no price/dates/airline for the gated).
+    const rows = fareMap[d.id];
+    if (rows && ((rows.google && rows.google.status === 'verified')
+              || (rows.travelpayouts && rows.travelpayouts.status === 'verified'))) {
+      out.fare_verified = true;
+    }
     if (entitled) {
       const fare = publicFare(d, fareMap[d.id], marker);
       if (fare) out.fare = fare;
