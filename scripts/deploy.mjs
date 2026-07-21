@@ -21,7 +21,7 @@ const dist = join(root, '.dist');
 
 // Exactly the files/dirs that make up the public site. NOTHING else ships.
 const SERVED_FILES = [
-  'index.html', '404.html', 'directory.html', 'pipeline.html',
+  'index.html', '404.html', 'directory.html', 'pipeline.html', 'marketing.html',
   'privacy.html', 'terms.html',
   'mascot-small.jpg', 'mascot.png',
   '_headers', 'robots.txt',

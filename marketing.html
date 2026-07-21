@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Marketing · Mr Cheap Flights</title>
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--y:#FFD700;--p:#FF2D78;--d:#0A0F2E;--t:#00E5CC;--o:#FF6B2B}
+body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;padding:1.5rem;color:#fff}
+.w{max-width:860px;margin:0 auto}
+.logo{font-family:'Bangers',cursive;font-size:26px;letter-spacing:2px;color:var(--y)}
+.logo span{color:var(--p)}
+.sub{font-family:'Bebas Neue',cursive;font-size:11px;letter-spacing:3px;color:var(--t);margin:1px 0 1.4rem}
+h2{font-family:'Bebas Neue',cursive;font-size:15px;letter-spacing:2px;color:var(--t);margin:1.6rem 0 .7rem;border-left:3px solid var(--y);padding-left:9px}
+.card{background:var(--d);border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:1.1rem;margin-bottom:1rem}
+label{display:block;font-size:10px;letter-spacing:1px;color:rgba(255,255,255,0.4);text-transform:uppercase;margin:8px 0 3px;font-weight:700}
+input,select{width:100%;padding:9px 11px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;font-size:13px}
+select option{background:#0A0F2E}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:9px}
+.btn{background:var(--y);color:var(--d);border:none;border-radius:8px;padding:10px 18px;font-family:'Bebas Neue',cursive;font-size:13px;letter-spacing:2px;cursor:pointer;margin-top:12px}
+.btn.alt{background:var(--p);color:#fff}
+table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+th{text-align:left;font-size:9px;letter-spacing:1px;color:rgba(255,255,255,0.35);text-transform:uppercase;padding:6px 8px;font-weight:700}
+td{padding:8px;border-top:1px solid rgba(255,255,255,0.06);vertical-align:middle}
+.link-cell{color:var(--t);font-size:11px;word-break:break-all}
+.copy{background:rgba(0,229,204,0.1);border:1px solid rgba(0,229,204,0.3);color:var(--t);border-radius:5px;padding:2px 7px;font-size:10px;cursor:pointer}
+.pill{font-size:9px;font-weight:800;padding:2px 7px;border-radius:10px;letter-spacing:.3px}
+.pill.tt{background:rgba(255,45,120,0.15);color:#ff7aa8}
+.pill.ig{background:rgba(131,58,180,0.2);color:#c98bff}
+.pill.other{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.5)}
+.del{background:none;border:none;color:rgba(248,113,113,0.7);cursor:pointer;font-size:14px}
+.empty{color:rgba(255,255,255,0.3);font-size:12px;padding:14px;text-align:center}
+#gate{max-width:340px;margin:4rem auto;text-align:center}
+#toasts{position:fixed;top:14px;right:14px;z-index:99;display:flex;flex-direction:column;gap:8px}
+.toast{background:#0A0F2E;border:1px solid rgba(0,229,204,0.4);border-radius:10px;padding:9px 13px;font-size:12px;box-shadow:0 6px 24px rgba(0,0,0,0.5)}
+.toast.err{border-color:rgba(248,113,113,0.55)}
+.muted{font-size:11px;color:rgba(255,255,255,0.35);margin-top:3px}
+</style>
+</head>
+<body>
+<div id="toasts"></div>
+<div class="w">
+  <div class="logo">MR <span>CHEAP</span> FLIGHTS ✈</div>
+  <div class="sub">Marketing · Campaigns &amp; Promo Codes</div>
+
+  <div id="gate" style="display:none">
+    <h2 style="border:none;justify-content:center">🔒 Admin login</h2>
+    <input id="pw" type="password" placeholder="Admin password" onkeydown="if(event.key==='Enter')doLogin()"/>
+    <button class="btn" onclick="doLogin()" style="width:100%">Log in</button>
+  </div>
+
+  <div id="app" style="display:none">
+    <!-- CAMPAIGNS -->
+    <h2>📣 Campaigns — tracked links</h2>
+    <div class="card">
+      <div class="row">
+        <div><label>Name</label><input id="c-name" placeholder="TikTok Lisbon promo"/></div>
+        <div><label>Slug (optional)</label><input id="c-slug" placeholder="auto from name"/></div>
+      </div>
+      <div class="row">
+        <div><label>Platform</label><select id="c-platform"><option value="tiktok">TikTok</option><option value="instagram">Instagram</option><option value="other">Other</option></select></div>
+        <div><label>Type</label><select id="c-type"><option value="ad">Paid ad</option><option value="influencer">Influencer</option></select></div>
+        <div><label>Region</label><select id="c-region"><option value="ie">🇮🇪 IE</option><option value="uk">🇬🇧 UK</option></select></div>
+      </div>
+      <div class="row">
+        <div><label>Creator @ (optional)</label><input id="c-creator" placeholder="@traveltom"/></div>
+        <div><label>Spend (€/£, optional)</label><input id="c-spend" type="number" min="0" step="0.01" placeholder="0"/></div>
+      </div>
+      <div><label>Landing headline (optional)</label><input id="c-headline" placeholder="€29 flights to Lisbon?!"/></div>
+      <button class="btn" onclick="createCampaign()">+ Create campaign</button>
+    </div>
+    <div class="card"><table id="camp-table"><tbody><tr><td class="empty">Loading…</td></tr></tbody></table></div>
+
+    <!-- PROMO CODES -->
+    <h2>🎟 Promo codes — comped premium trials</h2>
+    <div class="card">
+      <div class="row">
+        <div><label>Code</label><input id="p-code" placeholder="TRAVELTOM" style="text-transform:uppercase"/></div>
+        <div><label>Trial days</label><input id="p-days" type="number" min="1" max="365" value="30"/></div>
+        <div><label>Max redemptions (optional)</label><input id="p-max" type="number" min="1" placeholder="unlimited"/></div>
+      </div>
+      <div><label>Link to campaign (optional)</label><select id="p-campaign"><option value="">— none —</option></select></div>
+      <button class="btn alt" onclick="createPromo()">+ Create promo code</button>
+      <div class="muted">Redeeming grants premium with no card — it reverts to free when the trial ends. Nothing auto-charges.</div>
+    </div>
+    <div class="card"><table id="promo-table"><tbody><tr><td class="empty">Loading…</td></tr></tbody></table></div>
+  </div>
+</div>
+<script>
+var ORIGIN=location.origin;
+function el(id){return document.getElementById(id);}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function toast(m,k){var b=el('toasts'),t=document.createElement('div');t.className='toast'+(k==='err'?' err':'');t.innerHTML=m;b.appendChild(t);setTimeout(function(){t.remove();},4500);}
+function copy(txt){navigator.clipboard.writeText(txt).then(function(){toast('📋 Copied');});}
+
+async function doLogin(){
+  var pw=el('pw').value;
+  var r=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+  if(r.ok){el('gate').style.display='none';el('app').style.display='block';boot();}
+  else toast('❌ Wrong password','err');
+}
+
+async function boot(){ await Promise.all([loadCampaigns(), loadPromos()]); }
+
+async function loadCampaigns(){
+  var res=await fetch('/api/admin/campaigns',{cache:'no-store'});
+  if(res.status===401){el('app').style.display='none';el('gate').style.display='block';return;}
+  var rows=await res.json();
+  var sel=el('p-campaign');
+  sel.innerHTML='<option value="">— none —</option>'+rows.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join('');
+  var tb=el('camp-table').querySelector('tbody');
+  if(!rows.length){tb.innerHTML='<tr><td class="empty">No campaigns yet — create one above.</td></tr>';return;}
+  tb.innerHTML='<tr><th>Campaign</th><th>Link</th><th>Visits</th><th>Signups</th><th>Conv</th><th>Spend</th><th>CPA</th><th></th></tr>'+
+   rows.map(function(c){
+     var link=ORIGIN+'/c/'+c.slug;
+     return '<tr><td><b>'+esc(c.name)+'</b><br><span class="pill '+(c.platform==='tiktok'?'tt':c.platform==='instagram'?'ig':'other')+'">'+esc(c.platform)+'</span> '+esc(c.type)+(c.creator?' · '+esc(c.creator):'')+'</td>'+
+       '<td class="link-cell">/c/'+esc(c.slug)+' <button class="copy" onclick="copy(\''+link+'\')">copy</button></td>'+
+       '<td>'+c.visits+'</td><td><b>'+c.signups+'</b>'+(c.premium?' · '+c.premium+'⭐':'')+'</td>'+
+       '<td>'+(c.conv_rate!=null?c.conv_rate+'%':'—')+'</td>'+
+       '<td><input style="width:70px;padding:4px" type="number" min="0" step="0.01" value="'+(c.spend||0)+'" onchange="setSpend('+c.id+',this.value)"/></td>'+
+       '<td>'+(c.cpa!=null?(c.region==='uk'?'£':'€')+c.cpa:'—')+'</td>'+
+       '<td><button class="del" onclick="delCampaign('+c.id+',\''+esc(c.name)+'\')">🗑</button></td></tr>';
+   }).join('');
+}
+async function createCampaign(){
+  var body={name:el('c-name').value.trim(),slug:el('c-slug').value.trim()||undefined,platform:el('c-platform').value,type:el('c-type').value,region:el('c-region').value,creator:el('c-creator').value.trim()||undefined,spend:parseFloat(el('c-spend').value)||0,headline:el('c-headline').value.trim()||undefined};
+  if(!body.name){toast('Enter a name','err');return;}
+  var res=await fetch('/api/admin/campaigns',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  var d=await res.json();
+  if(!res.ok){toast('❌ '+esc(d.error||res.status),'err');return;}
+  toast('✅ Created — '+esc(d.link));
+  ['c-name','c-slug','c-creator','c-spend','c-headline'].forEach(function(i){el(i).value='';});
+  loadCampaigns();
+}
+async function setSpend(id,v){ await fetch('/api/admin/campaigns/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({spend:parseFloat(v)||0})}); loadCampaigns(); }
+async function delCampaign(id,name){ if(!confirm('Delete "'+name+'"? Signups keep their tag.'))return; await fetch('/api/admin/campaigns/'+id,{method:'DELETE'}); toast('🗑 Deleted'); loadCampaigns(); }
+
+async function loadPromos(){
+  var res=await fetch('/api/admin/promo',{cache:'no-store'});
+  if(!res.ok)return;
+  var rows=await res.json();
+  var tb=el('promo-table').querySelector('tbody');
+  if(!rows.length){tb.innerHTML='<tr><td class="empty">No promo codes yet.</td></tr>';return;}
+  tb.innerHTML='<tr><th>Code</th><th>Redeem link</th><th>Trial</th><th>Claimed</th><th>Campaign</th></tr>'+
+   rows.map(function(p){
+     var link=ORIGIN+'/promo/'+p.code;
+     return '<tr><td><b style="color:var(--t);letter-spacing:1px">'+esc(p.code)+'</b></td>'+
+       '<td class="link-cell">/promo/'+esc(p.code)+' <button class="copy" onclick="copy(\''+link+'\')">copy</button></td>'+
+       '<td>'+p.trial_days+'d</td>'+
+       '<td><b>'+p.redeemed_count+'</b>'+(p.max_redemptions!=null?' / '+p.max_redemptions:'')+'</td>'+
+       '<td>'+(p.campaign_name?esc(p.campaign_name):'—')+'</td></tr>';
+   }).join('');
+}
+async function createPromo(){
+  var body={code:el('p-code').value.trim(),trialDays:parseInt(el('p-days').value)||30,maxRedemptions:parseInt(el('p-max').value)||undefined,campaignId:parseInt(el('p-campaign').value)||undefined};
+  if(!body.code){toast('Enter a code','err');return;}
+  var res=await fetch('/api/admin/promo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  var d=await res.json();
+  if(!res.ok){toast('❌ '+esc(d.error||res.status),'err');return;}
+  toast('✅ Code live — '+esc(d.redeem_link));
+  el('p-code').value='';el('p-max').value='';
+  loadPromos();
+}
+
+// Boot: if already logged in, show app; else gate.
+fetch('/api/admin/campaigns',{cache:'no-store'}).then(function(r){
+  if(r.ok){el('app').style.display='block';boot();}
+  else{el('gate').style.display='block';}
+}).catch(function(){el('gate').style.display='block';});
+</script>
+</body>
+</html>

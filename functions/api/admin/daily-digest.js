@@ -40,6 +40,7 @@ export async function onRequestPost(context) {
     topClickedDests,
     watchStats,
     topWatchedDests,
+    marketingSignups,
   ] = await Promise.all([
     db.prepare(`SELECT id, source_name, route, price, badge, region, confidence, created_at
                 FROM scraped_deals WHERE status='pending'
@@ -82,6 +83,12 @@ export async function onRequestPost(context) {
                 FROM watchlists`).first().catch(() => null),
     db.prepare(`SELECT dest_slug, COUNT(*) AS n FROM watchlists WHERE active=1
                 GROUP BY dest_slug ORDER BY n DESC LIMIT 5`).all().catch(() => ({ results: [] })),
+    // Marketing — signups by campaign source (last 7d)
+    db.prepare(`SELECT COALESCE(s.source, '(organic)') AS src, COUNT(*) AS signups,
+                       c.name AS name, c.spend_cents AS spend_cents
+                FROM subscribers s LEFT JOIN campaigns c ON c.slug = s.source
+                WHERE s.created_at >= unixepoch()-604800
+                GROUP BY src ORDER BY signups DESC LIMIT 6`).all().catch(() => ({ results: [] })),
   ]);
 
   const today = new Date().toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -211,6 +218,35 @@ export async function onRequestPost(context) {
       </div>
     </div>`;
 
+  // ── Marketing — signups by campaign source (7d) ──
+  const mkRows = (marketingSignups.results || []).filter((r) => r.src !== '(organic)');
+  const organic = (marketingSignups.results || []).find((r) => r.src === '(organic)');
+  const marketingHtml = (mkRows.length || organic) ? `
+    <h2>📣 Marketing — signups last 7 days</h2>
+    <table>
+      <thead><tr style="background:#f8fafc">
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#888">Source</th>
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#888">Signups</th>
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#888">CPA</th>
+      </tr></thead>
+      <tbody>
+        ${mkRows.map((r) => {
+          const spend = (r.spend_cents || 0) / 100;
+          const cpa = spend > 0 && r.signups > 0 ? '€' + (spend / r.signups).toFixed(2) : '—';
+          return `<tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #eee"><strong>${r.name || r.src}</strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #eee;font-weight:700;color:#e0004d">${r.signups}</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #eee">${cpa}</td>
+          </tr>`;
+        }).join('')}
+        <tr>
+          <td style="padding:8px 12px;color:#888">Organic (no campaign)</td>
+          <td style="padding:8px 12px;color:#888">${organic ? organic.signups : 0}</td>
+          <td style="padding:8px 12px;color:#888">—</td>
+        </tr>
+      </tbody>
+    </table>` : '';
+
   const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><style>
@@ -247,6 +283,8 @@ export async function onRequestPost(context) {
     </div>
 
     ${bizHtml}
+
+    ${marketingHtml}
 
     <h2>🔍 Deals Pending Review (${pendingDeals.results.length})</h2>
     <table>
