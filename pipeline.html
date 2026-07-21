@@ -108,6 +108,26 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
 .scraped-edit select option{background:#0A0F2E;}
 .se-row{display:flex;gap:6px;}
 .se-row>*{flex:1;}
+/* ── Creative Studio modal ── */
+#creative-modal{display:none;position:fixed;inset:0;z-index:1000;background:rgba(3,6,18,0.82);backdrop-filter:blur(4px);overflow-y:auto;padding:24px 12px;}
+#creative-modal.on{display:block;}
+.cm-box{max-width:640px;margin:0 auto;background:#0A0F2E;border:1px solid rgba(255,255,255,0.12);border-radius:16px;padding:20px;}
+.cm-h{font-family:'Bangers',cursive;font-size:20px;letter-spacing:1px;color:var(--y);display:flex;justify-content:space-between;align-items:center;}
+.cm-close{background:none;border:none;color:rgba(255,255,255,0.5);font-size:22px;cursor:pointer;}
+.cm-tabs{display:flex;gap:6px;margin:12px 0;}
+.cm-tab{flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:transparent;color:rgba(255,255,255,0.5);font-family:'Bebas Neue',cursive;letter-spacing:1px;font-size:13px;cursor:pointer;}
+.cm-tab.on{background:rgba(255,45,120,0.12);border-color:var(--p);color:#fff;}
+.cm-pane{display:none;}
+.cm-pane.on{display:block;}
+.cm-hook{background:rgba(255,210,0,0.08);border:1px solid rgba(255,210,0,0.25);border-radius:10px;padding:10px 12px;font-weight:800;color:#fff;font-size:14px;margin-bottom:12px;}
+.cm-beat{display:flex;gap:10px;padding:8px 0;border-bottom:1px dashed rgba(255,255,255,0.08);}
+.cm-beat .n{font-family:'Bangers',cursive;color:var(--t);font-size:18px;flex-shrink:0;width:22px;}
+.cm-beat .txt{color:#fff;font-size:13px;font-weight:700;}
+.cm-beat .vis{color:rgba(255,255,255,0.4);font-size:11px;margin-top:2px;}
+.cm-meta{margin-top:12px;font-size:12px;color:rgba(255,255,255,0.7);line-height:1.6;}
+.cm-meta b{color:var(--t);}
+.cm-copy{background:rgba(0,229,204,0.1);border:1px solid rgba(0,229,204,0.3);color:var(--t);border-radius:7px;padding:6px 12px;font-family:'Bebas Neue',cursive;font-size:11px;letter-spacing:1px;cursor:pointer;margin-top:8px;}
+.cm-cap{background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;font-size:12px;color:rgba(255,255,255,0.8);white-space:pre-wrap;margin-top:6px;line-height:1.5;}
 /* ── Toasts ── */
 #toasts{position:fixed;top:14px;right:14px;z-index:999;display:flex;flex-direction:column;gap:8px;max-width:340px;}
 .toast{background:#0A0F2E;border:1px solid rgba(0,229,204,0.4);border-radius:10px;padding:10px 14px;font-size:12px;color:#fff;box-shadow:0 6px 24px rgba(0,0,0,0.5);animation:tin .18s ease-out;line-height:1.5;}
@@ -142,6 +162,7 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
 </head>
 <body>
 <div id="toasts"></div>
+<div id="creative-modal" onclick="if(event.target===this)closeCreative()"><div class="cm-box" id="cm-box"></div></div>
 <div class="w" id="main-w">
   <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1.25rem;">
     <div>
@@ -843,6 +864,58 @@ async function socialsFire(id) {
   await expressPublish(id, ['social'], '📱');
 }
 
+// ── AI Creative Studio ────────────────────────────────────────────────────────
+function closeCreative(){ document.getElementById('creative-modal').classList.remove('on'); }
+function cmTab(which){
+  ['tiktok','instagram'].forEach(function(t){
+    document.getElementById('cm-tab-'+t).classList.toggle('on', t===which);
+    document.getElementById('cm-pane-'+t).classList.toggle('on', t===which);
+  });
+}
+function cmCopy(id){
+  var el=document.getElementById(id); if(!el) return;
+  navigator.clipboard.writeText(el.dataset.copy||el.textContent).then(function(){ toast('📋 Copied'); }).catch(function(){ toast('Copy failed','err'); });
+}
+function beatsHtml(beats){
+  return (beats||[]).map(function(b,i){
+    return '<div class="cm-beat"><span class="n">'+(i+1)+'</span><div><div class="txt">'+escHtml(b.text||'')+'</div><div class="vis">🎥 '+escHtml(b.visual||'')+'</div></div></div>';
+  }).join('');
+}
+function paneHtml(kind, c){
+  if(!c) return '<div class="empty-note">No '+kind+' creative returned.</div>';
+  var beats = kind==='tiktok' ? c.slides : c.beats;
+  var capId = 'cm-cap-'+kind, tagId='cm-tags-'+kind;
+  var tags = (c.hashtags||[]).join(' ');
+  return '<div class="cm-hook">🎯 '+escHtml(c.hook||'')+'</div>'+
+    beatsHtml(beats)+
+    (c.audio?'<div class="cm-meta">🎵 <b>Audio:</b> '+escHtml(c.audio)+'</div>':'')+
+    '<div class="cm-meta" style="margin-top:14px"><b>Caption</b></div>'+
+    '<div class="cm-cap" id="'+capId+'" data-copy="'+escHtml((c.caption||'')+'\n\n'+tags)+'">'+escHtml(c.caption||'')+'</div>'+
+    '<div class="cm-cap" id="'+tagId+'" style="color:var(--t)">'+escHtml(tags)+'</div>'+
+    '<button class="cm-copy" onclick="cmCopy(\''+capId+'\')">📋 Copy caption + hashtags</button>';
+}
+function renderCreative(data){
+  var c=data.creative||{};
+  var box=document.getElementById('cm-box');
+  box.innerHTML =
+    '<div class="cm-h">🎬 Creative — '+escHtml(data.route||'')+'<button class="cm-close" onclick="closeCreative()">✕</button></div>'+
+    '<div class="cm-tabs"><button class="cm-tab on" id="cm-tab-tiktok" onclick="cmTab(\'tiktok\')">TikTok slideshow</button>'+
+    '<button class="cm-tab" id="cm-tab-instagram" onclick="cmTab(\'instagram\')">Instagram Reel</button></div>'+
+    '<div class="cm-pane on" id="cm-pane-tiktok">'+paneHtml('tiktok', c.tiktok)+'</div>'+
+    '<div class="cm-pane" id="cm-pane-instagram">'+paneHtml('instagram', c.instagram)+'</div>';
+  document.getElementById('creative-modal').classList.add('on');
+}
+async function generateCreative(id){
+  var box=document.getElementById('cm-box');
+  box.innerHTML='<div class="cm-h">🎬 Creative Studio<button class="cm-close" onclick="closeCreative()">✕</button></div><div class="empty-note">✨ Writing your TikTok + Reel scripts… (~10s)</div>';
+  document.getElementById('creative-modal').classList.add('on');
+  try{
+    var res=await fetch('/api/admin/creative',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dealId:id})});
+    if(!res.ok){ var e=await res.json().catch(function(){return{};}); box.innerHTML='<div class="cm-h">🎬 Creative<button class="cm-close" onclick="closeCreative()">✕</button></div><div class="empty-note">❌ '+escHtml((e.error||('HTTP '+res.status)))+'</div>'; return; }
+    renderCreative(await res.json());
+  }catch(e){ box.innerHTML='<div class="cm-h">🎬 Creative<button class="cm-close" onclick="closeCreative()">✕</button></div><div class="empty-note">❌ Network error</div>'; }
+}
+
 // ── Buffer connection status (read-only, no posting) ─────────────────────────
 async function loadSocialStatus() {
   var elx = document.getElementById('social-status');
@@ -1032,6 +1105,7 @@ function renderDeals() {
         <div class="card-actions">
           <button class="btn-mini" onclick="event.stopPropagation();expressPublish(${d.id})" title="Skip the wizard: live on the site immediately. Missing image is generated inline; socials + email fan out too.">🚀 Publish now</button>
           <button class="btn-mini" onclick="event.stopPropagation();makePoster(${d.id})" title="Compose the branded 1080×1080 ad poster: AI background + price + route + flag + mascot. Opens a preview.">🖼 Poster</button>
+          <button class="btn-mini" onclick="event.stopPropagation();generateCreative(${d.id})" title="AI Creative Studio: a ready-to-shoot TikTok slideshow brief + Instagram Reel script for this deal.">🎬 Creative</button>
           <button class="btn-mini alt" onclick="event.stopPropagation();socialsFire(${d.id})" title="Post ONLY to socials right now (auto-builds the poster first if missing)">📱 Socials</button>
         </div>
       </div>`;
@@ -1067,6 +1141,7 @@ async function loadLiveDeals() {
         ${dealChips(d)}
         <div class="card-actions">
           <button class="btn-mini" onclick="makePoster(${d.id})" title="Compose the branded ad poster (background + price + flag + mascot). Opens a preview.">🖼 Poster</button>
+          <button class="btn-mini" onclick="generateCreative(${d.id})" title="AI Creative Studio: TikTok slideshow brief + IG Reel script for this deal.">🎬 Creative</button>
           <button class="btn-mini alt" onclick="socialsFire(${d.id})" ${d.published_social?'disabled title="Already posted — idempotency guard will skip it"':'title="Post to Instagram/Facebook right now via Buffer (auto-builds the poster first)"'}>📱 Post now</button>
           <a class="btn-mini" style="text-align:center;text-decoration:none;line-height:1.6;" href="/deals/${encodeURIComponent(d.slug||'')}" target="_blank" rel="noopener">👁 View</a>
         </div>
