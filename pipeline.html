@@ -103,6 +103,11 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
 .btn-no{background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);color:#f87171;border-radius:6px;padding:5px 9px;font-family:'Bebas Neue',cursive;font-size:9px;letter-spacing:1px;cursor:pointer;}
 .btn-no:hover{background:rgba(248,113,113,0.18);}
 .bulk-bar{display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap;}
+.scraped-edit{margin:8px 0;padding:8px;background:rgba(0,0,0,0.2);border:1px solid rgba(0,229,204,0.2);border-radius:8px;}
+.scraped-edit input,.scraped-edit select{width:100%;padding:6px 8px;margin-bottom:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;}
+.scraped-edit select option{background:#0A0F2E;}
+.se-row{display:flex;gap:6px;}
+.se-row>*{flex:1;}
 /* ── Toasts ── */
 #toasts{position:fixed;top:14px;right:14px;z-index:999;display:flex;flex-direction:column;gap:8px;max-width:340px;}
 .toast{background:#0A0F2E;border:1px solid rgba(0,229,204,0.4);border-radius:10px;padding:10px 14px;font-size:12px;color:#fff;box-shadow:0 6px 24px rgba(0,0,0,0.5);animation:tin .18s ease-out;line-height:1.5;}
@@ -480,13 +485,56 @@ function renderScrapedQueue() {
       '</div>' +
       '<div class="scrape-deal-meta">' + escHtml(d.source_name) + ' · ' + escHtml(d.dates || '—') + '</div>' +
       '<div class="scrape-deal-meta">' + escHtml(d.badge || '') + (d.dest_type ? ' · ' + d.dest_type : '') + '</div>' +
+      (d.source_url ? '' : '<div class="scrape-deal-meta" style="color:#f87171">⚠ no source URL — edit before approving</div>') +
+      scrapedEditForm(d) +
       '<div class="scrape-actions">' +
         '<button class="btn-ok" onclick="approveScraped(' + d.id + ')" title="Move to Draft Deals for the full wizard">✓ Approve</button>' +
         '<button class="btn-ok" style="background:rgba(255,215,0,0.1);border-color:rgba(255,215,0,0.3);color:var(--y);" onclick="approveAndPublish(' + d.id + ')" title="One click: approve AND put it live on the site now. Image + socials + email fan out automatically.">🚀 Approve &amp; publish</button>' +
+        '<button class="btn-no" style="flex:0;color:var(--t);border-color:rgba(0,229,204,0.3)" onclick="toggleScrapedEdit(' + d.id + ')" title="Fix the route, price or source URL before approving">✏️</button>' +
         '<button class="btn-no" onclick="rejectScraped(' + d.id + ')">✕</button>' +
       '</div>' +
     '</div>';
   }).join('');
+}
+
+function scrapedEditForm(d) {
+  var badges = ['🔥 Hot','⚡ Flash','✈ Long Haul','⭐ Featured','⚠️ Mistake Fare'];
+  var opts = badges.map(function(b){ return '<option'+(d.badge===b?' selected':'')+'>'+b+'</option>'; }).join('');
+  return '<div class="scraped-edit" id="se-' + d.id + '" style="display:none">' +
+    '<input id="se-route-' + d.id + '" value="' + escHtml(d.route || '') + '" placeholder="Route e.g. Dublin → Ibiza"/>' +
+    '<div class="se-row">' +
+      '<input id="se-price-' + d.id + '" value="' + escHtml(d.price || '') + '" placeholder="Price e.g. €47"/>' +
+      '<select id="se-region-' + d.id + '"><option value="ie"' + (d.region==='ie'?' selected':'') + '>🇮🇪 IE</option><option value="uk"' + (d.region==='uk'?' selected':'') + '>🇬🇧 UK</option></select>' +
+    '</div>' +
+    '<div class="se-row">' +
+      '<input id="se-dates-' + d.id + '" value="' + escHtml(d.dates || '') + '" placeholder="Dates"/>' +
+      '<select id="se-badge-' + d.id + '">' + opts + '</select>' +
+    '</div>' +
+    '<input id="se-url-' + d.id + '" value="' + escHtml(d.source_url || '') + '" placeholder="https:// source/booking URL"/>' +
+    '<div class="se-row"><button class="btn-ok" onclick="saveScrapedEdit(' + d.id + ')">💾 Save</button>' +
+      '<button class="btn-no" onclick="toggleScrapedEdit(' + d.id + ')">Cancel</button></div>' +
+  '</div>';
+}
+
+function toggleScrapedEdit(id) {
+  var f = document.getElementById('se-' + id);
+  if (f) f.style.display = f.style.display === 'none' ? 'block' : 'none';
+}
+
+async function saveScrapedEdit(id) {
+  var v = function(p){ var e = document.getElementById('se-' + p + '-' + id); return e ? e.value.trim() : undefined; };
+  var payload = { route: v('route'), price: v('price'), dates: v('dates'), badge: v('badge'), region: v('region'), source_url: v('url') };
+  try {
+    var res = await fetch('/api/admin/scraped-deals/' + id, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload),
+    });
+    if (!res.ok) { toast('❌ ' + escHtml((await res.text()).slice(0, 140)), 'err'); return; }
+    var updated = await res.json();
+    var i = scrapedDeals.findIndex(function(x){ return x.id === id; });
+    if (i >= 0) scrapedDeals[i] = updated;
+    renderScrapedQueue();
+    toast('💾 Saved — ready to approve');
+  } catch(e) { toast('❌ Network error saving edit', 'err'); }
 }
 
 async function approveScraped(id, opts) {
