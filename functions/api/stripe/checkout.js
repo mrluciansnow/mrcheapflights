@@ -46,20 +46,38 @@ export async function onRequestPost(context) {
 
   const stripe = new Stripe(context.env.STRIPE_SECRET_KEY, { httpClient: Stripe.createFetchHttpClient() });
   const origin = new URL(context.request.url).origin;
-  const session = await stripe.checkout.sessions.create({
-    mode: 'subscription',
-    line_items: [{ price: priceId, quantity: 1 }],
-    customer_email: normalizedEmail,
-    client_reference_id: String(row.id),
-    subscription_data: { metadata: { subscriberId: String(row.id), region: region || 'ie' } },
-    metadata: { subscriberId: String(row.id), region: region || 'ie', billing: billing || 'monthly' },
-    success_url: `${origin}/?checkout=success`,
-    cancel_url: `${origin}/?checkout=cancel`,
-  });
 
+  // The subscriber row already exists (free tier) at this point, so even when
+  // checkout can't proceed the person is captured — the frontend tells them
+  // they're on the free list. Catch cleanly instead of throwing a 500: a
+  // live-mode key + test-mode price (or any Stripe misconfig) becomes an
+  // honest "premium_unavailable" the UI already handles gracefully.
   const cookieToken = await signSession({ sub: row.member_token }, context.env.SESSION_SIGNING_SECRET);
+  const memberCookie = setCookieHeader('mcf_member', cookieToken, { maxAgeSeconds: YEAR_IN_SECONDS, sameSite: 'Lax' });
+
+  let session;
+  try {
+    session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      line_items: [{ price: priceId, quantity: 1 }],
+      customer_email: normalizedEmail,
+      client_reference_id: String(row.id),
+      subscription_data: { metadata: { subscriberId: String(row.id), region: region || 'ie' } },
+      metadata: { subscriberId: String(row.id), region: region || 'ie', billing: billing || 'monthly' },
+      success_url: `${origin}/?checkout=success`,
+      cancel_url: `${origin}/?checkout=cancel`,
+    });
+  } catch (e) {
+    // Free subscriber is still captured; return the member cookie + a clean
+    // status so the UI shows the "premium being finalised" notice.
+    return Response.json(
+      { error: 'premium_unavailable', joined_free: true },
+      { status: 503, headers: { 'Set-Cookie': memberCookie } }
+    );
+  }
+
   return Response.json({ url: session.url }, {
     status: 200,
-    headers: { 'Set-Cookie': setCookieHeader('mcf_member', cookieToken, { maxAgeSeconds: YEAR_IN_SECONDS, sameSite: 'Lax' }) },
+    headers: { 'Set-Cookie': memberCookie },
   });
 }
