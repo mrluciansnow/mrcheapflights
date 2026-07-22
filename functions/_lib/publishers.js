@@ -211,22 +211,31 @@ async function publishViaBuffer(copy, imageUrl, token, opts = {}) {
       channelId: ch.id,
       text: copy,
       schedulingType: 'automatic',  // publish directly, not a notification
+      // mode is a required ShareMode! — always set it. saveToDraft overrides the
+      // behaviour to "save as draft" (lands in Buffer, never published).
+      mode: draft ? 'addToQueue' : 'shareNow',
       assets: imageUrl ? [{ image: { url: imageUrl } }] : [],
       source: 'mrcheapflights',
     };
-    // draft → lands in Buffer for review (NOT published); else share immediately.
     if (draft) input.saveToDraft = true;
-    else input.mode = 'shareNow';
+    // Instagram requires a post type + feed flag in its metadata.
+    if (isIG) input.metadata = { instagram: { type: 'post', shouldShareToFeed: true } };
     const mu = await bufferGraphQL(token,
       `mutation CP($input: CreatePostInput!) {
-         createPost(input: $input) { __typename ... on PostActionSuccess { post { id } } }
+         createPost(input: $input) {
+           __typename
+           ... on PostActionSuccess { post { id } }
+           ... on InvalidInputError { message }
+         }
        }`, { input });
 
-    const typeName = mu.body?.data?.createPost?.__typename;
+    const payload = mu.body?.data?.createPost;
+    const typeName = payload?.__typename;
     const ok = mu.status === 200 && !mu.body?.errors && typeName === 'PostActionSuccess';
     if (ok && isIG) result.instagram = true;
     if (ok && isFB) result.facebook = true;
-    result.detail.push(`${svc}: ${ok ? (draft ? 'draft saved to Buffer ✓' : 'posted ✓') : (JSON.stringify(mu.body?.errors || typeName || `HTTP ${mu.status}`).slice(0, 160))}`);
+    const why = payload?.message || JSON.stringify(mu.body?.errors || typeName || `HTTP ${mu.status}`);
+    result.detail.push(`${svc}: ${ok ? (draft ? 'draft saved to Buffer ✓' : 'posted ✓') : String(why).slice(0, 200)}`);
   }
   return result;
 }
