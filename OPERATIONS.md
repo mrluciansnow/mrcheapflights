@@ -38,6 +38,12 @@ but is never uploaded.
 `NEWSLETTER_ENABLED=1` · `CRON_SECRET` · `TRAVELPAYOUTS_MARKER=752435` ·
 `TRAVELPAYOUTS_TOKEN` · `SERPAPI_KEY` · `BUFFER_ACCESS_TOKEN`
 
+Ad automation (all optional — absent ⇒ permanent dry-run, nothing is sent):
+`META_ACCESS_TOKEN` · `TIKTOK_ACCESS_TOKEN` · `ADS_LIVE` (`1` permits live
+writes; default off) · `ADS_MAX_DAILY_BUDGET` (hard ceiling, default `20`) ·
+`ADS_ALLOW_SCALE` (`1` allows budget raises; default off). Ad-account /
+advertiser ids are non-secret and set in the /marketing UI (D1 `ad_accounts`).
+
 Set/rotate: `echo <value> | npx wrangler pages secret put NAME --project-name=mrcheap`
 then `npm run deploy` (secrets apply on the next deployment).
 
@@ -55,6 +61,32 @@ then `npm run deploy` (secrets apply on the next deployment).
 | Destination SEO content | /api/admin/generate-destination-content | 03:00 daily |
 | Nightly cleanup | /api/admin/cleanup | 02:00 daily |
 | Health monitor | /api/health | every 10 min (emails on 2 fails) |
+| Ad sync + guardrail | /api/cron/ads-sync | every 6h (dry-run until armed) |
+
+## Ad automation (Meta + TikTok)
+
+Programmatic campaign management, managed at **/marketing → 🤖 Ad automation**.
+D1 is the brain (`ad_campaigns`, `ad_actions`, `ad_accounts`); the platforms are
+the executor. Spend is joined against internal `/c/` signups for a true CPA.
+
+Files: `_lib/ads-meta.js` (Graph v21.0), `_lib/ads-tiktok.js` (Business API
+v1.3), `_lib/ads-engine.js` (orchestrator + guardrails), `api/admin/ads*.js`
+(UI API), `api/cron/ads-sync.js` (6h sync + auto-pause).
+
+**Safety model — four hard invariants (enforced in `ads-engine.js`):**
+1. **Dry-run by default.** No platform write unless `ADS_LIVE=1` *and* that
+   platform is configured (token + account id). Otherwise the intended request
+   is planned + logged to `ad_actions`, never sent.
+2. **Paused-only creation.** Launch creates the campaign PAUSED. The engine
+   never activates — going live is a human action (admin "Activate" click, or in
+   Ads Manager). The cron never activates.
+3. **Hard budget ceiling.** `planCampaign` refuses any daily budget above
+   `ADS_MAX_DAILY_BUDGET` (default €20).
+4. **Guardrail only pauses.** The 6h cron pauses over-target-CPA campaigns
+   (spend ↓, always safe); it never raises budgets unless `ADS_ALLOW_SCALE=1`.
+
+With no tokens set (default), the whole system is inert — plans and reports,
+touches nothing. See MANUAL-TASKS.md → "Arm the ad-automation service" to go live.
 
 ## Monitoring
 

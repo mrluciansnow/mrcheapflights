@@ -31,6 +31,23 @@ td{padding:8px;border-top:1px solid rgba(255,255,255,0.06);vertical-align:middle
 .pill.tt{background:rgba(255,45,120,0.15);color:#ff7aa8}
 .pill.ig{background:rgba(131,58,180,0.2);color:#c98bff}
 .pill.other{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.5)}
+.pill.meta{background:rgba(24,119,242,0.18);color:#6fa8ff}
+.pill.tiktok{background:rgba(255,45,120,0.15);color:#ff7aa8}
+.pill.dry{background:rgba(255,215,0,0.14);color:var(--y)}
+.pill.live{background:rgba(0,229,204,0.15);color:var(--t)}
+.pill.st-draft{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.55)}
+.pill.st-paused{background:rgba(255,180,0,0.15);color:#ffcf66}
+.pill.st-active{background:rgba(0,229,204,0.15);color:var(--t)}
+.pill.st-archived{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.35)}
+.pill.st-error{background:rgba(248,113,113,0.15);color:#f87171}
+.banner{background:rgba(255,180,0,0.07);border:1px solid rgba(255,180,0,0.28);border-radius:10px;padding:10px 12px;font-size:11.5px;line-height:1.5;color:rgba(255,255,255,0.72);margin-bottom:1rem}
+.banner b{color:#ffcf66}
+.conn{display:flex;gap:8px;flex-wrap:wrap;font-size:11px;margin-bottom:8px}
+.conn .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px}
+.dot.on{background:var(--t)}.dot.off{background:rgba(255,255,255,0.25)}
+.mini{font-size:10px;padding:3px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;cursor:pointer}
+.mini.go{border-color:rgba(0,229,204,0.4);color:var(--t)}
+.mini.stop{border-color:rgba(255,180,0,0.4);color:#ffcf66}
 .del{background:none;border:none;color:rgba(248,113,113,0.7);cursor:pointer;font-size:14px}
 .empty{color:rgba(255,255,255,0.3);font-size:12px;padding:14px;text-align:center}
 #gate{max-width:340px;margin:4rem auto;text-align:center}
@@ -85,6 +102,31 @@ td{padding:8px;border-top:1px solid rgba(255,255,255,0.06);vertical-align:middle
     </div>
     <div class="card"><table id="camp-table"><tbody><tr><td class="empty">Loading…</td></tr></tbody></table></div>
 
+    <!-- AD AUTOMATION -->
+    <h2>🤖 Ad automation — Meta &amp; TikTok</h2>
+    <div class="banner">
+      <b>Safe by design.</b> Campaigns are created <b>PAUSED</b> and never spend a cent until you activate them in Meta/TikTok Ads Manager. Nothing is sent to a platform unless it's connected <em>and</em> live mode is on — otherwise every action is a dry run (planned &amp; logged only). The auto-guardrail can only ever <b>pause</b> an over-target campaign, never start or scale one.
+    </div>
+    <div class="card" id="ads-conn">
+      <div class="muted">Loading connection status…</div>
+    </div>
+    <div class="card">
+      <div class="row">
+        <div><label>Platform</label><select id="a-platform"><option value="meta">Meta (FB/IG)</option><option value="tiktok">TikTok</option></select></div>
+        <div><label>Name</label><input id="a-name" placeholder="Meta · Lisbon prospecting"/></div>
+        <div><label>Objective</label><select id="a-objective"><option value="traffic">Traffic</option><option value="reach">Reach</option><option value="engagement">Engagement</option></select></div>
+      </div>
+      <div class="row">
+        <div><label>Region</label><select id="a-region"><option value="ie">🇮🇪 IE</option><option value="uk">🇬🇧 UK</option></select></div>
+        <div><label>Daily budget (€/£)</label><input id="a-budget" type="number" min="1" step="0.5" placeholder="15"/></div>
+        <div><label>Target CPA (optional)</label><input id="a-cpa" type="number" min="0" step="0.1" placeholder="1.20"/></div>
+      </div>
+      <div><label>Link to tracked campaign (/c/…) — drives real CPA</label><select id="a-slug"><option value="">— none —</option></select></div>
+      <button class="btn" onclick="createAd()">+ Create draft campaign (paused)</button>
+      <div class="muted">Draft is created paused. It only reaches a platform when that platform is connected and <b>ADS_LIVE=1</b>; otherwise it's a dry run you can inspect.</div>
+    </div>
+    <div class="card"><table id="ads-table"><tbody><tr><td class="empty">Loading…</td></tr></tbody></table></div>
+
     <!-- PROMO CODES -->
     <h2>🎟 Promo codes — comped premium trials</h2>
     <div class="card">
@@ -115,7 +157,7 @@ async function doLogin(){
   else toast('❌ Wrong password','err');
 }
 
-async function boot(){ await Promise.all([loadCampaigns(), loadPromos()]); }
+async function boot(){ await Promise.all([loadCampaigns(), loadAds(), loadPromos()]); }
 
 async function loadCampaigns(){
   var res=await fetch('/api/admin/campaigns',{cache:'no-store'});
@@ -123,6 +165,8 @@ async function loadCampaigns(){
   var rows=await res.json();
   var sel=el('p-campaign');
   sel.innerHTML='<option value="">— none —</option>'+rows.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join('');
+  var aslug=el('a-slug');
+  if(aslug) aslug.innerHTML='<option value="">— none —</option>'+rows.map(function(c){return '<option value="'+esc(c.slug)+'">'+esc(c.name)+' (/c/'+esc(c.slug)+')</option>';}).join('');
   var tb=el('camp-table').querySelector('tbody');
   if(!rows.length){tb.innerHTML='<tr><td class="empty">No campaigns yet — create one above.</td></tr>';return;}
   tb.innerHTML='<tr><th>Campaign</th><th>Link</th><th>Visits</th><th>Signups</th><th>Conv</th><th>Spend</th><th>CPA</th><th></th></tr>'+
@@ -149,6 +193,85 @@ async function createCampaign(){
 }
 async function setSpend(id,v){ await fetch('/api/admin/campaigns/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({spend:parseFloat(v)||0})}); loadCampaigns(); }
 async function delCampaign(id,name){ if(!confirm('Delete "'+name+'"? Signups keep their tag.'))return; await fetch('/api/admin/campaigns/'+id,{method:'DELETE'}); toast('🗑 Deleted'); loadCampaigns(); }
+
+/* ── Ad automation ── */
+function connRow(p,label,h,acct){
+  var tok=h.token_present, ac=h.account_set, cfg=h.configured;
+  var acctId=acct&&acct.account_id?esc(acct.account_id):'';
+  return '<div style="margin:6px 0;padding:8px 0;border-top:1px solid rgba(255,255,255,0.06)">'+
+    '<div class="conn"><b style="color:#fff">'+label+'</b>'+
+      '<span><span class="dot '+(tok?'on':'off')+'"></span>token</span>'+
+      '<span><span class="dot '+(ac?'on':'off')+'"></span>account</span>'+
+      '<span class="pill '+(cfg?'live':'dry')+'">'+(cfg?'ready':'not connected')+'</span></div>'+
+    '<div class="row" style="margin-top:4px">'+
+      '<input id="acct-'+p+'" placeholder="'+(p==='meta'?'Ad account id (digits only)':'Advertiser id')+'" value="'+acctId+'"/>'+
+      '<button class="mini" onclick="saveAdAccount(\''+p+'\')">Save id</button></div>'+
+    (tok?'':'<div class="muted">Token missing — set <b>'+(p==='meta'?'META_ACCESS_TOKEN':'TIKTOK_ACCESS_TOKEN')+'</b> via <code>wrangler pages secret put</code>.</div>')+
+  '</div>';
+}
+async function loadAds(){
+  var res=await fetch('/api/admin/ads',{cache:'no-store'});
+  if(res.status===401){el('app').style.display='none';el('gate').style.display='block';return;}
+  if(!res.ok)return;
+  var d=await res.json();
+  var h=d.health||{platforms:{},mode:{}}, acc={};
+  (d.accounts||[]).forEach(function(a){acc[a.platform]=a;});
+  var modePill=h.mode.live?'<span class="pill live">LIVE MODE</span>':'<span class="pill dry">DRY RUN</span>';
+  el('ads-conn').innerHTML=
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">'+
+      '<b style="font-size:12px;color:rgba(255,255,255,0.7)">Connections</b>'+
+      '<div>'+modePill+' <span class="muted">ceiling '+(h.mode.max_daily_budget!=null?'€'+h.mode.max_daily_budget+'/day':'—')+'</span></div></div>'+
+    connRow('meta','Meta',h.platforms.meta||{},acc.meta)+
+    connRow('tiktok','TikTok',h.platforms.tiktok||{},acc.tiktok);
+
+  var tb=el('ads-table').querySelector('tbody');
+  var rows=d.campaigns||[];
+  if(!rows.length){tb.innerHTML='<tr><td class="empty">No ad campaigns yet — create a draft above.</td></tr>';return;}
+  tb.innerHTML='<tr><th>Campaign</th><th>Status</th><th>Budget</th><th>Spend</th><th>Signups</th><th>CPA</th><th>Target</th><th></th></tr>'+
+   rows.map(function(c){
+     var sym=c.symbol||'€';
+     var actBtn=c.status==='active'
+       ? '<button class="mini stop" onclick="adStatus('+c.id+',\'paused\')">Pause</button>'
+       : (c.status==='paused'||c.status==='draft')
+         ? '<button class="mini go" onclick="adStatus('+c.id+',\'active\')">Activate</button>' : '';
+     return '<tr><td><b>'+esc(c.name)+'</b><br><span class="pill '+esc(c.platform)+'">'+esc(c.platform)+'</span> '+esc(c.objective)+
+         (c.dry_run?' <span class="pill dry">dry</span>':'')+
+         (c.campaign_slug?'<br><span class="muted">/c/'+esc(c.campaign_slug)+'</span>':'')+
+         (c.note?'<br><span class="muted">'+esc(c.note)+'</span>':'')+'</td>'+
+       '<td><span class="pill st-'+esc(c.status)+'">'+esc(c.status)+'</span></td>'+
+       '<td>'+sym+(c.daily_budget||0)+'<span class="muted">/d</span></td>'+
+       '<td>'+sym+(c.spend||0).toFixed(2)+'</td>'+
+       '<td><b>'+(c.signups||0)+'</b></td>'+
+       '<td>'+(c.cpa!=null?sym+c.cpa:'—')+'</td>'+
+       '<td>'+(c.target_cpa!=null?sym+c.target_cpa:'—')+'</td>'+
+       '<td style="white-space:nowrap">'+actBtn+' <button class="del" onclick="delAd('+c.id+',\''+esc(c.name)+'\')">🗑</button></td></tr>';
+   }).join('');
+}
+async function saveAdAccount(p){
+  var v=el('acct-'+p).value.trim();
+  var res=await fetch('/api/admin/ads-accounts',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({platform:p,account_id:v})});
+  if(res.ok){toast('✅ '+p+' account saved');loadAds();}else{toast('❌ save failed','err');}
+}
+async function createAd(){
+  var body={platform:el('a-platform').value,name:el('a-name').value.trim(),objective:el('a-objective').value,region:el('a-region').value,dailyBudget:parseFloat(el('a-budget').value),targetCpa:parseFloat(el('a-cpa').value)||undefined,campaignSlug:el('a-slug').value||undefined};
+  if(!body.name){toast('Enter a name','err');return;}
+  if(!(body.dailyBudget>0)){toast('Enter a daily budget','err');return;}
+  var res=await fetch('/api/admin/ads',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  var d=await res.json();
+  if(!res.ok){toast('❌ '+esc(d.error||res.status),'err');return;}
+  toast(d.dry_run?'📝 Draft planned (dry run) — '+esc(d.note):'✅ Created paused on platform');
+  ['a-name','a-budget','a-cpa'].forEach(function(i){el(i).value='';});
+  loadAds();
+}
+async function adStatus(id,target){
+  if(target==='active'&&!confirm('Activate this campaign?\n\nIf the platform is connected and live mode is on, this STARTS REAL SPEND. Otherwise it just marks it active locally (dry run).'))return;
+  var res=await fetch('/api/admin/ads/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'status',target:target})});
+  var d=await res.json();
+  if(!res.ok){toast('❌ '+esc(d.error||res.status),'err');return;}
+  toast(d.dryRun?'Marked '+target+' (dry run)':'✅ '+target+' on platform');
+  loadAds();
+}
+async function delAd(id,name){ if(!confirm('Delete "'+name+'" from the dashboard? (A launched campaign stays PAUSED on the platform — remove it in Ads Manager too.)'))return; await fetch('/api/admin/ads/'+id,{method:'DELETE'}); toast('🗑 Deleted'); loadAds(); }
 
 async function loadPromos(){
   var res=await fetch('/api/admin/promo',{cache:'no-store'});

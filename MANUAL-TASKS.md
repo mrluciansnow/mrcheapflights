@@ -43,6 +43,34 @@ grant, so Claude can't do them autonomously. Ordered by priority.
   Connect Channel. Social posting is fully built but posts nowhere until a
   channel is connected (Buffer currently reports 0 channels).
 
+- [ ] **Arm the ad-automation service (Meta + TikTok).** The whole system is
+  built, deployed and safe, but **inert until you connect it** — with no tokens
+  set it runs in permanent dry-run (plans + logs, sends nothing). Manage it at
+  **mrcheapflights.ie/marketing → 🤖 Ad automation**. To go live:
+  1. **Meta:** create a Meta *Business* app with Marketing API access, generate a
+     long-lived **System User token** with `ads_management`, and note your **ad
+     account id** (the digits, no `act_` prefix).
+     `wrangler pages secret put META_ACCESS_TOKEN` (paste the token — I never
+     handle it), then enter the ad account id in the Meta row on /marketing.
+  2. **TikTok:** create a *TikTok for Business* developer app, get an **access
+     token** + **advertiser id**.
+     `wrangler pages secret put TIKTOK_ACCESS_TOKEN`, then enter the advertiser
+     id in the TikTok row on /marketing.
+  3. **Allow live writes:** `wrangler pages secret put ADS_LIVE` → value `1`
+     (default off = dry-run). Optional: `ADS_MAX_DAILY_BUDGET` (hard ceiling,
+     default `20`), `ADS_ALLOW_SCALE` (`1` to let it raise budgets; default off).
+     Run `npm run deploy` after setting secrets.
+  4. **Add the sync cron** at cron-job.org: `GET /api/cron/ads-sync` every 6h,
+     header `Authorization: Bearer <CRON_SECRET>`. It pulls spend, computes real
+     CPA (vs your /c/ signups) and **auto-pauses** any campaign over its target
+     CPA. It never activates or scales on its own.
+  5. **Safety you can rely on:** campaigns are always created **PAUSED**. Even
+     fully armed, nothing spends until *you* click **Activate** (or flip it live
+     in Ads Manager). Recommended first run: create one small test campaign,
+     inspect it in Ads Manager, then activate. The ad-set/creative payloads are
+     built to Meta/TikTok's documented shapes but were not testable live without
+     your account — treat the first live campaign as a supervised smoke test.
+
 - [ ] **(Optional) Cloudflare Browser Cache TTL → "Respect Existing Headers"**
   (Caching → Configuration). Activates the 30-day mascot cache that `_headers`
   already sets. Low value, zero risk.
