@@ -188,8 +188,9 @@ export async function bufferChannels(token) {
   return { channels: ch.body?.data?.channels || [] };
 }
 
-async function publishViaBuffer(copy, imageUrl, token) {
-  const result = { instagram: false, facebook: false, shellMode: false, detail: [] };
+async function publishViaBuffer(copy, imageUrl, token, opts = {}) {
+  const draft = !!opts.draft;
+  const result = { instagram: false, facebook: false, shellMode: false, draft, detail: [] };
 
   const list = await bufferChannels(token);
   if (list.error) { result.detail.push(list.error); return result; }
@@ -203,16 +204,19 @@ async function publishViaBuffer(copy, imageUrl, token) {
     const isIG = svc.includes('instagram');
     const isFB = svc.includes('facebook');
     if (!isIG && !isFB) { result.detail.push(`${ch.service}: skipped (unsupported)`); continue; }
-    if (isIG && !imageUrl) { result.detail.push('instagram: skipped — IG requires an image'); continue; }
+    // A live IG post needs media; a draft can be image-less (it's a preview).
+    if (isIG && !imageUrl && !draft) { result.detail.push('instagram: skipped — IG requires an image'); continue; }
 
     const input = {
       channelId: ch.id,
       text: copy,
       schedulingType: 'automatic',  // publish directly, not a notification
-      mode: 'shareNow',             // immediately — never sit in the queue
       assets: imageUrl ? [{ image: { url: imageUrl } }] : [],
       source: 'mrcheapflights',
     };
+    // draft → lands in Buffer for review (NOT published); else share immediately.
+    if (draft) input.saveToDraft = true;
+    else input.mode = 'shareNow';
     const mu = await bufferGraphQL(token,
       `mutation CP($input: CreatePostInput!) {
          createPost(input: $input) { __typename ... on PostActionSuccess { post { id } } }
@@ -222,7 +226,7 @@ async function publishViaBuffer(copy, imageUrl, token) {
     const ok = mu.status === 200 && !mu.body?.errors && typeName === 'PostActionSuccess';
     if (ok && isIG) result.instagram = true;
     if (ok && isFB) result.facebook = true;
-    result.detail.push(`${svc}: ${ok ? 'posted ✓' : (JSON.stringify(mu.body?.errors || typeName || `HTTP ${mu.status}`).slice(0, 160))}`);
+    result.detail.push(`${svc}: ${ok ? (draft ? 'draft saved to Buffer ✓' : 'posted ✓') : (JSON.stringify(mu.body?.errors || typeName || `HTTP ${mu.status}`).slice(0, 160))}`);
   }
   return result;
 }
@@ -271,9 +275,9 @@ async function publishViaMeta(copy, imageUrl, env) {
   return result;
 }
 
-export async function publishSocial(copy, imageUrl, env) {
+export async function publishSocial(copy, imageUrl, env, opts = {}) {
   const bufferToken = (env.BUFFER_ACCESS_TOKEN || '').trim();
-  if (bufferToken) return publishViaBuffer(copy, imageUrl, bufferToken);
+  if (bufferToken) return publishViaBuffer(copy, imageUrl, bufferToken, opts);
   if (env.META_PAGE_ACCESS_TOKEN) return publishViaMeta(copy, imageUrl, env);
   return { instagram: false, facebook: false, shellMode: true }; // SHELL: no keys yet
 }

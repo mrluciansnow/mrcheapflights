@@ -103,6 +103,11 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
 .btn-no{background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);color:#f87171;border-radius:6px;padding:5px 9px;font-family:'Bebas Neue',cursive;font-size:9px;letter-spacing:1px;cursor:pointer;}
 .btn-no:hover{background:rgba(248,113,113,0.18);}
 .bulk-bar{display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap;}
+.admin-nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1.1rem;border-bottom:1px solid rgba(255,255,255,0.07);padding-bottom:.8rem;}
+.an-link{font-family:'Bebas Neue',cursive;font-size:12px;letter-spacing:1.5px;color:rgba(255,255,255,0.5);text-decoration:none;padding:6px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);}
+.an-link:hover{color:#fff;border-color:rgba(255,255,255,0.25);}
+.an-link.active{background:rgba(255,215,0,0.1);border-color:rgba(255,215,0,0.35);color:var(--y);}
+.an-link.an-out{margin-left:auto;color:rgba(248,113,113,0.7);border-color:rgba(248,113,113,0.2);}
 .scraped-edit{margin:8px 0;padding:8px;background:rgba(0,0,0,0.2);border:1px solid rgba(0,229,204,0.2);border-radius:8px;}
 .scraped-edit input,.scraped-edit select{width:100%;padding:6px 8px;margin-bottom:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;}
 .scraped-edit select option{background:#0A0F2E;}
@@ -164,13 +169,19 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
 <div id="toasts"></div>
 <div id="creative-modal" onclick="if(event.target===this)closeCreative()"><div class="cm-box" id="cm-box"></div></div>
 <div class="w" id="main-w">
-  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1.25rem;">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:.6rem;">
     <div>
       <div class="logo">MR <span>CHEAP</span> FLIGHTS ✈</div>
       <div class="sub">Content Pipeline · Candidate Review</div>
     </div>
     <div style="font-size:10px;color:rgba(255,255,255,0.3);text-align:right;" id="header-date"></div>
   </div>
+  <nav class="admin-nav">
+    <a class="an-link active" href="/pipeline">📋 Pipeline</a>
+    <a class="an-link" href="/marketing">📣 Marketing</a>
+    <a class="an-link" href="/" target="_blank" rel="noopener">🌐 Live site</a>
+    <a class="an-link an-out" href="#" onclick="adminLogout(event)">Log out</a>
+  </nav>
 
   <!-- AUTOMATION STATS BAR -->
   <div class="stats-bar" id="stats-bar">
@@ -401,6 +412,8 @@ function toast(msg, kind, ms) {
   box.appendChild(t);
   setTimeout(function(){ t.style.transition = 'opacity .3s'; t.style.opacity = '0'; setTimeout(function(){ t.remove(); }, 320); }, ms || (kind === 'err' ? 9000 : 5000));
 }
+
+function adminLogout(e){ if(e) e.preventDefault(); fetch('/api/admin/logout',{method:'POST'}).finally(function(){ location.href='/'; }); }
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
 function switchTab(tab) {
@@ -650,19 +663,27 @@ function showResultPanel(results, label) {
   panel.style.display = 'block';
 }
 
-async function expressPublish(dealId, channels, icon) {
+async function expressPublish(dealId, channels, icon, opts) {
+  opts = opts || {};
   try {
     var body = { dealIds: [dealId] };
     if (channels) body.channels = channels;
+    if (opts.draft) body.draft = true;
     var res = await fetch('/api/admin/publish', {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify(body),
     });
     if (!res.ok) { toast('❌ Publish failed: HTTP ' + res.status, 'err'); return; }
     var data = await res.json();
-    showResultPanel(data.results, (icon || '🚀') + ' Publish');
+    showResultPanel(data.results, (icon || '🚀') + (opts.draft ? ' Draft' : ' Publish'));
     var r = data.results && data.results[dealId];
-    if (r && r.website && r.website.published) toast('🚀 Deal is LIVE on the site — image, socials &amp; email fanned out. Details below the tabs.');
+    if (opts.draft) {
+      var sd = r && r.social;
+      if (sd && (sd.instagram || sd.facebook)) toast('🧪 Draft saved to Buffer — open Buffer to review it, then publish when happy.');
+      else if (sd && sd.shellMode) toast('🧪 Buffer not armed — token applies on next deploy.', 'warn');
+      else toast('🧪 Draft attempt finished — see details below the tabs.' + (sd && sd.detail ? ' ' + escHtml(sd.detail.join(' · ')) : ''), 'warn');
+    }
+    else if (r && r.website && r.website.published) toast('🚀 Deal is LIVE on the site — image, socials &amp; email fanned out. Details below the tabs.');
     else if (channels && channels.length === 1 && channels[0] === 'social') {
       var s = r && r.social;
       if (s && (s.instagram || s.facebook)) toast('📱 Posted to socials!');
@@ -862,6 +883,15 @@ async function socialsFire(id) {
     await makePoster(id, { quiet: true });
   }
   await expressPublish(id, ['social'], '📱');
+}
+
+// Safe verify: builds the poster (if any) then saves a DRAFT to Buffer — nothing
+// goes public. Review + publish it from inside Buffer.
+async function socialsDraft(id) {
+  var d = findDealAnywhere(id);
+  if (d && !d.poster_url && d.image_url) { await makePoster(id, { quiet: true }); }
+  toast('🧪 Sending a draft to Buffer…', 'ok', 2500);
+  await expressPublish(id, ['social'], '🧪', { draft: true });
 }
 
 // ── AI Creative Studio ────────────────────────────────────────────────────────
@@ -1142,6 +1172,7 @@ async function loadLiveDeals() {
         <div class="card-actions">
           <button class="btn-mini" onclick="makePoster(${d.id})" title="Compose the branded ad poster (background + price + flag + mascot). Opens a preview.">🖼 Poster</button>
           <button class="btn-mini" onclick="generateCreative(${d.id})" title="AI Creative Studio: TikTok slideshow brief + IG Reel script for this deal.">🎬 Creative</button>
+          <button class="btn-mini" onclick="socialsDraft(${d.id})" title="Safe test: saves a DRAFT to Buffer (nothing goes public). Review + publish it inside Buffer.">🧪 Test draft</button>
           <button class="btn-mini alt" onclick="socialsFire(${d.id})" ${d.published_social?'disabled title="Already posted — idempotency guard will skip it"':'title="Post to Instagram/Facebook right now via Buffer (auto-builds the poster first)"'}>📱 Post now</button>
           <a class="btn-mini" style="text-align:center;text-decoration:none;line-height:1.6;" href="/deals/${encodeURIComponent(d.slug||'')}" target="_blank" rel="noopener">👁 View</a>
         </div>

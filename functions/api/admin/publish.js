@@ -53,6 +53,9 @@ export async function onRequestPost(context) {
   const channels = Array.isArray(body?.channels) && body.channels.length
     ? ALL_CHANNELS.filter((c) => body.channels.includes(c))
     : ALL_CHANNELS;
+  // draft:true → social posts land in Buffer for review instead of going live
+  // (the safe "verify posting works" path).
+  const draft = body?.draft === true;
   const wants = (c) => channels.includes(c);
 
   const marker = context.env.TRAVELPAYOUTS_MARKER || '';
@@ -124,9 +127,10 @@ export async function onRequestPost(context) {
         const socialImg = rawImg
           ? (String(rawImg).startsWith('/') ? siteUrl + rawImg : rawImg)
           : '';
-        const social = await publishSocial(copy, socialImg, context.env);
+        const social = await publishSocial(copy, socialImg, context.env, { draft });
         dealResult.social = social;
-        if (!social.shellMode && (social.instagram || social.facebook)) {
+        // A draft isn't a real publish — never mark the deal as posted for it.
+        if (!social.shellMode && !social.draft && (social.instagram || social.facebook)) {
           await context.env.DB.prepare(
             'UPDATE deals SET published_social=1, updated_at=unixepoch() WHERE id=?'
           ).bind(id).run();

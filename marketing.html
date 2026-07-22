@@ -38,6 +38,11 @@ td{padding:8px;border-top:1px solid rgba(255,255,255,0.06);vertical-align:middle
 .toast{background:#0A0F2E;border:1px solid rgba(0,229,204,0.4);border-radius:10px;padding:9px 13px;font-size:12px;box-shadow:0 6px 24px rgba(0,0,0,0.5)}
 .toast.err{border-color:rgba(248,113,113,0.55)}
 .muted{font-size:11px;color:rgba(255,255,255,0.35);margin-top:3px}
+.admin-nav{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 1.2rem;border-bottom:1px solid rgba(255,255,255,.07);padding-bottom:.9rem}
+.an-link{font-family:'Bebas Neue',cursive;font-size:12px;letter-spacing:1.5px;color:rgba(255,255,255,.5);text-decoration:none;padding:6px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.1)}
+.an-link:hover{color:#fff;border-color:rgba(255,255,255,.25)}
+.an-link.active{background:rgba(255,215,0,.1);border-color:rgba(255,215,0,.35);color:var(--y)}
+.an-link.an-out{margin-left:auto;color:rgba(248,113,113,.7);border-color:rgba(248,113,113,.2)}
 </style>
 </head>
 <body>
@@ -53,6 +58,12 @@ td{padding:8px;border-top:1px solid rgba(255,255,255,0.06);vertical-align:middle
   </div>
 
   <div id="app" style="display:none">
+    <nav class="admin-nav">
+      <a class="an-link" href="/pipeline">📋 Pipeline</a>
+      <a class="an-link active" href="/marketing">📣 Marketing</a>
+      <a class="an-link" href="/" target="_blank" rel="noopener">🌐 Live site</a>
+      <a class="an-link an-out" href="#" onclick="adminLogout(event)">Log out</a>
+    </nav>
     <!-- CAMPAIGNS -->
     <h2>📣 Campaigns — tracked links</h2>
     <div class="card">
@@ -95,6 +106,7 @@ function el(id){return document.getElementById(id);}
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function toast(m,k){var b=el('toasts'),t=document.createElement('div');t.className='toast'+(k==='err'?' err':'');t.innerHTML=m;b.appendChild(t);setTimeout(function(){t.remove();},4500);}
 function copy(txt){navigator.clipboard.writeText(txt).then(function(){toast('📋 Copied');});}
+function adminLogout(e){ if(e) e.preventDefault(); fetch('/api/admin/logout',{method:'POST'}).finally(function(){ location.href='/'; }); }
 
 async function doLogin(){
   var pw=el('pw').value;
