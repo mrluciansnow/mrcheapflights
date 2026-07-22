@@ -1,6 +1,7 @@
 // Dynamic XML sitemap at /sitemap.xml
 // Homepage + evergreen destination hubs (/flights-to) + non-expired deals.
 import { allDestinations } from './_lib/destinations.js';
+import { originsForRegion } from './_lib/origins.js';
 
 export async function onRequestGet(context) {
   const host = new URL(context.request.url).hostname;
@@ -14,6 +15,21 @@ export async function onRequestGet(context) {
   const destUrls = allDestinations().map((d) => `
   <url>
     <loc>${base}/flights-to/${d.slug}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>`).join('');
+
+  // Departure-airport hubs (region-scoped) + their index.
+  const originUrls = `
+  <url>
+    <loc>${base}/flights-from</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>` + originsForRegion(region).map((o) => `
+  <url>
+    <loc>${base}/flights-from/${o.slug}</loc>
     <lastmod>${now}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
@@ -77,7 +93,7 @@ export async function onRequestGet(context) {
     <lastmod>${now}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.3</priority>
-  </url>${destUrls}${dealUrls}
+  </url>${originUrls}${destUrls}${dealUrls}
 </urlset>`;
 
   return new Response(xml, {
