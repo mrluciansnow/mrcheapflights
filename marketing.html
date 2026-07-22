@@ -55,6 +55,17 @@ td{padding:8px;border-top:1px solid rgba(255,255,255,0.06);vertical-align:middle
 .act{font-size:11px;color:rgba(255,255,255,0.6);padding:5px 0;border-top:1px solid rgba(255,255,255,0.05);display:flex;align-items:center;gap:5px}
 .act b{color:rgba(255,255,255,0.85);text-transform:capitalize}
 .act-t{margin-left:auto;color:rgba(255,255,255,0.3);white-space:nowrap}
+#cre-modal{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center;padding:16px}
+.cre-back{position:absolute;inset:0;background:rgba(0,0,0,0.62)}
+.cre-box{position:relative;background:#0A0F2E;border:1px solid rgba(255,255,255,0.12);border-radius:14px;max-width:560px;width:100%;max-height:86vh;overflow:auto;padding:16px 18px;box-shadow:0 24px 70px rgba(0,0,0,0.6)}
+.cre-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}
+.cre-head b{font-size:14px}
+.cre-var{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:11px 12px;margin-bottom:9px}
+.cre-var .hl{font-size:12.5px;color:var(--y);font-weight:800;margin-bottom:5px}
+.cre-var .pt{font-size:13px;color:#fff;line-height:1.45}
+.cre-var .mrow{font-size:10.5px;color:rgba(255,255,255,0.5);margin-top:6px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.cre-var .cta{background:rgba(255,215,0,0.14);color:var(--y);padding:1px 7px;border-radius:8px;font-weight:700}
+.cre-var .concept{font-size:11px;color:rgba(255,255,255,0.42);font-style:italic;margin-top:5px}
 .del{background:none;border:none;color:rgba(248,113,113,0.7);cursor:pointer;font-size:14px}
 .empty{color:rgba(255,255,255,0.3);font-size:12px;padding:14px;text-align:center}
 #gate{max-width:340px;margin:4rem auto;text-align:center}
@@ -71,6 +82,17 @@ td{padding:8px;border-top:1px solid rgba(255,255,255,0.06);vertical-align:middle
 </head>
 <body>
 <div id="toasts"></div>
+<div id="cre-modal">
+  <div class="cre-back" onclick="closeCreative()"></div>
+  <div class="cre-box">
+    <div class="cre-head"><b id="cre-title">Ad creative</b><button class="mini" onclick="closeCreative()">✕ close</button></div>
+    <div id="cre-body"></div>
+    <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+      <button class="btn" id="cre-gen" onclick="genCreativeNow()">✨ Generate variants</button>
+      <span class="muted">Written by Claude · paste into Ads Manager</span>
+    </div>
+  </div>
+</div>
 <div class="w">
   <div class="logo">MR <span>CHEAP</span> FLIGHTS ✈</div>
   <div class="sub">Marketing · Campaigns &amp; Promo Codes</div>
@@ -245,6 +267,7 @@ async function loadAds(){
 
   var tb=el('ads-table').querySelector('tbody');
   var rows=d.campaigns||[];
+  window.ADS_CACHE=rows;
   if(!rows.length){tb.innerHTML='<tr><td class="empty">No ad campaigns yet — create a draft above.</td></tr>';return;}
   tb.innerHTML='<tr><th>Campaign</th><th>Status</th><th>Budget</th><th>Spend</th><th>Signups</th><th>CPA</th><th>Target</th><th></th></tr>'+
    rows.map(function(c){
@@ -265,7 +288,7 @@ async function loadAds(){
        '<td><b>'+(c.signups||0)+'</b></td>'+
        '<td>'+(c.cpa!=null?sym+c.cpa:'—')+'</td>'+
        '<td>'+(c.target_cpa!=null?sym+c.target_cpa:'—')+'</td>'+
-       '<td style="white-space:nowrap">'+actBtn+' <button class="del" onclick="delAd('+c.id+',\''+esc(c.name)+'\')">🗑</button></td></tr>';
+       '<td style="white-space:nowrap"><button class="mini" onclick="openCreative('+c.id+')" title="AI ad copy">✨</button> '+actBtn+' <button class="del" onclick="delAd('+c.id+',\''+esc(c.name)+'\')">🗑</button></td></tr>';
    }).join('');
 }
 async function saveAdAccount(p){
@@ -299,6 +322,44 @@ async function adStatus(id,target){
   loadAds();
 }
 async function delAd(id,name){ if(!confirm('Delete "'+name+'" from the dashboard? (A launched campaign stays PAUSED on the platform — remove it in Ads Manager too.)'))return; await fetch('/api/admin/ads/'+id,{method:'DELETE'}); toast('🗑 Deleted'); loadAds(); }
+
+/* ── AI ad creative ── */
+var CRE_ID=null, CRE_ROWS=[];
+function closeCreative(){el('cre-modal').style.display='none';}
+function creCampaign(id){return (window.ADS_CACHE||[]).filter(function(c){return c.id===id;})[0];}
+async function openCreative(id){
+  CRE_ID=id;
+  var c=creCampaign(id);
+  el('cre-title').textContent='✨ Ad creative — '+(c?c.name:'campaign #'+id);
+  el('cre-body').innerHTML='<div class="muted">Loading…</div>';
+  el('cre-modal').style.display='flex';
+  var rows=await fetch('/api/admin/ads-creative?campaignId='+id,{cache:'no-store'}).then(function(r){return r.ok?r.json():[];}).catch(function(){return [];});
+  renderCreative(rows);
+  el('cre-gen').textContent=rows.length?'✨ Regenerate variants':'✨ Generate variants';
+}
+function renderCreative(rows){
+  CRE_ROWS=rows||[];
+  if(!CRE_ROWS.length){el('cre-body').innerHTML='<div class="muted">No creative yet — generate a few ad-copy variants with Claude.</div>';return;}
+  el('cre-body').innerHTML=CRE_ROWS.map(function(v,i){
+    return '<div class="cre-var">'+
+      (v.headline?'<div class="hl">'+esc(v.headline)+'</div>':'')+
+      '<div class="pt">'+esc(v.primary_text||'')+'</div>'+
+      '<div class="mrow">'+(v.cta?'<span class="cta">'+esc(v.cta)+'</span>':'')+(v.description?'<span>'+esc(v.description)+'</span>':'')+
+        '<button class="copy" onclick="copyCre('+i+')">copy text</button></div>'+
+      (v.concept?'<div class="concept">🎬 '+esc(v.concept)+'</div>':'')+
+    '</div>';
+  }).join('');
+}
+function copyCre(i){var v=CRE_ROWS[i]; if(!v)return; copy((v.headline?v.headline+'\n\n':'')+(v.primary_text||''));}
+async function genCreativeNow(){
+  if(!CRE_ID)return;
+  var b=el('cre-gen'); b.disabled=true; var prev=b.textContent; b.textContent='✨ Writing…';
+  var res=await fetch('/api/admin/ads-creative',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({campaignId:CRE_ID})});
+  var d=await res.json().catch(function(){return {};});
+  b.disabled=false;
+  if(!res.ok){toast('❌ '+esc(d.error||res.status),'err'); b.textContent=prev; return;}
+  toast('✅ '+d.variants.length+' ad variants written'); renderCreative(d.variants); b.textContent='✨ Regenerate variants';
+}
 
 async function loadPromos(){
   var res=await fetch('/api/admin/promo',{cache:'no-store'});
