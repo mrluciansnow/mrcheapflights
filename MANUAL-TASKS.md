@@ -30,6 +30,17 @@ grant, so Claude can't do them autonomously. Ordered by priority.
   `stripePriceAnnual` in the admin Settings panel. Diagnostic:
   `GET /api/admin/stripe-price-info`. Checkout fails gracefully until then.
 
+## 🟡 Data (unblocks fare verification + price history)
+
+- [ ] **Re-paste the Travelpayouts API token — it's the wrong value.** Diagnostic
+  `GET /api/cron/verify-fares?debug=1` shows the stored token is 6 chars (that's
+  your Partner **ID**, 752435 — not the token). The real one is a **32-char hex
+  string**: Travelpayouts → Profile → **API token → Copy**, then
+  `wrangler pages secret put TRAVELPAYOUTS_TOKEN --project-name=mrcheap` and
+  `npm run deploy`. Until fixed, TP fare checks 401 → fewer "✓ Fare verified"
+  badges and the new price-history tracker stays empty (both populate off
+  verified fares). SerpApi/Google still works but is budget-limited.
+
 ## 🟢 Growth (unblocks channels)
 
 - [ ] **Connect Instagram/Facebook in Buffer.** publish.buffer.com → Channels →
