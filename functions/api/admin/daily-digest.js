@@ -120,6 +120,7 @@ export async function onRequestPost(context) {
     alerts:     { icon: '🔔', label: 'Price alerts' },
     dest_content: { icon: '🗺️', label: 'Destination SEO' },
     fares:      { icon: '🔎', label: 'Fare verification' },
+    'ads-sync': { icon: '🎯', label: 'Ad sync' },
   };
   const opSummary = (kind, detail) => {
     let d; try { d = JSON.parse(detail); } catch { return ''; }
@@ -138,6 +139,9 @@ export async function onRequestPost(context) {
       case 'fares': return `${d.tp_checked ?? 0} TP + ${d.google_checked ?? 0} Google checks · ${d.verified ?? 0} verified${d.price_changed ? ` · ${d.price_changed} price-changed` : ''}${d.new_lows && d.new_lows.length ? ` · 📉 ${d.new_lows.length} new low(s)` : ''}${!d.tp_armed ? ' · TP token unset' : ''}${!d.google_armed ? ' · SerpApi unset' : ''}`;
       case 'cleanup': return `${d.rate_limit_purged ?? 0} rate-limit rows · ${d.scraped_rejected_purged ?? 0} rejected deals purged`;
       case 'publish': return `${d.deals ?? 0} deal(s) fanned out`;
+      case 'ads-sync': return (d.considered ?? 0) === 0
+        ? `${d.live ? 'live' : 'dry-run'} · no launched campaigns`
+        : `${d.considered} campaign(s) · ${d.synced ?? 0} synced${d.paused_by_guardrail && d.paused_by_guardrail.length ? ` · ⏸ ${d.paused_by_guardrail.length} auto-paused` : ''}${d.live ? '' : ' · dry-run'}`;
       default: return String(detail).slice(0, 80);
     }
   };
