@@ -12,7 +12,7 @@
 import { routeSearchUrl } from '../_lib/affiliate.js';
 import { destSlugForText, getDestination } from '../_lib/destinations.js';
 import { resolveMemberTier, isPremiumBadge } from '../_lib/auth.js';
-import { fareMapForDeals, publicFare } from '../_lib/fares.js';
+import { fareMapForDeals, publicFare, priceTrendForDeal } from '../_lib/fares.js';
 
 function esc(s) {
   return String(s == null ? '' : s)
@@ -98,6 +98,40 @@ function fareBlockHtml(fare, gate, deal, base, verified) {
     </div>`;
 }
 
+// Inline SVG sparkline of the price series. No axis labels → shows the SHAPE
+// (public trust signal) without revealing the exact gated fare numbers.
+function sparklineSvg(points, down) {
+  const w = 280, h = 56, pad = 5;
+  const min = Math.min(...points), max = Math.max(...points), range = (max - min) || 1;
+  const n = points.length;
+  const px = (i) => pad + (i / (n - 1)) * (w - pad * 2);
+  const py = (v) => pad + (1 - (v - min) / range) * (h - pad * 2);
+  const line = points.map((v, i) => `${i ? 'L' : 'M'}${px(i).toFixed(1)},${py(v).toFixed(1)}`).join(' ');
+  const area = `${line} L${px(n - 1).toFixed(1)},${h - pad} L${px(0).toFixed(1)},${h - pad} Z`;
+  const col = down ? '#4ade80' : '#FFD200';
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none" role="img" aria-label="price trend">
+    <path d="${area}" fill="${col}" opacity="0.12"/>
+    <path d="${line}" fill="none" stroke="${col}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${px(n - 1).toFixed(1)}" cy="${py(points[n - 1]).toFixed(1)}" r="3.6" fill="${col}"/>
+  </svg>`;
+}
+
+function priceTrackerHtml(trend) {
+  if (!trend) return '';
+  const down = trend.changePct < 0;
+  let badge;
+  if (trend.atLow) badge = `<span class="pt-badge low">📉 At a ${trend.spanDays}-day low!</span>`;
+  else if (down) badge = `<span class="pt-badge down">↓ ${Math.abs(trend.changePct)}% since we started tracking</span>`;
+  else if (trend.changePct > 0) badge = `<span class="pt-badge up">↑ ${trend.changePct}% since we started tracking</span>`;
+  else badge = `<span class="pt-badge">Holding steady</span>`;
+  return `
+    <div class="price-tracker">
+      <div class="pt-head">📈 PRICE TRACKER ${badge}</div>
+      <div class="pt-spark">${sparklineSvg(trend.points, down)}</div>
+      <div class="pt-meta">Independently checked ${trend.count} times over ${trend.spanDays} day${trend.spanDays > 1 ? 's' : ''}.</div>
+    </div>`;
+}
+
 export async function onRequestGet(context) {
   const url = new URL(context.request.url);
   const host = url.hostname;
@@ -177,6 +211,10 @@ export async function onRequestGet(context) {
     if (fareEntitled) fare = publicFare(deal, rows, context.env.TRAVELPAYOUTS_MARKER || '');
   } catch { /* table may not exist yet */ }
   const fareGate = fareEntitled ? 'none' : (tier === 'guest' ? 'login' : 'premium');
+
+  // Price trend (public, non-sensitive: shape + relative signal, no exact €).
+  let trend = null;
+  try { trend = await priceTrendForDeal(context.env, deal.id); } catch { /* ignore */ }
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -277,6 +315,14 @@ ${heroImg ? `.hero-img{position:absolute;inset:0;width:100%;height:100%;object-f
 .cta-book{display:block;text-align:center;background:var(--yellow);color:var(--navy);font-weight:900;font-size:1.15rem;padding:1.05rem;border-radius:14px;box-shadow:0 10px 30px rgba(255,210,0,.25);transition:transform .15s;}
 .cta-book:hover{transform:translateY(-2px);}
 .cta-fares{display:block;text-align:center;margin-top:.7rem;color:var(--yellow);font-weight:800;font-size:.95rem;text-decoration:underline;}
+.price-tracker{margin-top:1.1rem;background:rgba(255,210,0,.05);border:1px solid rgba(255,210,0,.22);border-radius:14px;padding:1rem 1.15rem;}
+.pt-head{font-family:'Bebas Neue',sans-serif;font-size:.85rem;letter-spacing:2px;color:var(--yellow);display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;}
+.pt-badge{font-family:'Nunito',sans-serif;font-size:.68rem;font-weight:900;padding:2px 9px;border-radius:20px;letter-spacing:.3px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);}
+.pt-badge.low{background:rgba(34,197,94,.18);color:#4ade80;border:1px solid rgba(34,197,94,.4);}
+.pt-badge.down{background:rgba(34,197,94,.13);color:#4ade80;}
+.pt-badge.up{background:rgba(248,113,113,.13);color:#f87171;}
+.pt-spark{margin:.6rem 0 .3rem;}
+.pt-meta{font-size:.72rem;color:rgba(255,255,255,.38);font-weight:600;}
 .fare-verify{margin-top:1.1rem;background:rgba(0,229,204,.05);border:1px solid rgba(0,229,204,.22);border-radius:14px;padding:1rem 1.15rem;position:relative;overflow:hidden;}
 .fv-head{font-family:'Bebas Neue',sans-serif;font-size:.85rem;letter-spacing:2px;color:var(--teal);display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;}
 .fv-badge{font-family:'Nunito',sans-serif;font-size:.68rem;font-weight:900;padding:2px 9px;border-radius:20px;letter-spacing:.3px;}
@@ -369,6 +415,8 @@ ${heroImg ? `.hero-img{position:absolute;inset:0;width:100%;height:100%;object-f
 
     <a class="cta-book" href="/api/go?deal=${deal.id}&kind=book" rel="noopener noreferrer" onclick="gtag('event','deal_book_click',{deal_route:'${esc(deal.route).replace(/'/g, '')}',location:'landing'})">Book This Deal ✈</a>
     ${searchUrl ? `<a class="cta-fares" href="/api/go?deal=${deal.id}&kind=fares" rel="noopener noreferrer">🔍 Compare live fares for these dates</a>` : ''}
+
+    ${priceTrackerHtml(trend)}
 
     ${fareBlockHtml(fare, fareGate, deal, base, fareVerified)}
 

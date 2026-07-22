@@ -239,7 +239,27 @@ async function upsertCheck(env, dealId, source, listedPrice, r) {
   ).bind(dealId, source, status, r.price ?? null, r.currency ?? null, r.departDate ?? null,
          r.returnDate ?? null, r.airline ?? null, r.stops ?? null, r.durationMin ?? null,
          r.url ?? null, brief).run();
-  return status;
+
+  // Price time-series: record a snapshot only when the fare actually moved
+  // (dedupe against the last recorded price for this deal+source), and flag a
+  // new all-time low. Never throws — history is best-effort.
+  let newLow = false;
+  if ((status === 'verified' || status === 'price_changed') && r.price != null) {
+    try {
+      const prev = await env.DB.prepare(
+        `SELECT price, (SELECT MIN(price) FROM price_history WHERE deal_id=?) AS lowest
+         FROM price_history WHERE deal_id=? AND source=? ORDER BY checked_at DESC LIMIT 1`
+      ).bind(dealId, dealId, source).first();
+      if (!prev || Math.abs((prev.price ?? -1) - r.price) >= 0.01) {
+        await env.DB.prepare(
+          `INSERT INTO price_history (deal_id, source, price, currency) VALUES (?, ?, ?, ?)`
+        ).bind(dealId, source, r.price, r.currency ?? null).run();
+      }
+      // New low = strictly below every prior snapshot we had for this deal.
+      if (prev && prev.lowest != null && r.price < prev.lowest - 0.01) newLow = true;
+    } catch { /* price_history may not exist yet — ignore */ }
+  }
+  return { status, newLow };
 }
 
 /** Run fare checks over live deals. Prioritises never-checked deals, then the
@@ -247,7 +267,7 @@ async function upsertCheck(env, dealId, source, listedPrice, r) {
 export async function runFareChecks(env, { maxDeals = 15, maxGoogle = 1 } = {}) {
   const summary = {
     deals_considered: 0, tp_checked: 0, google_checked: 0,
-    verified: 0, price_changed: 0, not_found: 0, errors: 0,
+    verified: 0, price_changed: 0, not_found: 0, errors: 0, new_lows: [],
     tp_armed: !!env.TRAVELPAYOUTS_TOKEN, google_armed: !!env.SERPAPI_KEY,
   };
 
@@ -272,8 +292,9 @@ export async function runFareChecks(env, { maxDeals = 15, maxGoogle = 1 } = {}) 
     const tp = await checkTravelpayouts(env, deal, pair);
     if (!tp.skipped) {
       summary.tp_checked++;
-      const st = await upsertCheck(env, deal.id, 'travelpayouts', listedPrice, tp);
+      const { status: st, newLow } = await upsertCheck(env, deal.id, 'travelpayouts', listedPrice, tp);
       summary[st === 'verified' ? 'verified' : st === 'price_changed' ? 'price_changed' : st === 'not_found' ? 'not_found' : 'errors']++;
+      if (newLow) summary.new_lows.push({ deal_id: deal.id, route: deal.route, price: tp.price, currency: tp.currency });
       if (tp.departDate) tpDates = { depart: tp.departDate, ret: tp.returnDate };
     }
 
@@ -284,8 +305,9 @@ export async function runFareChecks(env, { maxDeals = 15, maxGoogle = 1 } = {}) 
       if (!g.skipped) {
         googleBudget--;
         summary.google_checked++;
-        const st = await upsertCheck(env, deal.id, 'google', listedPrice, g);
+        const { status: st, newLow } = await upsertCheck(env, deal.id, 'google', listedPrice, g);
         summary[st === 'verified' ? 'verified' : st === 'price_changed' ? 'price_changed' : st === 'not_found' ? 'not_found' : 'errors']++;
+        if (newLow) summary.new_lows.push({ deal_id: deal.id, route: deal.route, price: g.price, currency: g.currency });
       }
     }
   }
@@ -306,6 +328,35 @@ export async function fareMapForDeals(env, dealIds) {
     (map[r.deal_id] = map[r.deal_id] || {})[r.source] = r;
   }
   return map;
+}
+
+/** Price time-series + derived stats for one deal. Returns null until there
+ *  are at least 2 snapshots (no trend from a single point). Non-sensitive
+ *  aggregate — the trend badge is shown publicly; exact points stay gated. */
+export async function priceTrendForDeal(env, dealId) {
+  let rows = [];
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT price, currency, checked_at FROM price_history
+       WHERE deal_id=? ORDER BY checked_at ASC LIMIT 80`
+    ).bind(dealId).all();
+    rows = results || [];
+  } catch { return null; }
+  if (rows.length < 2) return null;
+
+  const points = rows.map((r) => r.price);
+  const current = points[points.length - 1];
+  const first = points[0];
+  const low = Math.min(...points);
+  const high = Math.max(...points);
+  const changePct = first > 0 ? Math.round(((current - first) / first) * 100) : 0;
+  const atLow = current <= low + 0.01;
+  const spanDays = Math.max(1, Math.round((rows[rows.length - 1].checked_at - rows[0].checked_at) / 86400));
+  return {
+    points, current, first, low, high,
+    currency: rows[rows.length - 1].currency || 'EUR',
+    changePct, atLow, spanDays, count: points.length,
+  };
 }
 
 /** Collapse a deal's fare rows into the public payload members see.

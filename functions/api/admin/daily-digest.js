@@ -135,7 +135,7 @@ export async function onRequestPost(context) {
         ? d.reason
         : `${d.deals_scanned ?? 0} deal(s) scanned · ${d.matched ?? 0} matched · ${d.sent ?? 0} alert(s) sent${d.skipped_throttle ? ` · ${d.skipped_throttle} throttled` : ''}`;
       case 'dest_content': return `${d.generated ?? 0} destination guide(s) generated`;
-      case 'fares': return `${d.tp_checked ?? 0} TP + ${d.google_checked ?? 0} Google checks · ${d.verified ?? 0} verified${d.price_changed ? ` · ${d.price_changed} price-changed` : ''}${!d.tp_armed ? ' · TP token unset' : ''}${!d.google_armed ? ' · SerpApi unset' : ''}`;
+      case 'fares': return `${d.tp_checked ?? 0} TP + ${d.google_checked ?? 0} Google checks · ${d.verified ?? 0} verified${d.price_changed ? ` · ${d.price_changed} price-changed` : ''}${d.new_lows && d.new_lows.length ? ` · 📉 ${d.new_lows.length} new low(s)` : ''}${!d.tp_armed ? ' · TP token unset' : ''}${!d.google_armed ? ' · SerpApi unset' : ''}`;
       case 'cleanup': return `${d.rate_limit_purged ?? 0} rate-limit rows · ${d.scraped_rejected_purged ?? 0} rejected deals purged`;
       case 'publish': return `${d.deals ?? 0} deal(s) fanned out`;
       default: return String(detail).slice(0, 80);
