@@ -4,7 +4,7 @@
 //                          (dry-run unless ADS_LIVE=1 and the platform is set up)
 
 import { requireAdmin } from '../../_lib/auth.js';
-import { planCampaign, launchCampaign, adsHealth } from '../../_lib/ads-engine.js';
+import { planCampaign, launchCampaign, adsHealth, adsActivity, adsAdvice } from '../../_lib/ads-engine.js';
 
 export async function onRequestGet(context) {
   const session = await requireAdmin(context);
@@ -37,7 +37,8 @@ export async function onRequestGet(context) {
     };
   });
 
-  return Response.json({ health, accounts, campaigns }, { headers: { 'Cache-Control': 'no-store' } });
+  const [advice, activity] = await Promise.all([adsAdvice(context.env), adsActivity(context.env)]);
+  return Response.json({ health, accounts, campaigns, advice, activity }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 export async function onRequestPost(context) {

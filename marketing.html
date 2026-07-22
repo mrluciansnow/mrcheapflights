@@ -48,6 +48,13 @@ td{padding:8px;border-top:1px solid rgba(255,255,255,0.06);vertical-align:middle
 .mini{font-size:10px;padding:3px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;cursor:pointer}
 .mini.go{border-color:rgba(0,229,204,0.4);color:var(--t)}
 .mini.stop{border-color:rgba(255,180,0,0.4);color:#ffcf66}
+.adv{font-size:11.5px;padding:6px 10px;border-radius:8px;margin-top:6px;border-left:3px solid}
+.adv-info{background:rgba(255,255,255,0.04);border-color:rgba(255,255,255,0.2);color:rgba(255,255,255,0.6)}
+.adv-warn{background:rgba(255,180,0,0.07);border-color:#ffcf66;color:#ffd98a}
+.adv-good{background:rgba(0,229,204,0.07);border-color:var(--t);color:#7ff0e2}
+.act{font-size:11px;color:rgba(255,255,255,0.6);padding:5px 0;border-top:1px solid rgba(255,255,255,0.05);display:flex;align-items:center;gap:5px}
+.act b{color:rgba(255,255,255,0.85);text-transform:capitalize}
+.act-t{margin-left:auto;color:rgba(255,255,255,0.3);white-space:nowrap}
 .del{background:none;border:none;color:rgba(248,113,113,0.7);cursor:pointer;font-size:14px}
 .empty{color:rgba(255,255,255,0.3);font-size:12px;padding:14px;text-align:center}
 #gate{max-width:340px;margin:4rem auto;text-align:center}
@@ -125,7 +132,9 @@ td{padding:8px;border-top:1px solid rgba(255,255,255,0.06);vertical-align:middle
       <button class="btn" onclick="createAd()">+ Create draft campaign (paused)</button>
       <div class="muted">Draft is created paused. It only reaches a platform when that platform is connected and <b>ADS_LIVE=1</b>; otherwise it's a dry run you can inspect.</div>
     </div>
+    <div class="card" id="ads-advice" style="display:none"></div>
     <div class="card"><table id="ads-table"><tbody><tr><td class="empty">Loading…</td></tr></tbody></table></div>
+    <div id="ads-activity"></div>
 
     <!-- PROMO CODES -->
     <h2>🎟 Promo codes — comped premium trials</h2>
@@ -148,6 +157,7 @@ function el(id){return document.getElementById(id);}
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function toast(m,k){var b=el('toasts'),t=document.createElement('div');t.className='toast'+(k==='err'?' err':'');t.innerHTML=m;b.appendChild(t);setTimeout(function(){t.remove();},4500);}
 function copy(txt){navigator.clipboard.writeText(txt).then(function(){toast('📋 Copied');});}
+function timeAgo(ts){if(!ts)return'';var s=Math.max(0,Math.floor(Date.now()/1000)-ts);if(s<60)return s+'s ago';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago';}
 function adminLogout(e){ if(e) e.preventDefault(); fetch('/api/admin/logout',{method:'POST'}).finally(function(){ location.href='/'; }); }
 
 async function doLogin(){
@@ -223,6 +233,12 @@ async function loadAds(){
       '<div>'+modePill+' <span class="muted">ceiling '+(h.mode.max_daily_budget!=null?'€'+h.mode.max_daily_budget+'/day':'—')+'</span></div></div>'+
     connRow('meta','Meta',h.platforms.meta||{},acc.meta)+
     connRow('tiktok','TikTok',h.platforms.tiktok||{},acc.tiktok);
+
+  var adv=d.advice||[], advBox=el('ads-advice');
+  if(adv.length){advBox.style.display='block';advBox.innerHTML='<b style="font-size:12px;color:rgba(255,255,255,0.7)">🧠 Suggestions</b>'+adv.map(function(a){return '<div class="adv adv-'+esc(a.level)+'">'+esc(a.text)+'</div>';}).join('');}
+  else{advBox.style.display='none';}
+  var act=d.activity||[], actBox=el('ads-activity');
+  actBox.innerHTML=act.length?('<div class="card"><b style="font-size:12px;color:rgba(255,255,255,0.7)">Recent automation activity</b>'+act.map(function(a){return '<div class="act">'+(a.ok?'✓':'✕')+' <b>'+esc(a.action)+'</b>'+(a.campaign?' · '+esc(a.campaign):'')+(a.platform?' · '+esc(a.platform):'')+(a.dry_run?' <span class="pill dry">dry</span>':'')+'<span class="act-t">'+timeAgo(a.at)+'</span></div>';}).join('')+'</div>'):'';
 
   var tb=el('ads-table').querySelector('tbody');
   var rows=d.campaigns||[];

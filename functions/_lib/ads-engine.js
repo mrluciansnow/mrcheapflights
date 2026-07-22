@@ -264,3 +264,59 @@ export async function runAdsSync(env) {
   await logOp(env, 'ads-sync', true, summary);
   return summary;
 }
+
+// ── Observability (read-only, always safe) ───────────────────────────────────
+// Recent automation activity — the answer to "what did the robot do overnight?".
+export async function adsActivity(env, limit = 15) {
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT a.action, a.ok, a.dry_run, a.platform, a.created_at, c.name AS campaign
+       FROM ad_actions a LEFT JOIN ad_campaigns c ON c.id = a.campaign_id
+       ORDER BY a.id DESC LIMIT ?`
+    ).bind(Math.min(50, Math.max(1, limit))).all();
+    return (results || []).map((r) => ({
+      action: r.action, ok: !!r.ok, dry_run: !!r.dry_run,
+      platform: r.platform, campaign: r.campaign || null, at: r.created_at,
+    }));
+  } catch { return []; }
+}
+
+// Plain-language advisories from the current state. Advice only — never acts.
+export async function adsAdvice(env) {
+  const advice = [];
+  const mode = adsMode(env);
+  const health = await adsHealth(env);
+  for (const p of ['meta', 'tiktok']) {
+    if (!health.platforms[p].token_present) {
+      advice.push({ level: 'info', text: `${p === 'meta' ? 'Meta' : 'TikTok'} token not set — its campaigns stay in dry-run.` });
+    }
+  }
+  if (!mode.live) advice.push({ level: 'info', text: 'Dry-run mode — campaigns are planned & logged but never sent. Set ADS_LIVE=1 to arm.' });
+
+  let camps = [];
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT c.*, (SELECT COUNT(*) FROM subscribers s WHERE s.source=c.campaign_slug) AS signups FROM ad_campaigns c`
+    ).all();
+    camps = results || [];
+  } catch { return advice; }
+
+  const drafts = camps.filter((c) => c.status === 'draft').length;
+  if (drafts) advice.push({ level: 'warn', text: `${drafts} draft campaign${drafts > 1 ? 's' : ''} not yet launched.` });
+
+  for (const c of camps) {
+    const sym = c.region === 'uk' ? '£' : '€';
+    if ((c.status === 'active' || c.status === 'paused') && c.target_cpa_cents == null) {
+      advice.push({ level: 'warn', text: `"${c.name}" has no target CPA — the auto-pause guardrail can't protect it.` });
+    }
+    if (c.status === 'active' && c.signups > 0 && c.last_spend_cents > 0 && c.target_cpa_cents) {
+      const cpaCents = Math.round(c.last_spend_cents / c.signups);
+      if (cpaCents <= c.target_cpa_cents * 0.6) {
+        advice.push({ level: 'good', text: `"${c.name}" CPA ${sym}${(cpaCents / 100).toFixed(2)} is well under target — a scale candidate.` });
+      } else if (cpaCents > c.target_cpa_cents) {
+        advice.push({ level: 'warn', text: `"${c.name}" CPA ${sym}${(cpaCents / 100).toFixed(2)} is over target — the guardrail will pause it on the next sync.` });
+      }
+    }
+  }
+  return advice;
+}
