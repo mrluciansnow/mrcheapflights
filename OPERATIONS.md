@@ -41,8 +41,13 @@ but is never uploaded.
 Ad automation (all optional — absent ⇒ permanent dry-run, nothing is sent):
 `META_ACCESS_TOKEN` · `TIKTOK_ACCESS_TOKEN` · `ADS_LIVE` (`1` permits live
 writes; default off) · `ADS_MAX_DAILY_BUDGET` (hard ceiling, default `20`) ·
-`ADS_ALLOW_SCALE` (`1` allows budget raises; default off). Ad-account /
-advertiser ids are non-secret and set in the /marketing UI (D1 `ad_accounts`).
+`ADS_ALLOW_SCALE` (`1` allows budget raises; default off) · `ADS_SANDBOX` (`1`
+forces simulation). Ad-account / advertiser ids are non-secret and set in the
+/marketing UI (D1 `ad_accounts`).
+**CURRENT STATE:** `META_ACCESS_TOKEN` / `TIKTOK_ACCESS_TOKEN` hold **filler
+`sandbox…` values** and `ADS_LIVE=1` — the service runs in SIMULATION (fake
+metrics, £0 spend). A token starting with `sandbox` (or `ADS_SANDBOX=1`) = sandbox.
+Replace a token with a real one to take that platform live (see MANUAL-TASKS).
 
 Set/rotate: `echo <value> | npx wrangler pages secret put NAME --project-name=mrcheap`
 then `npm run deploy` (secrets apply on the next deployment).
@@ -70,8 +75,19 @@ D1 is the brain (`ad_campaigns`, `ad_actions`, `ad_accounts`); the platforms are
 the executor. Spend is joined against internal `/c/` signups for a true CPA.
 
 Files: `_lib/ads-meta.js` (Graph v21.0), `_lib/ads-tiktok.js` (Business API
-v1.3), `_lib/ads-engine.js` (orchestrator + guardrails), `api/admin/ads*.js`
+v1.3), `_lib/ads-engine.js` (orchestrator + guardrails + sandbox),
+`_lib/ads-creative.js` (Haiku ad copy), `api/admin/ads*.js` + `ads-creative.js`
 (UI API), `api/cron/ads-sync.js` (6h sync + auto-pause).
+
+**Sandbox:** a token starting with `sandbox` (or `ADS_SANDBOX=1`) simulates that
+platform — fake campaign ids + fabricated, growing metrics — so the full
+lifecycle is demoable without a real account. It short-circuits before any
+network call, so it can never spend, even with `ADS_LIVE=1`. Prod is in sandbox
+now (filler tokens). "🔄 Sync now" on /marketing advances the simulation.
+
+**Ad creative:** the ✨ button per campaign calls Claude Haiku
+(`ANTHROPIC_API_KEY`) for platform-appropriate ad-copy variants, stored in
+`ad_creatives`. Independent of go-live.
 
 **Safety model — four hard invariants (enforced in `ads-engine.js`):**
 1. **Dry-run by default.** No platform write unless `ADS_LIVE=1` *and* that
@@ -85,8 +101,9 @@ v1.3), `_lib/ads-engine.js` (orchestrator + guardrails), `api/admin/ads*.js`
 4. **Guardrail only pauses.** The 6h cron pauses over-target-CPA campaigns
    (spend ↓, always safe); it never raises budgets unless `ADS_ALLOW_SCALE=1`.
 
-With no tokens set (default), the whole system is inert — plans and reports,
-touches nothing. See MANUAL-TASKS.md → "Arm the ad-automation service" to go live.
+With no tokens set the system is inert (plans/reports only). Prod currently has
+filler sandbox tokens, so it simulates. See MANUAL-TASKS.md → "Go live on the
+ad-automation service" to swap in real tokens.
 
 ## Monitoring
 
