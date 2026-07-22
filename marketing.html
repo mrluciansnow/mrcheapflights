@@ -133,6 +133,7 @@ td{padding:8px;border-top:1px solid rgba(255,255,255,0.06);vertical-align:middle
       <div class="muted">Draft is created paused. It only reaches a platform when that platform is connected and <b>ADS_LIVE=1</b>; otherwise it's a dry run you can inspect.</div>
     </div>
     <div class="card" id="ads-advice" style="display:none"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:2px 2px 6px"><span class="muted">Launched campaigns · spend pulls in on sync</span><button class="mini" onclick="syncAdsNow()">🔄 Sync now</button></div>
     <div class="card"><table id="ads-table"><tbody><tr><td class="empty">Loading…</td></tr></tbody></table></div>
     <div id="ads-activity"></div>
 
@@ -206,17 +207,19 @@ async function delCampaign(id,name){ if(!confirm('Delete "'+name+'"? Signups kee
 
 /* ── Ad automation ── */
 function connRow(p,label,h,acct){
-  var tok=h.token_present, ac=h.account_set, cfg=h.configured;
+  var tok=h.token_present, ac=h.account_set, cfg=h.configured, sb=h.sandbox;
   var acctId=acct&&acct.account_id?esc(acct.account_id):'';
+  var pill=sb?'<span class="pill dry">🧪 sandbox</span>':'<span class="pill '+(cfg?'live':'dry')+'">'+(cfg?'ready':'not connected')+'</span>';
   return '<div style="margin:6px 0;padding:8px 0;border-top:1px solid rgba(255,255,255,0.06)">'+
     '<div class="conn"><b style="color:#fff">'+label+'</b>'+
       '<span><span class="dot '+(tok?'on':'off')+'"></span>token</span>'+
-      '<span><span class="dot '+(ac?'on':'off')+'"></span>account</span>'+
-      '<span class="pill '+(cfg?'live':'dry')+'">'+(cfg?'ready':'not connected')+'</span></div>'+
+      '<span><span class="dot '+((sb||ac)?'on':'off')+'"></span>account</span>'+
+      pill+'</div>'+
     '<div class="row" style="margin-top:4px">'+
       '<input id="acct-'+p+'" placeholder="'+(p==='meta'?'Ad account id (digits only)':'Advertiser id')+'" value="'+acctId+'"/>'+
       '<button class="mini" onclick="saveAdAccount(\''+p+'\')">Save id</button></div>'+
-    (tok?'':'<div class="muted">Token missing — set <b>'+(p==='meta'?'META_ACCESS_TOKEN':'TIKTOK_ACCESS_TOKEN')+'</b> via <code>wrangler pages secret put</code>.</div>')+
+    (sb?'<div class="muted">🧪 Simulated — no real account needed. Delivery &amp; metrics are fake; swap in a real token to go live.</div>'
+       :(tok?'':'<div class="muted">Token missing — set <b>'+(p==='meta'?'META_ACCESS_TOKEN':'TIKTOK_ACCESS_TOKEN')+'</b> via <code>wrangler pages secret put</code>.</div>'))+
   '</div>';
 }
 async function loadAds(){
@@ -252,7 +255,9 @@ async function loadAds(){
          ? '<button class="mini go" onclick="adStatus('+c.id+',\'active\')">Activate</button>' : '';
      return '<tr><td><b>'+esc(c.name)+'</b><br><span class="pill '+esc(c.platform)+'">'+esc(c.platform)+'</span> '+esc(c.objective)+
          (c.dry_run?' <span class="pill dry">dry</span>':'')+
+         (c.ext_campaign_id&&c.ext_campaign_id.indexOf('sim_')===0?' <span class="pill dry">🧪 sim</span>':'')+
          (c.campaign_slug?'<br><span class="muted">/c/'+esc(c.campaign_slug)+'</span>':'')+
+         (c.last_impressions?'<br><span class="muted">'+(c.last_impressions||0).toLocaleString()+' impr · '+(c.last_clicks||0).toLocaleString()+' clicks</span>':'')+
          (c.note?'<br><span class="muted">'+esc(c.note)+'</span>':'')+'</td>'+
        '<td><span class="pill st-'+esc(c.status)+'">'+esc(c.status)+'</span></td>'+
        '<td>'+sym+(c.daily_budget||0)+'<span class="muted">/d</span></td>'+
@@ -268,6 +273,12 @@ async function saveAdAccount(p){
   var res=await fetch('/api/admin/ads-accounts',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({platform:p,account_id:v})});
   if(res.ok){toast('✅ '+p+' account saved');loadAds();}else{toast('❌ save failed','err');}
 }
+async function syncAdsNow(){
+  toast('🔄 Syncing…');
+  var r=await fetch('/api/cron/ads-sync?debug=1',{method:'POST'});
+  if(r.ok){var d=await r.json();toast('✅ Synced '+(d.synced||0)+' campaign(s)'+(d.paused_by_guardrail&&d.paused_by_guardrail.length?' · ⏸ '+d.paused_by_guardrail.length+' auto-paused':''));loadAds();}
+  else toast('❌ sync failed','err');
+}
 async function createAd(){
   var body={platform:el('a-platform').value,name:el('a-name').value.trim(),objective:el('a-objective').value,region:el('a-region').value,dailyBudget:parseFloat(el('a-budget').value),targetCpa:parseFloat(el('a-cpa').value)||undefined,campaignSlug:el('a-slug').value||undefined};
   if(!body.name){toast('Enter a name','err');return;}
@@ -275,7 +286,7 @@ async function createAd(){
   var res=await fetch('/api/admin/ads',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   var d=await res.json();
   if(!res.ok){toast('❌ '+esc(d.error||res.status),'err');return;}
-  toast(d.dry_run?'📝 Draft planned (dry run) — '+esc(d.note):'✅ Created paused on platform');
+  toast(d.dry_run?'📝 Draft planned (dry run) — '+esc(d.note):(d.launch&&d.launch.sandbox?'🧪 Sandbox campaign created (simulated)':'✅ Created paused on platform'));
   ['a-name','a-budget','a-cpa'].forEach(function(i){el(i).value='';});
   loadAds();
 }

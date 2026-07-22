@@ -21,6 +21,12 @@
 //
 // The effect: with no tokens set (the default, and the state overnight), the
 // whole system is inert — it plans and reports but touches nothing external.
+//
+//  SANDBOX: a "filler" token that starts with `sandbox` (or ADS_SANDBOX=1) puts
+//  that platform into SIMULATION — fake campaign ids + fabricated, growing
+//  metrics — so the full lifecycle is demoable/testable without a real ad
+//  account. Sandbox short-circuits BEFORE any network call, so it can never
+//  spend, even with ADS_LIVE=1.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { logOp } from './oplog.js';
@@ -32,6 +38,39 @@ const OBJECTIVES = new Set(['traffic', 'reach', 'engagement']);
 // Enough spend must accumulate before the CPA guardrail trusts a number —
 // otherwise one early signup makes a fine campaign look terrible (or vice versa).
 const GUARDRAIL_MIN_SPEND_CENTS = 1000; // €10 / £10
+
+// ── Sandbox / simulation ─────────────────────────────────────────────────────
+function platformToken(env, platform) {
+  return String((platform === 'meta' ? env.META_ACCESS_TOKEN : env.TIKTOK_ACCESS_TOKEN) || '').trim();
+}
+// A platform is in sandbox when its token is a filler (`sandbox…`) or ADS_SANDBOX=1.
+function isSandbox(env, platform) {
+  const t = platformToken(env, platform);
+  return !!t && (env.ADS_SANDBOX === '1' || /^sandbox/i.test(t));
+}
+// Deterministic pseudo-random in [0,1) seeded by n — keeps a campaign's
+// simulated CPM/CTR stable across syncs while spend grows.
+function seeded(n) { const x = Math.sin(n * 99.13) * 10000; return x - Math.floor(x); }
+// One simulated sync step for an ACTIVE sandbox campaign: advance spend by ~1/6
+// of the daily budget and derive plausible impressions/clicks. Paused campaigns
+// freeze at their stored values (spend only accrues while delivering).
+function simulateStep(row) {
+  if (row.status !== 'active') {
+    return { spendCents: row.last_spend_cents || 0, impressions: row.last_impressions || 0, clicks: row.last_clicks || 0, results: row.last_results || 0 };
+  }
+  const daily = row.daily_budget_cents || 0;
+  const step = Math.max(50, Math.round((daily / 6) * (0.8 + 0.4 * seeded(row.id))));
+  const spendCents = Math.min((row.last_spend_cents || 0) + step, daily * 30);
+  const cpmCents = 400 + Math.round(350 * seeded(row.id + 1)); // €4.00–7.50 CPM
+  const impressions = cpmCents > 0 ? Math.round((spendCents / cpmCents) * 1000) : 0;
+  const ctr = 0.008 + 0.014 * seeded(row.id + 2);              // 0.8–2.2% CTR
+  const clicks = Math.round(impressions * ctr);
+  return { spendCents, impressions, clicks, results: clicks };
+}
+function simulateCreate(platform) {
+  const rnd = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()).replace(/-/g, '').slice(0, 12);
+  return { ext_campaign_id: `sim_${platform}_${rnd}`, ext_adset_id: `sim_set_${rnd}`, adset_error: null };
+}
 
 export function adsMode(env) {
   const maxMajor = parseFloat(env.ADS_MAX_DAILY_BUDGET || '20');
@@ -60,6 +99,7 @@ async function logAction(env, campaignId, platform, action, ok, dryRun, detail) 
 }
 
 function configuredFor(env, platform, account) {
+  if (isSandbox(env, platform)) return true; // sandbox needs no real ad account
   return platform === 'meta' ? meta.metaConfigured(env, account) : tiktok.tiktokConfigured(env, account);
 }
 
@@ -69,11 +109,13 @@ export async function adsHealth(env) {
   const out = { mode: { live: mode.live, allow_scale: mode.allowScale, max_daily_budget: mode.maxDailyBudgetCents / 100 }, platforms: {} };
   for (const p of PLATFORMS) {
     const account = await getAccount(env, p);
+    const sandbox = isSandbox(env, p);
     out.platforms[p] = {
       token_present: p === 'meta' ? !!env.META_ACCESS_TOKEN : !!env.TIKTOK_ACCESS_TOKEN,
-      account_set: !!(account?.account_id || (p === 'meta' ? env.META_AD_ACCOUNT_ID : env.TIKTOK_ADVERTISER_ID)),
+      account_set: sandbox || !!(account?.account_id || (p === 'meta' ? env.META_AD_ACCOUNT_ID : env.TIKTOK_ADVERTISER_ID)),
       configured: configuredFor(env, p, account),
-      status: account?.status || 'disconnected',
+      sandbox,
+      status: sandbox ? 'sandbox' : (account?.status || 'disconnected'),
     };
   }
   return out;
@@ -136,9 +178,13 @@ export async function launchCampaign(env, campaignId) {
     return { ok: true, dryRun: true, plan, note: reason };
   }
 
-  // Live path — create PAUSED campaign + paused budget-carrying child.
+  // Live path — create the PAUSED campaign + its budget-carrying child. Sandbox
+  // short-circuits to a simulator; nothing is sent to a real platform.
+  const sandbox = isSandbox(env, row.platform);
   let created;
-  if (row.platform === 'meta') {
+  if (sandbox) {
+    created = simulateCreate(row.platform);
+  } else if (row.platform === 'meta') {
     const c = await meta.metaCreateCampaign(env, account, { name: row.name, objective: row.objective });
     if (!c.ok) return failLaunch(env, campaignId, row.platform, c.error);
     const extId = c.data.id;
@@ -156,14 +202,15 @@ export async function launchCampaign(env, campaignId) {
     created = { ext_campaign_id: extId, ext_adset_id: g.ok ? g.data.adgroup_id : null, adset_error: g.ok ? null : g.error };
   }
 
+  const note = sandbox
+    ? 'SANDBOX — simulated campaign (no real platform, no spend). Activate to start simulated delivery.'
+    : (created.adset_error ? 'campaign created PAUSED; ad set needs attention: ' + created.adset_error : 'created PAUSED — activate in Ads Manager to spend');
   await env.DB.prepare(
     `UPDATE ad_campaigns SET ext_campaign_id=?, ext_adset_id=?, status='paused', dry_run=0,
        note=?, updated_at=unixepoch() WHERE id=?`
-  ).bind(created.ext_campaign_id, created.ext_adset_id,
-         created.adset_error ? 'campaign created PAUSED; ad set needs attention: ' + created.adset_error : 'created PAUSED — activate in Ads Manager to spend',
-         campaignId).run();
-  await logAction(env, campaignId, row.platform, 'create', true, false, { ...plan, ...created });
-  return { ok: true, dryRun: false, ...created };
+  ).bind(created.ext_campaign_id, created.ext_adset_id, note, campaignId).run();
+  await logAction(env, campaignId, row.platform, 'create', true, false, { ...plan, ...created, sandbox });
+  return { ok: true, dryRun: false, sandbox, note, ...created };
 }
 
 async function failLaunch(env, campaignId, platform, error) {
@@ -183,9 +230,11 @@ export async function setCampaignStatus(env, campaignId, target) {
 
   const mode = adsMode(env);
   const account = await getAccount(env, row.platform);
+  const sandbox = isSandbox(env, row.platform);
   const canWrite = mode.live && configuredFor(env, row.platform, account) && row.ext_campaign_id;
 
-  if (canWrite) {
+  // Real platform call only when NOT sandbox. Sandbox just flips local state.
+  if (canWrite && !sandbox) {
     if (row.platform === 'meta') {
       const map = { paused: 'PAUSED', active: 'ACTIVE', archived: 'ARCHIVED' };
       const r = await meta.metaSetStatus(env, row.ext_campaign_id, map[target]);
@@ -196,16 +245,19 @@ export async function setCampaignStatus(env, campaignId, target) {
       if (!r.ok) return { ok: false, error: r.error };
     }
   }
-  await env.DB.prepare('UPDATE ad_campaigns SET status=?, updated_at=unixepoch() WHERE id=?').bind(target, campaignId).run();
-  await logAction(env, campaignId, row.platform, target === 'active' ? 'activate' : 'pause', true, !canWrite, { target, applied: canWrite });
-  return { ok: true, dryRun: !canWrite, status: target };
+  // Stamp first-activation time (drives "live since" + sandbox spend accrual).
+  const stamp = target === 'active' && !row.activated_at ? ', activated_at=unixepoch()' : '';
+  await env.DB.prepare(`UPDATE ad_campaigns SET status=?${stamp}, updated_at=unixepoch() WHERE id=?`).bind(target, campaignId).run();
+  await logAction(env, campaignId, row.platform, target === 'active' ? 'activate' : 'pause', true, !canWrite, { target, applied: canWrite, sandbox });
+  return { ok: true, dryRun: !canWrite, sandbox, status: target };
 }
 
 // ── Sync one campaign's spend/metrics from the platform ──────────────────────
 async function syncOne(env, row, account) {
   if (!row.ext_campaign_id) return null; // never launched — nothing to sync
   let r;
-  if (row.platform === 'meta') r = await meta.metaInsights(env, row.ext_campaign_id);
+  if (isSandbox(env, row.platform)) r = { ok: true, insights: simulateStep(row) };
+  else if (row.platform === 'meta') r = await meta.metaInsights(env, row.ext_campaign_id);
   else r = await tiktok.tiktokReport(env, account, row.ext_campaign_id);
   if (!r.ok) { await logAction(env, row.id, row.platform, 'sync', false, false, { error: r.error }); return null; }
 
@@ -219,11 +271,18 @@ async function syncOne(env, row, account) {
 
 // True CPA = platform spend ÷ subscribers attributed to this campaign's /c/ slug.
 async function cpaForCampaign(env, row) {
-  if (!row.campaign_slug) return null;
-  const r = await env.DB.prepare('SELECT COUNT(*) AS n FROM subscribers WHERE source=?').bind(row.campaign_slug).first();
-  const signups = r?.n || 0;
-  if (!signups || !row.last_spend_cents) return { signups, cpaCents: null };
-  return { signups, cpaCents: Math.round(row.last_spend_cents / signups) };
+  let signups = 0;
+  if (row.campaign_slug) {
+    const r = await env.DB.prepare('SELECT COUNT(*) AS n FROM subscribers WHERE source=?').bind(row.campaign_slug).first();
+    signups = r?.n || 0;
+  }
+  if (signups && row.last_spend_cents) return { signups, cpaCents: Math.round(row.last_spend_cents / signups) };
+  // Sandbox has no real signups, so fall back to cost-per-result (simulated
+  // clicks) as the denominator — lets the guardrail be demonstrated end-to-end.
+  if (isSandbox(env, row.platform) && row.last_results > 0 && row.last_spend_cents) {
+    return { signups: row.last_results, cpaCents: Math.round(row.last_spend_cents / row.last_results), simulated: true };
+  }
+  return { signups, cpaCents: null };
 }
 
 // ── The cron body: sync every launched campaign, then run the guardrail ──────
@@ -246,17 +305,16 @@ export async function runAdsSync(env) {
 
     // Guardrail: an ACTIVE campaign that has spent enough and blown past its
     // target CPA gets paused. This only reduces spend, so it's safe to automate.
-    if (row.status === 'active' && row.target_cpa_cents) {
-      const fresh = await env.DB.prepare('SELECT last_spend_cents, campaign_slug FROM ad_campaigns WHERE id=?').bind(row.id).first();
-      if (fresh && fresh.last_spend_cents >= GUARDRAIL_MIN_SPEND_CENTS) {
-        const cpa = await cpaForCampaign(env, row);
-        if (cpa && cpa.cpaCents != null && cpa.cpaCents > row.target_cpa_cents) {
-          const res = await setCampaignStatus(env, row.id, 'paused');
-          await env.DB.prepare("UPDATE ad_campaigns SET note=? WHERE id=?")
-            .bind(`auto-paused: CPA ${symbolFor(row.region)}${(cpa.cpaCents / 100).toFixed(2)} > target ${symbolFor(row.region)}${(row.target_cpa_cents / 100).toFixed(2)}`, row.id).run();
-          await logAction(env, row.id, row.platform, 'guardrail', true, res.dryRun, { cpaCents: cpa.cpaCents, targetCents: row.target_cpa_cents });
-          summary.paused_by_guardrail.push({ id: row.id, name: row.name, cpa: cpa.cpaCents / 100 });
-        }
+    // Re-read the full row so the check sees the freshly-synced numbers.
+    const fresh = await env.DB.prepare('SELECT * FROM ad_campaigns WHERE id=?').bind(row.id).first();
+    if (fresh && fresh.status === 'active' && fresh.target_cpa_cents && fresh.last_spend_cents >= GUARDRAIL_MIN_SPEND_CENTS) {
+      const cpa = await cpaForCampaign(env, fresh);
+      if (cpa && cpa.cpaCents != null && cpa.cpaCents > fresh.target_cpa_cents) {
+        const res = await setCampaignStatus(env, fresh.id, 'paused');
+        await env.DB.prepare("UPDATE ad_campaigns SET note=? WHERE id=?")
+          .bind(`auto-paused: CPA ${symbolFor(fresh.region)}${(cpa.cpaCents / 100).toFixed(2)} > target ${symbolFor(fresh.region)}${(fresh.target_cpa_cents / 100).toFixed(2)}${cpa.simulated ? ' (sandbox)' : ''}`, fresh.id).run();
+        await logAction(env, fresh.id, fresh.platform, 'guardrail', true, res.dryRun, { cpaCents: cpa.cpaCents, targetCents: fresh.target_cpa_cents, simulated: !!cpa.simulated });
+        summary.paused_by_guardrail.push({ id: fresh.id, name: fresh.name, cpa: cpa.cpaCents / 100 });
       }
     }
   }
@@ -287,11 +345,15 @@ export async function adsAdvice(env) {
   const mode = adsMode(env);
   const health = await adsHealth(env);
   for (const p of ['meta', 'tiktok']) {
-    if (!health.platforms[p].token_present) {
+    if (health.platforms[p].sandbox) {
+      advice.push({ level: 'info', text: `${p === 'meta' ? 'Meta' : 'TikTok'} is in SANDBOX — campaigns simulate delivery; all metrics are fake and nothing spends. Swap in a real token to go live.` });
+    } else if (!health.platforms[p].token_present) {
       advice.push({ level: 'info', text: `${p === 'meta' ? 'Meta' : 'TikTok'} token not set — its campaigns stay in dry-run.` });
     }
   }
-  if (!mode.live) advice.push({ level: 'info', text: 'Dry-run mode — campaigns are planned & logged but never sent. Set ADS_LIVE=1 to arm.' });
+  if (!mode.live && !isSandbox(env, 'meta') && !isSandbox(env, 'tiktok')) {
+    advice.push({ level: 'info', text: 'Dry-run mode — campaigns are planned & logged but never sent. Set ADS_LIVE=1 to arm.' });
+  }
 
   let camps = [];
   try {
