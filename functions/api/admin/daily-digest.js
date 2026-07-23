@@ -41,6 +41,7 @@ export async function onRequestPost(context) {
     watchStats,
     topWatchedDests,
     marketingSignups,
+    referralStats,
   ] = await Promise.all([
     db.prepare(`SELECT id, source_name, route, price, badge, region, confidence, created_at
                 FROM scraped_deals WHERE status='pending'
@@ -89,6 +90,11 @@ export async function onRequestPost(context) {
                 FROM subscribers s LEFT JOIN campaigns c ON c.slug = s.source
                 WHERE s.created_at >= unixepoch()-604800
                 GROUP BY src ORDER BY signups DESC LIMIT 6`).all().catch(() => ({ results: [] })),
+    // Referral loop — totals + top referrer (columns exist from migration 0023).
+    db.prepare(`SELECT
+                  (SELECT COUNT(*) FROM subscribers WHERE referred_by IS NOT NULL) AS referred_total,
+                  (SELECT COUNT(*) FROM subscribers WHERE referred_by IS NOT NULL AND created_at >= unixepoch()-604800) AS referred_7d,
+                  (SELECT MAX(referral_count) FROM subscribers) AS top_count`).first().catch(() => null),
   ]);
 
   const today = new Date().toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -251,6 +257,14 @@ export async function onRequestPost(context) {
       </tbody>
     </table>` : '';
 
+  const rs = referralStats || {};
+  const referralHtml = (rs.referred_total || 0) > 0 ? `
+    <h2>🎁 Referrals</h2>
+    <p style="font-size:13px;color:#333;margin:0 0 16px">
+      <strong>${rs.referred_total}</strong> total referred signups ·
+      <strong>${rs.referred_7d || 0}</strong> in the last 7 days${rs.top_count ? ` · top referrer has <strong>${rs.top_count}</strong> invite(s)` : ''}.
+    </p>` : '';
+
   const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><style>
@@ -289,6 +303,8 @@ export async function onRequestPost(context) {
     ${bizHtml}
 
     ${marketingHtml}
+
+    ${referralHtml}
 
     <h2>🔍 Deals Pending Review (${pendingDeals.results.length})</h2>
     <table>

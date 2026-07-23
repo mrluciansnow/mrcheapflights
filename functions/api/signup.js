@@ -1,5 +1,6 @@
-import { randomHex, signSession, setCookieHeader } from '../_lib/auth.js';
+import { randomHex, signSession, setCookieHeader, getCookie, clearCookieHeader } from '../_lib/auth.js';
 import { sendWelcomeIfNew } from '../_lib/welcome.js';
+import { creditReferral } from '../_lib/referrals.js';
 
 const YEAR_IN_SECONDS = 60 * 60 * 24 * 400;
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,253}\.[^\s@]{2,}$/;
@@ -42,9 +43,14 @@ export async function onRequestPost(context) {
   const normalizedEmail = email.trim().toLowerCase();
   const safeName = name ? name.trim().slice(0, 100) : null;
 
+  // Referral: /r/<token> sets an mcf_ref cookie carrying the referrer's token.
+  const refCookie = getCookie(context.request, 'mcf_ref');
+  const refToken = refCookie && /^[a-f0-9]{40,64}$/i.test(refCookie) ? refCookie : null;
+
   let row = await context.env.DB.prepare(
     'SELECT id, member_token FROM subscribers WHERE email = ?'
   ).bind(normalizedEmail).first();
+  const isNew = !row;
 
   if (!row) {
     const memberToken = randomHex(24);
@@ -59,9 +65,14 @@ export async function onRequestPost(context) {
     subscriberId: row.id, email: normalizedEmail, memberToken: row.member_token, region: region || 'ie',
   }));
 
+  // Credit the referrer — only for a genuinely new subscriber; never blocks.
+  if (isNew && refToken) {
+    context.waitUntil(creditReferral(context.env, { newSubId: row.id, newToken: row.member_token, refToken }));
+  }
+
   const cookieToken = await signSession({ sub: row.member_token }, context.env.SESSION_SIGNING_SECRET);
-  return Response.json({ ok: true }, {
-    status: 200,
-    headers: { 'Set-Cookie': setCookieHeader('mcf_member', cookieToken, { maxAgeSeconds: YEAR_IN_SECONDS, sameSite: 'Lax' }) },
-  });
+  const headers = new Headers();
+  headers.append('Set-Cookie', setCookieHeader('mcf_member', cookieToken, { maxAgeSeconds: YEAR_IN_SECONDS, sameSite: 'Lax' }));
+  if (refToken) headers.append('Set-Cookie', clearCookieHeader('mcf_ref')); // consumed on first signup
+  return Response.json({ ok: true }, { status: 200, headers });
 }
