@@ -159,6 +159,18 @@ td{padding:8px;border-top:1px solid rgba(255,255,255,0.06);vertical-align:middle
     <div class="card"><table id="ads-table"><tbody><tr><td class="empty">Loading…</td></tr></tbody></table></div>
     <div id="ads-activity"></div>
 
+    <!-- AUDIENCES -->
+    <h2>📤 Audiences — Meta / TikTok Custom Audience</h2>
+    <div class="card">
+      <div class="muted" style="margin-bottom:9px">Export subscribers as <b>SHA-256-hashed</b> emails — raw addresses never leave (GDPR-friendly). Upload to Meta/TikTok as a <b>Custom Audience</b>, then build a <b>Lookalike</b> — the best cold targeting in the plan.</div>
+      <div class="row">
+        <div><label>Region</label><select id="au-region" onchange="refreshAudienceCount()"><option value="all">All</option><option value="ie">🇮🇪 IE</option><option value="uk">🇬🇧 UK</option></select></div>
+        <div><label>Tier</label><select id="au-tier" onchange="refreshAudienceCount()"><option value="all">All</option><option value="free">Free</option><option value="premium">Premium</option></select></div>
+        <div><label>&nbsp;</label><button class="btn" onclick="downloadAudience()">⬇ Download hashed CSV</button></div>
+      </div>
+      <div class="muted" id="au-count" style="margin-top:7px">…</div>
+    </div>
+
     <!-- PROMO CODES -->
     <h2>🎟 Promo codes — comped premium trials</h2>
     <div class="card">
@@ -190,7 +202,7 @@ async function doLogin(){
   else toast('❌ Wrong password','err');
 }
 
-async function boot(){ await Promise.all([loadCampaigns(), loadAds(), loadPromos()]); }
+async function boot(){ await Promise.all([loadCampaigns(), loadAds(), loadPromos()]); refreshAudienceCount(); }
 
 async function loadCampaigns(){
   var res=await fetch('/api/admin/campaigns',{cache:'no-store'});
@@ -359,6 +371,26 @@ async function genCreativeNow(){
   b.disabled=false;
   if(!res.ok){toast('❌ '+esc(d.error||res.status),'err'); b.textContent=prev; return;}
   toast('✅ '+d.variants.length+' ad variants written'); renderCreative(d.variants); b.textContent='✨ Regenerate variants';
+}
+
+/* ── Audience export ── */
+async function refreshAudienceCount(){
+  var region=el('au-region').value, tier=el('au-tier').value;
+  el('au-count').textContent='…';
+  var d=await fetch('/api/admin/audience-export?format=count&region='+region+'&tier='+tier,{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});
+  el('au-count').textContent=d?(d.count.toLocaleString()+' subscriber(s) match · opted-out excluded · hashed on export'):'—';
+}
+async function downloadAudience(){
+  var region=el('au-region').value, tier=el('au-tier').value;
+  var res=await fetch('/api/admin/audience-export?region='+region+'&tier='+tier);
+  if(!res.ok){toast('❌ export failed','err');return;}
+  var blob=await res.blob();
+  if(!blob.size||blob.size<12){toast('No subscribers match','err');return;}
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='mcf-audience-'+region+'-'+tier+'-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1200);
+  toast('⬇ Downloaded hashed CSV');
 }
 
 async function loadPromos(){
