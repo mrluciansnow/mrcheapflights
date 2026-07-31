@@ -89,6 +89,13 @@ now (filler tokens). "🔄 Sync now" on /marketing advances the simulation.
 (`ANTHROPIC_API_KEY`) for platform-appropriate ad-copy variants, stored in
 `ad_creatives`. Independent of go-live.
 
+**Creative-level attribution:** each variant has its own tracked link
+`/c/<slug>?v=<n>`; the landing page passes `v` to `/api/signup`, which stores it
+as `subscribers.source_variant` (migration 0025). The creative modal then shows
+per-variant signups and flags the leader once total signups ≥ 5. **Use the
+per-variant link as each ad's destination URL** — a shared `/c/<slug>` link
+attributes to the campaign but not the creative.
+
 **Safety model — four hard invariants (enforced in `ads-engine.js`):**
 1. **Dry-run by default.** No platform write unless `ADS_LIVE=1` *and* that
    platform is configured (token + account id). Otherwise the intended request
