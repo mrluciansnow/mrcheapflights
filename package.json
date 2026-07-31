@@ -7,7 +7,8 @@
     "dev": "wrangler pages dev",
     "deploy": "node scripts/deploy.mjs",
     "deploy:unsafe": "echo 'REFUSED: use npm run deploy (bare wrangler pages deploy . leaks .dev.vars)' && exit 1",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "test:parser": "node scripts/test-parser.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

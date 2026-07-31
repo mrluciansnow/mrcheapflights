@@ -1,5 +1,11 @@
 // Deal scraper library — fetches public flight-deal RSS feeds and pages,
 // stores candidates in `scraped_deals` for admin review.
+//
+// PARSING RULE: resolve-or-reject. Origin and destination must both resolve to
+// a city we know, and the origin must be an airport we actually serve. Nothing
+// is ever defaulted — see extractRoute() for why that matters.
+
+import { resolveCityKey, canonicalCity, REGION_ORIGINS } from './affiliate.js';
 
 // IE airport keywords: all 6 public airports + common name variants
 const IE_FILTER = /dublin|ireland|irish|cork|shannon|knock|ireland west|kerry|farranfore|waterford|donegal|city of derry/i;
@@ -164,12 +170,7 @@ function extractTag(text, tag) {
 //   "Flights from London to New York from £189"
 //   "Manchester to Barcelona €39 cheap flights"
 
-const PRICE_RE = /([€£$])\s*([\d,]+(?:\.\d{1,2})?)/;
-
-const CITY_ALIASES = {
-  'dub': 'Dublin', 'lon': 'London', 'man': 'Manchester',
-  'lgw': 'London Gatwick', 'lhr': 'London Heathrow',
-};
+const PRICE_RE = /([€£$])\s*([\d,]+(?:\.\d{1,2})?)/g;
 
 const COUNTRY_FLAG = {
   portugal: '🇵🇹', spain: '🇪🇸', italy: '🇮🇹', france: '🇫🇷',
@@ -204,9 +205,11 @@ function guessFlag(text) {
   return '✈️';
 }
 
-function guessBadge(priceStr, title) {
+// `num` is the already-normalised numeric price in the region's own currency —
+// the old signature took a display string and re-parsed it, which compared
+// across currencies (a $ figure judged against a € threshold).
+function guessBadge(num, title) {
   const lower = title.toLowerCase();
-  const num = parseFloat(String(priceStr).replace(/[^0-9.]/g, ''));
   if (lower.includes('mistake') || lower.includes('error fare')) return '⚠️ Mistake Fare';
   if (lower.includes('business') || lower.includes('premium cabin')) return '⭐ Featured';
   if (lower.includes('long haul') || lower.includes('transatlantic') || num > 299) return '✈ Long Haul';
@@ -214,28 +217,133 @@ function guessBadge(priceStr, title) {
   return '🔥 Hot';
 }
 
-function parseDealTitle(title, link, region, desc) {
-  const fullText = title + ' ' + desc;
-  const priceMatch = fullText.match(PRICE_RE);
-  if (!priceMatch) return null;
-  const price = priceMatch[1] + priceMatch[2];
+// ── Price ────────────────────────────────────────────────────────────────────
+// Region decides the currency: an IE deal is priced in €, a UK deal in £.
+// Previously the first symbol found anywhere won, so a $ fare from a US feed
+// could be stored as an Irish price. No matching currency ⇒ reject.
+const CURRENCY_FOR = { ie: '€', uk: '£' };
 
-  // Extract destination — look for "to <City>" pattern
-  const destMatch = fullText.match(/\bto\s+([A-Z][A-Za-z\s]+?)(?:\s+(?:for|from|return|\d)|[,.]|$)/);
-  if (!destMatch) return null;
-  const dest = destMatch[1].trim().replace(/\s+/g, ' ');
-  if (dest.split(/\s+/).length > 4) return null; // skip overly long matches
+export function extractPrice(text, region) {
+  const want = CURRENCY_FOR[region] || '€';
+  const found = [...String(text).matchAll(PRICE_RE)]
+    .map((m) => ({ sym: m[1], num: parseFloat(m[2].replace(/,/g, '')) }))
+    .filter((p) => Number.isFinite(p.num) && p.num > 0);
+  const hit = found.find((p) => p.sym === want);
+  if (!hit) return null;
+  // A "flight deal" of €5000 is a package/business fare mis-scrape, not a deal.
+  if (hit.num > 3000) return null;
+  return { display: want + (Number.isInteger(hit.num) ? hit.num : hit.num.toFixed(2)), num: hit.num };
+}
 
-  // Extract origin — look for "from <City>" pattern
-  const originMatch = fullText.match(/\bfrom\s+([A-Z][A-Za-z\s]+?)\s+to\s/);
-  const defaultOrigin = region === 'ie' ? 'Dublin' : 'London';
-  const origin = originMatch ? originMatch[1].trim() : defaultOrigin;
+// ── Route ────────────────────────────────────────────────────────────────────
+// RESOLVE-OR-REJECT. Both endpoints must resolve to a city we actually know;
+// nothing is defaulted. The old parser fell back to Dublin/London whenever its
+// "from X to Y" pattern missed, which republished "Cork to Lisbon" as
+// "Dublin → Lisbon" — inventing a departure airport the deal never mentioned.
+// NB: "new" is deliberately NOT a noise word — stripping it turns "New York"
+// into "York" and the deal is then rejected as unresolvable.
+const NOISE = /^(the|a|an|book|see|get|find|save|our|your|this|that|these|more|all|now|here|cheap|flights?|deals?|return|today|tomorrow)$/i;
 
-  if (origin.toLowerCase() === dest.toLowerCase()) return null;
+function cleanFragment(s) {
+  return String(s || '').replace(/\s+/g, ' ').trim()
+    .replace(/^(the|a|an)\s+/i, '')
+    .split(/\s+/).filter((w) => !NOISE.test(w)).join(' ');
+}
 
-  const route = `${origin} → ${dest}`;
-  const flag = guessFlag(fullText);
-  const badge = guessBadge(price, fullText);
+/** Pull candidate "<A> to <B>" pairs and keep the first where BOTH resolve. */
+// Feeds pepper headlines with emoji ("Manchester to Japan 🍣 from £519"), which
+// sat between the city and its terminator and made the pattern miss — silently
+// dropping valid deals. Strip pictographs/flags before matching.
+const EMOJI_RE = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F1E6}-\u{1F1FF}\u{2B00}-\u{2BFF}\u{2190}-\u{21FF}]/gu;
 
-  return { route, price, flag, badge, url: link, region };
+export function stripEmoji(s) {
+  return String(s).replace(EMOJI_RE, ' ').replace(/\s+/g, ' ').trim();
+}
+
+export function extractRoute(text, region) {
+  const t = stripEmoji(text);
+  const origins = REGION_ORIGINS[region] || [];
+
+  // Pattern 1: "<Origin> to <Dest>" — the dominant headline form.
+  const pairRe = /([A-Za-z][A-Za-z\s]{1,28}?)\s+to\s+([A-Za-z][A-Za-z\s]{1,28}?)(?=\s*(?:[,.;:!?–—-]|\bfor\b|\bfrom\b|\breturn\b|\bwith\b|\bin\b|\bon\b|[€£$]|\d|$))/gi;
+  for (const m of t.matchAll(pairRe)) {
+    const oKey = resolveCityKey(cleanFragment(m[1]));
+    const dKey = resolveCityKey(cleanFragment(m[2]));
+    if (!oKey || !dKey || oKey === dKey) continue;
+    if (!origins.includes(oKey)) continue;      // origin must be an airport we serve
+    return { originKey: oKey, destKey: dKey };
+  }
+
+  // Pattern 2: "flights to <Dest> from <Origin>" (origin trails the destination).
+  const revRe = /\bto\s+([A-Za-z][A-Za-z\s]{1,28}?)\s+from\s+([A-Za-z][A-Za-z\s]{1,28}?)(?=\s*(?:[,.;:!?–—-]|\bfor\b|[€£$]|\d|$))/gi;
+  for (const m of t.matchAll(revRe)) {
+    const dKey = resolveCityKey(cleanFragment(m[1]));
+    const oKey = resolveCityKey(cleanFragment(m[2]));
+    if (!oKey || !dKey || oKey === dKey) continue;
+    if (!origins.includes(oKey)) continue;
+    return { originKey: oKey, destKey: dKey };
+  }
+
+  return null; // unresolvable ⇒ caller rejects. Never guess an origin.
+}
+
+// ── Travel dates ─────────────────────────────────────────────────────────────
+// `dates` was always empty, which also meant deals never got an expiry.
+const MONTHS = '(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*';
+const MON_TITLE = { jan: 'Jan', feb: 'Feb', mar: 'Mar', apr: 'Apr', may: 'May', jun: 'Jun',
+  jul: 'Jul', aug: 'Aug', sep: 'Sep', sept: 'Sep', oct: 'Oct', nov: 'Nov', dec: 'Dec' };
+
+export function extractDates(text) {
+  const t = String(text).replace(/\s+/g, ' ');
+  // "12–19 Nov" / "12 - 19 November"
+  let m = t.match(new RegExp(`\\b(\\d{1,2})\\s*[–—-]\\s*(\\d{1,2})\\s+${MONTHS}`, 'i'));
+  if (m) return `${m[1]}–${m[2]} ${MON_TITLE[m[3].toLowerCase().slice(0, 3)]}`;
+  // "Nov 12-19"
+  m = t.match(new RegExp(`\\b${MONTHS}\\s+(\\d{1,2})\\s*[–—-]\\s*(\\d{1,2})\\b`, 'i'));
+  if (m) return `${m[2]}–${m[3]} ${MON_TITLE[m[1].toLowerCase().slice(0, 3)]}`;
+  // "Jan-Mar" / "January to March" (a season, not exact days)
+  m = t.match(new RegExp(`\\b${MONTHS}\\s*(?:[–—-]|\\bto\\b)\\s*${MONTHS}\\b`, 'i'));
+  if (m) return `${MON_TITLE[m[1].toLowerCase().slice(0, 3)]}–${MON_TITLE[m[2].toLowerCase().slice(0, 3)]}`;
+  // "travel in October" / "departing March"
+  m = t.match(new RegExp(`\\b(?:in|during|departing|travel(?:ling)?\\s+in)\\s+${MONTHS}\\b`, 'i'));
+  if (m) return MON_TITLE[m[1].toLowerCase().slice(0, 3)];
+  return '';
+}
+
+// We publish FLIGHT deals. Aggregators like HolidayPirates mix in ferries,
+// hotels, theatre tickets and packages — several of which do name a real
+// city pair and a price, so they'd otherwise parse as flights.
+const NON_FLIGHT = /\b(mini-?cruise|cruise|ferry|sail(?:ing)?\s+to|travelodge|premier\s+inn|hotel|hostel|b&b|theatre|musical|concert|festival\s+ticket|spa\s+day|mini-?break|city\s+break|all-?inclusive|half-?board|full-?board|nights?\s+(?:stay|hotel|b&b)|disneyland\s+tickets?|park\s+tickets?)\b/i;
+
+export function isFlightDeal(text) {
+  const t = stripEmoji(text);
+  // "flights + hotel" packages are still not a flight fare we can price.
+  if (NON_FLIGHT.test(t)) return false;
+  return true;
+}
+
+export function parseDealTitle(title, link, region, desc) {
+  const fullText = `${title} ${desc || ''}`;
+
+  // Judge the headline only: descriptions often mention a hotel in passing.
+  if (!isFlightDeal(title)) return null;
+
+  const price = extractPrice(fullText, region);
+  if (!price) return null;
+
+  const pair = extractRoute(fullText, region);
+  if (!pair) return null;
+
+  const origin = canonicalCity(pair.originKey);
+  const dest = canonicalCity(pair.destKey);
+
+  return {
+    route: `${origin} → ${dest}`,
+    price: price.display,
+    dates: extractDates(fullText),
+    flag: guessFlag(dest) !== '✈️' ? guessFlag(dest) : guessFlag(fullText),
+    badge: guessBadge(price.num, fullText),
+    url: link,
+    region,
+  };
 }
