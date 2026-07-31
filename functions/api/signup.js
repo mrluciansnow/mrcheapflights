@@ -1,6 +1,7 @@
 import { randomHex, signSession, setCookieHeader, getCookie, clearCookieHeader } from '../_lib/auth.js';
 import { sendWelcomeIfNew } from '../_lib/welcome.js';
 import { creditReferral, REFERRAL_CODE_RE } from '../_lib/referrals.js';
+import { trackConversion } from '../_lib/conversions.js';
 
 const YEAR_IN_SECONDS = 60 * 60 * 24 * 400;
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,253}\.[^\s@]{2,}$/;
@@ -75,6 +76,17 @@ export async function onRequestPost(context) {
   // Credit the referrer — only for a genuinely new subscriber; never blocks.
   if (isNew && refCode) {
     context.waitUntil(creditReferral(context.env, { newSubId: row.id, refCode }));
+  }
+
+  // Report the conversion back to the ad platform that earned it, so its
+  // optimisation model learns. Only for a genuinely new, CAMPAIGN-ATTRIBUTED
+  // signup — organic signups are never shared (see _lib/conversions.js), and
+  // the whole path is off unless CONVERSIONS_ENABLED=1. Never blocks.
+  if (isNew && source) {
+    context.waitUntil(trackConversion(context.env, {
+      email: normalizedEmail, subscriberId: row.id, source, sourceVariant,
+      request: context.request,
+    }));
   }
 
   const cookieToken = await signSession({ sub: row.member_token }, context.env.SESSION_SIGNING_SECRET);

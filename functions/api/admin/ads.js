@@ -5,6 +5,7 @@
 
 import { requireAdmin } from '../../_lib/auth.js';
 import { planCampaign, launchCampaign, adsHealth, adsActivity, adsAdvice } from '../../_lib/ads-engine.js';
+import { conversionsStatus } from '../../_lib/conversions.js';
 
 export async function onRequestGet(context) {
   const session = await requireAdmin(context);
@@ -37,8 +38,11 @@ export async function onRequestGet(context) {
     };
   });
 
-  const [advice, activity] = await Promise.all([adsAdvice(context.env), adsActivity(context.env)]);
-  return Response.json({ health, accounts, campaigns, advice, activity }, { headers: { 'Cache-Control': 'no-store' } });
+  const [advice, activity, conversions] = await Promise.all([
+    adsAdvice(context.env), adsActivity(context.env), conversionsStatus(context.env),
+  ]);
+  return Response.json({ health, accounts, campaigns, advice, activity, conversions },
+    { headers: { 'Cache-Control': 'no-store' } });
 }
 
 export async function onRequestPost(context) {

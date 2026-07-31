@@ -158,6 +158,7 @@ td{padding:8px;border-top:1px solid rgba(255,255,255,0.06);vertical-align:middle
     <div style="display:flex;justify-content:space-between;align-items:center;margin:2px 2px 6px"><span class="muted">Launched campaigns · spend pulls in on sync</span><button class="mini" onclick="syncAdsNow()">🔄 Sync now</button></div>
     <div class="card"><table id="ads-table"><tbody><tr><td class="empty">Loading…</td></tr></tbody></table></div>
     <div id="ads-activity"></div>
+    <div class="card" id="conv-card"></div>
 
     <!-- AUDIENCES -->
     <h2>📤 Audiences — Meta / TikTok Custom Audience</h2>
@@ -251,7 +252,8 @@ function connRow(p,label,h,acct){
       pill+'</div>'+
     '<div class="row" style="margin-top:4px">'+
       '<input id="acct-'+p+'" placeholder="'+(p==='meta'?'Ad account id (digits only)':'Advertiser id')+'" value="'+acctId+'"/>'+
-      '<button class="mini" onclick="saveAdAccount(\''+p+'\')">Save id</button></div>'+
+      '<input id="pix-'+p+'" placeholder="'+(p==='meta'?'Pixel id (for conversions)':'Pixel code (for conversions)')+'" value="'+(acct&&acct.pixel_id?esc(acct.pixel_id):'')+'"/>'+
+      '<button class="mini" onclick="saveAdAccount(\''+p+'\')">Save</button></div>'+
     (sb?'<div class="muted">🧪 Simulated — no real account needed. Delivery &amp; metrics are fake; swap in a real token to go live.</div>'
        :(tok?'':'<div class="muted">Token missing — set <b>'+(p==='meta'?'META_ACCESS_TOKEN':'TIKTOK_ACCESS_TOKEN')+'</b> via <code>wrangler pages secret put</code>.</div>'))+
   '</div>';
@@ -276,6 +278,8 @@ async function loadAds(){
   else{advBox.style.display='none';}
   var act=d.activity||[], actBox=el('ads-activity');
   actBox.innerHTML=act.length?('<div class="card"><b style="font-size:12px;color:rgba(255,255,255,0.7)">Recent automation activity</b>'+act.map(function(a){return '<div class="act">'+(a.ok?'✓':'✕')+' <b>'+esc(a.action)+'</b>'+(a.campaign?' · '+esc(a.campaign):'')+(a.platform?' · '+esc(a.platform):'')+(a.dry_run?' <span class="pill dry">dry</span>':'')+'<span class="act-t">'+timeAgo(a.at)+'</span></div>';}).join('')+'</div>'):'';
+
+  renderConversions(d.conversions);
 
   var tb=el('ads-table').querySelector('tbody');
   var rows=d.campaigns||[];
@@ -304,9 +308,9 @@ async function loadAds(){
    }).join('');
 }
 async function saveAdAccount(p){
-  var v=el('acct-'+p).value.trim();
-  var res=await fetch('/api/admin/ads-accounts',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({platform:p,account_id:v})});
-  if(res.ok){toast('✅ '+p+' account saved');loadAds();}else{toast('❌ save failed','err');}
+  var v=el('acct-'+p).value.trim(), px=(el('pix-'+p)||{}).value;
+  var res=await fetch('/api/admin/ads-accounts',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({platform:p,account_id:v,pixel_id:px?px.trim():null})});
+  if(res.ok){toast('✅ '+p+' saved');loadAds();}else{toast('❌ save failed','err');}
 }
 async function syncAdsNow(){
   toast('🔄 Syncing…');
@@ -380,6 +384,33 @@ async function genCreativeNow(){
   b.disabled=false;
   if(!res.ok){toast('❌ '+esc(d.error||res.status),'err'); b.textContent=prev; return;}
   toast('✅ '+d.variants.length+' ad variants written'); renderCreative(d.variants); b.textContent='✨ Regenerate variants';
+}
+
+/* ── Conversion events (Meta CAPI / TikTok Events API) ── */
+function renderConversions(c){
+  var box=el('conv-card'); if(!box)return;
+  if(!c){box.style.display='none';return;}
+  box.style.display='block';
+  var t=c.totals||{};
+  var plat=['meta','tiktok'].map(function(p){
+    var s=(c.platforms||{})[p]||{};
+    return '<span class="conn" style="display:inline-flex;margin-right:12px"><b style="color:#fff;margin-right:6px">'+(p==='meta'?'Meta':'TikTok')+'</b>'+
+      '<span><span class="dot '+(s.pixel_set?'on':'off')+'"></span>pixel</span>'+
+      (s.sandbox?' <span class="pill dry">sandbox</span>':'')+'</span>';
+  }).join('');
+  box.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">'+
+      '<b style="font-size:12px;color:rgba(255,255,255,.7)">📡 Conversion events → platforms</b>'+
+      (c.enabled?'<span class="pill live">ON</span>':'<span class="pill dry">OFF</span>')+'</div>'+
+    '<div class="muted" style="margin:7px 0">'+(c.enabled
+      ? 'Ad-attributed signups are reported back so Meta/TikTok can optimise. Hashed email only — organic signups are never sent.'
+      : 'Off — no subscriber data leaves the site. Set <b>CONVERSIONS_ENABLED=1</b> to report ad-attributed signups (a GDPR decision: it shares hashed emails with the ad platform).')+'</div>'+
+    '<div style="margin-bottom:6px">'+plat+'</div>'+
+    '<div class="muted">sent '+(t.sent||0)+' · skipped '+(t.skipped||0)+' · errors '+(t.error||0)+'</div>'+
+    ((c.recent||[]).length?'<div style="margin-top:6px">'+c.recent.slice(0,5).map(function(r){
+      return '<div class="act">'+(r.status==='sent'?'✓':r.status==='error'?'✕':'–')+' <b>'+esc(r.platform)+'</b> '+esc(r.event_name)+
+        (r.source?' · /c/'+esc(r.source):'')+' <span class="muted">'+esc(r.detail||r.status)+'</span>'+
+        '<span class="act-t">'+timeAgo(r.created_at)+'</span></div>';
+    }).join('')+'</div>':'');
 }
 
 /* ── Audience export ── */
