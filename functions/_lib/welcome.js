@@ -6,7 +6,7 @@
 // governs the daily digest, not this). welcomed_at guards double-sends.
 
 import { sendEmail } from './email.js';
-import { REFERRAL_TERMS } from './referrals.js';
+import { REFERRAL_TERMS, ensureReferralCode } from './referrals.js';
 
 function esc(s) {
   return String(s == null ? '' : s)
@@ -65,13 +65,16 @@ export async function sendWelcomeIfNew(env, { subscriberId, email, memberToken, 
     if (!row || row.welcomed_at) return;
 
     const siteUrl = region === 'uk' ? 'https://mrcheapflights.co.uk' : 'https://mrcheapflights.ie';
+    // unsubUrl carries member_token (a private capability — email only).
+    // The SHARE link must use referral_code, which grants attribution only.
     const unsubUrl = `${siteUrl}/api/unsubscribe?token=${encodeURIComponent(memberToken)}`;
+    const refCode = await ensureReferralCode(env, subscriberId);
     const res = await sendEmail(env, {
       to: email,
       subject: destName
         ? `🔔 You're in — ${destName} alert armed ✈`
         : `✈ You're in — welcome to Mr Cheap Flights`,
-      html: buildWelcomeHtml(siteUrl, unsubUrl, destName, `${siteUrl}/r/${memberToken}`),
+      html: buildWelcomeHtml(siteUrl, unsubUrl, destName, refCode ? `${siteUrl}/r/${refCode}` : null),
       text: `Welcome to Mr Cheap Flights! Fresh verified deals land most mornings${destName ? `, and your ${destName} price alert is armed` : ''}. See today's deals: ${siteUrl}  Unsubscribe: ${unsubUrl}`,
       headers: { 'List-Unsubscribe': `<${unsubUrl}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
     });

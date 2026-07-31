@@ -1,10 +1,15 @@
 // GET /r/:token — referral landing.
 //
-// A subscriber shares /r/<their member_token>. We validate the token, drop an
+// A subscriber shares /r/<their referral_code>. We validate the code, drop an
 // mcf_ref cookie (consumed by /api/signup), and show a friendly one-tap capture.
-// Unknown token → homepage. The referrer is credited when the friend signs up.
+// Unknown code → homepage. The referrer is credited when the friend signs up.
+//
+// SECURITY: this is referral_code, NOT member_token — member_token is a
+// capability credential (one-click unsubscribe) and must never appear in a link
+// users are told to post publicly. See migration 0024.
 
 import { setCookieHeader } from '../_lib/auth.js';
+import { REFERRAL_CODE_RE } from '../_lib/referrals.js';
 
 function esc(s) {
   return String(s == null ? '' : s)
@@ -19,12 +24,12 @@ export async function onRequestGet(context) {
   const cur = isUk ? '£' : '€';
   const token = String(context.params.token || '').toLowerCase();
 
-  if (!/^[a-f0-9]{40,64}$/.test(token)) return Response.redirect(`${base}/`, 302);
+  if (!REFERRAL_CODE_RE.test(token)) return Response.redirect(`${base}/`, 302);
 
-  // Validate the token belongs to a real subscriber; grab a few live deals.
+  // Validate the code belongs to a real subscriber; grab a few live deals.
   let referrer = null, deals = [];
   try {
-    referrer = await context.env.DB.prepare('SELECT id FROM subscribers WHERE member_token=?').bind(token).first();
+    referrer = await context.env.DB.prepare('SELECT id FROM subscribers WHERE referral_code=?').bind(token).first();
     if (referrer) {
       const { results } = await context.env.DB.prepare(
         `SELECT flag, route, price FROM deals

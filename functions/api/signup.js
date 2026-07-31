@@ -1,6 +1,6 @@
 import { randomHex, signSession, setCookieHeader, getCookie, clearCookieHeader } from '../_lib/auth.js';
 import { sendWelcomeIfNew } from '../_lib/welcome.js';
-import { creditReferral } from '../_lib/referrals.js';
+import { creditReferral, REFERRAL_CODE_RE } from '../_lib/referrals.js';
 
 const YEAR_IN_SECONDS = 60 * 60 * 24 * 400;
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,253}\.[^\s@]{2,}$/;
@@ -43,9 +43,10 @@ export async function onRequestPost(context) {
   const normalizedEmail = email.trim().toLowerCase();
   const safeName = name ? name.trim().slice(0, 100) : null;
 
-  // Referral: /r/<token> sets an mcf_ref cookie carrying the referrer's token.
+  // Referral: /r/<code> sets an mcf_ref cookie carrying the referrer's
+  // referral_code (never their member_token — see migration 0024).
   const refCookie = getCookie(context.request, 'mcf_ref');
-  const refToken = refCookie && /^[a-f0-9]{40,64}$/i.test(refCookie) ? refCookie : null;
+  const refCode = refCookie && REFERRAL_CODE_RE.test(refCookie.toLowerCase()) ? refCookie.toLowerCase() : null;
 
   let row = await context.env.DB.prepare(
     'SELECT id, member_token FROM subscribers WHERE email = ?'
@@ -66,13 +67,13 @@ export async function onRequestPost(context) {
   }));
 
   // Credit the referrer — only for a genuinely new subscriber; never blocks.
-  if (isNew && refToken) {
-    context.waitUntil(creditReferral(context.env, { newSubId: row.id, newToken: row.member_token, refToken }));
+  if (isNew && refCode) {
+    context.waitUntil(creditReferral(context.env, { newSubId: row.id, refCode }));
   }
 
   const cookieToken = await signSession({ sub: row.member_token }, context.env.SESSION_SIGNING_SECRET);
   const headers = new Headers();
   headers.append('Set-Cookie', setCookieHeader('mcf_member', cookieToken, { maxAgeSeconds: YEAR_IN_SECONDS, sameSite: 'Lax' }));
-  if (refToken) headers.append('Set-Cookie', clearCookieHeader('mcf_ref')); // consumed on first signup
+  if (refCode) headers.append('Set-Cookie', clearCookieHeader('mcf_ref')); // consumed on first signup
   return Response.json({ ok: true }, { status: 200, headers });
 }
