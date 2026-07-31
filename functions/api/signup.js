@@ -15,6 +15,11 @@ export async function onRequestPost(context) {
   // Campaign attribution: /c/<slug> landing pages post source=<slug>.
   const source = typeof body.source === 'string' && /^[a-z0-9][a-z0-9-]{0,48}$/i.test(body.source)
     ? body.source.toLowerCase() : null;
+  // Creative-level attribution: /c/<slug>?v=<n> carries which ad variant drove
+  // this signup. Only meaningful alongside a source; bounded 0-9 (see 0025).
+  const variantRaw = parseInt(body.variant);
+  const sourceVariant = source && Number.isFinite(variantRaw) && variantRaw >= 0 && variantRaw <= 9
+    ? variantRaw : null;
 
   if (!email || typeof email !== 'string' || !EMAIL_RE.test(email.trim()) || email.length > 254) {
     return new Response('Invalid email', { status: 400 });
@@ -56,8 +61,9 @@ export async function onRequestPost(context) {
   if (!row) {
     const memberToken = randomHex(24);
     const result = await context.env.DB.prepare(
-      `INSERT INTO subscribers (email, region, tier, member_token, name, source) VALUES (?, ?, 'free', ?, ?, ?)`
-    ).bind(normalizedEmail, region || 'ie', memberToken, safeName, source).run();
+      `INSERT INTO subscribers (email, region, tier, member_token, name, source, source_variant)
+       VALUES (?, ?, 'free', ?, ?, ?, ?)`
+    ).bind(normalizedEmail, region || 'ie', memberToken, safeName, source, sourceVariant).run();
     row = { id: result.meta.last_row_id, member_token: memberToken };
   }
 

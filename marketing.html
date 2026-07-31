@@ -89,7 +89,7 @@ td{padding:8px;border-top:1px solid rgba(255,255,255,0.06);vertical-align:middle
     <div id="cre-body"></div>
     <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
       <button class="btn" id="cre-gen" onclick="genCreativeNow()">✨ Generate variants</button>
-      <span class="muted">Written by Claude · paste into Ads Manager</span>
+      <span class="muted">Written by Claude · give each variant its own link so signups attribute to the winning copy</span>
     </div>
   </div>
 </div>
@@ -353,14 +353,23 @@ function renderCreative(rows){
   CRE_ROWS=rows||[];
   if(!CRE_ROWS.length){el('cre-body').innerHTML='<div class="muted">No creative yet — generate a few ad-copy variants with Claude.</div>';return;}
   el('cre-body').innerHTML=CRE_ROWS.map(function(v,i){
-    return '<div class="cre-var">'+
+    return '<div class="cre-var"'+(v.winner?' style="border-color:rgba(0,229,204,.45)"':'')+'>'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:5px">'+
+        '<span class="muted" style="font-size:10px;letter-spacing:.5px">VARIANT '+String.fromCharCode(65+i)+'</span>'+
+        '<span>'+(v.winner?'<span class="pill live">★ leading</span> ':'')+
+          '<span class="pill '+(v.signups?'live':'other')+'">'+(v.signups||0)+' signup'+(v.signups===1?'':'s')+'</span></span></div>'+
       (v.headline?'<div class="hl">'+esc(v.headline)+'</div>':'')+
       '<div class="pt">'+esc(v.primary_text||'')+'</div>'+
       '<div class="mrow">'+(v.cta?'<span class="cta">'+esc(v.cta)+'</span>':'')+(v.description?'<span>'+esc(v.description)+'</span>':'')+
-        '<button class="copy" onclick="copyCre('+i+')">copy text</button></div>'+
+        '<button class="copy" onclick="copyCre('+i+')">copy text</button>'+
+        (v.link?'<button class="copy" onclick="copy(\''+v.link+'\')">copy link</button>':'')+'</div>'+
+      (v.link?'<div class="concept" style="font-style:normal;color:rgba(0,229,204,.55)">🔗 '+esc(v.link)+'</div>':'')+
       (v.concept?'<div class="concept">🎬 '+esc(v.concept)+'</div>':'')+
     '</div>';
-  }).join('');
+  }).join('')+
+  (CRE_ROWS.length&&!CRE_ROWS[0].link
+    ? '<div class="adv adv-warn">This campaign isn\'t linked to a tracked /c/ campaign, so per-variant signups can\'t be attributed. Create it with a tracked link to A/B test the copy.</div>'
+    : '');
 }
 function copyCre(i){var v=CRE_ROWS[i]; if(!v)return; copy((v.headline?v.headline+'\n\n':'')+(v.primary_text||''));}
 async function genCreativeNow(){
