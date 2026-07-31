@@ -38,6 +38,9 @@ but is never uploaded.
 `NEWSLETTER_ENABLED=1` · `CRON_SECRET` · `TRAVELPAYOUTS_MARKER=752435` ·
 `TRAVELPAYOUTS_TOKEN` · `SERPAPI_KEY` · `BUFFER_ACCESS_TOKEN`
 
+`CONVERSIONS_ENABLED` (`1` reports ad-attributed signups to Meta/TikTok; default
+off — see the Conversion events section, it's a GDPR decision).
+
 Ad automation (all optional — absent ⇒ permanent dry-run, nothing is sent):
 `META_ACCESS_TOKEN` · `TIKTOK_ACCESS_TOKEN` · `ADS_LIVE` (`1` permits live
 writes; default off) · `ADS_MAX_DAILY_BUDGET` (hard ceiling, default `20`) ·
@@ -131,6 +134,24 @@ ad-automation service" to swap in real tokens.
   person out with no auth (and `&dest=` kills an alert). That is exactly the bug
   migration 0024 fixed: referrals get their own non-privileged `referral_code`.
   Keep `member_token` to emails and the signed `mcf_member` cookie.
+
+## Conversion events (Meta CAPI / TikTok Events API)
+
+Reports ad-attributed signups back to the platform so its optimisation model
+learns. `_lib/conversions.js`, fired from signup's `waitUntil`; audit trail in
+`conversion_events` (migration 0026). Status card on /marketing.
+
+**OFF unless `CONVERSIONS_ENABLED=1`** — this shares hashed subscriber emails
+with an ad platform, which is a GDPR decision for IE/UK subscribers and so is
+deliberately not a default. Scope rules, all enforced in code:
+- only signups with a campaign `source` (organic is never sent, never logged);
+- SHA-256 hashed email only — `conversion_events` has **no email column**;
+- a `sandbox…` token simulates the send and transmits nothing;
+- a platform with no `ad_accounts.pixel_id` is skipped.
+
+Config reuses the ad connection — set the **pixel id** per platform on
+/marketing; no new secrets. `event_id` dedups against a browser pixel, so
+running both counts one conversion.
 
 ## Weekly marketing report
 

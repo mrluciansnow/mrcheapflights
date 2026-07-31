@@ -88,6 +88,18 @@ grant, so Claude can't do them autonomously. Ordered by priority.
   `https://mrcheapflights.ie/api/cron/weekly-report?preview=1` while logged into
   admin — that renders the email in the browser and sends nothing.
 
+- [ ] **(Decision, not a chore) Turn on conversion events — or don't.**
+  Built and deployed but **OFF**. When on, a signup that came from a tracked ad
+  is reported back to Meta/TikTok (hashed email only) so their algorithms
+  optimise toward people who actually convert — normally a large CPA
+  improvement. Organic signups are never sent.
+  *Why it's your call:* it shares hashed subscriber data with an ad platform,
+  which for IE/UK subscribers is a GDPR/consent question. Your privacy policy
+  should cover ad-platform data sharing before enabling.
+  To enable: set the **pixel id** per platform on /marketing, then
+  `wrangler pages secret put CONVERSIONS_ENABLED` → `1`, then `npm run deploy`.
+  (While the ad tokens are sandbox fillers it stays simulated regardless.)
+
 - [ ] **(Optional) Cloudflare Browser Cache TTL → "Respect Existing Headers"**
   (Caching → Configuration). Activates the 30-day mascot cache that `_headers`
   already sets. Low value, zero risk.
