@@ -67,6 +67,7 @@ then `npm run deploy` (secrets apply on the next deployment).
 | Nightly cleanup | /api/admin/cleanup | 02:00 daily |
 | Health monitor | /api/health | every 10 min (emails on 2 fails) |
 | Ad sync + guardrail | /api/cron/ads-sync | every 6h (dry-run until armed) |
+| Weekly marketing report | /api/cron/weekly-report | Mondays 08:00 (**not yet scheduled**) |
 
 ## Ad automation (Meta + TikTok)
 
@@ -130,6 +131,16 @@ ad-automation service" to swap in real tokens.
   person out with no auth (and `&dest=` kills an alert). That is exactly the bug
   migration 0024 fixed: referrals get their own non-privileged `referral_code`.
   Keep `member_token` to emails and the signed `mcf_member` cookie.
+
+## Weekly marketing report
+
+`/api/cron/weekly-report` emails the growth picture (signups WoW, campaign CPA,
+winning ad creative, referral loop, ad-automation activity, advisories) to
+`DIGEST_TO_EMAIL`. Files: `_lib/weekly-report.js` (gather + render),
+`api/cron/weekly-report.js` (dual auth).
+
+**`?preview=1` renders it in the browser and sends nothing** — use that to check
+the report any time without waiting for Monday.
 
 ## Monitoring
 

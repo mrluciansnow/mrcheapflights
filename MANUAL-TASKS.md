@@ -79,6 +79,15 @@ grant, so Claude can't do them autonomously. Ordered by priority.
     variants (headline / primary text / CTA / concept) to paste into Ads Manager.
     Works now (uses the existing `ANTHROPIC_API_KEY`), independent of go-live.
 
+- [ ] **Schedule the weekly marketing report** (2 min, needs your cron-job.org
+  login). The report is built and deployed but nothing triggers it yet.
+  cron-job.org → Create cronjob → URL
+  `https://mrcheapflights.ie/api/cron/weekly-report`, schedule **Mondays 08:00**
+  (Europe/London), header `Authorization: Bearer <CRON_SECRET>`.
+  *Preview it right now without waiting:* open
+  `https://mrcheapflights.ie/api/cron/weekly-report?preview=1` while logged into
+  admin — that renders the email in the browser and sends nothing.
+
 - [ ] **(Optional) Cloudflare Browser Cache TTL → "Respect Existing Headers"**
   (Caching → Configuration). Activates the 30-day mascot cache that `_headers`
   already sets. Low value, zero risk.
