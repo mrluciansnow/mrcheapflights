@@ -1,4 +1,5 @@
 import { getCookie, verifySession } from '../_lib/auth.js';
+import { ensureReferralCode, REFERRAL_TERMS } from '../_lib/referrals.js';
 
 // Resolves premium status from the signed member cookie — replaces the old
 // client-editable `localStorage.premium` flag with a server-verified check.
@@ -16,13 +17,30 @@ export async function onRequestGet(context) {
   if (!session) return Response.json({ premium: false, tier: 'free', member: false }, noCache);
 
   const row = await context.env.DB.prepare(
-    'SELECT email, current_period_end FROM subscribers WHERE member_token = ?'
+    `SELECT id, email, current_period_end, referral_code, referral_count
+     FROM subscribers WHERE member_token = ?`
   ).bind(session.sub).first();
   if (!row) return Response.json({ premium: false, tier: 'free', member: false }, noCache);
 
   const now = Math.floor(Date.now() / 1000);
   const premium = row.current_period_end != null && row.current_period_end > now;
-  return Response.json({ premium, tier: premium ? 'premium' : 'free', member: true, email: row.email }, {
+
+  // Referral block — the member's own share link + progress to the next reward.
+  // Safe to expose: referral_code is designed to be public and grants only
+  // attribution. member_token is NEVER returned (it's a capability credential —
+  // one-click unsubscribe). See migration 0024.
+  const code = row.referral_code || await ensureReferralCode(context.env, row.id);
+  const count = row.referral_count || 0;
+  const origin = new URL(context.request.url).origin;
+  const referral = code ? {
+    link: `${origin}/r/${code}`,
+    count,
+    per_reward: REFERRAL_TERMS.perReward,
+    reward_days: REFERRAL_TERMS.rewardDays,
+    to_next: REFERRAL_TERMS.perReward - (count % REFERRAL_TERMS.perReward),
+  } : null;
+
+  return Response.json({ premium, tier: premium ? 'premium' : 'free', member: true, email: row.email, referral }, {
     headers: { 'Cache-Control': 'private, no-store' },
   });
 }

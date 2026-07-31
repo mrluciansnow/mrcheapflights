@@ -327,6 +327,20 @@ body.annual-mode .plan-saving-tag{display:inline-block}
 
 /* TESTIMONIALS */
 .testi-section{background:#040d1a;max-width:none;padding:80px max(5vw,20px)}
+.ref-card{background:linear-gradient(135deg,var(--card-dark),var(--card-darker));border:1px solid rgba(255,45,107,.28);border-radius:20px;padding:clamp(1.4rem,4vw,2.2rem);max-width:640px;box-shadow:0 18px 50px rgba(255,45,107,.12)}
+.ref-lead{color:rgba(255,255,255,.72);font-size:1rem;line-height:1.6;margin-bottom:1.3rem}
+.ref-lead b{color:var(--yellow)}
+.ref-linkrow{display:flex;gap:.5rem;flex-wrap:wrap}
+.ref-linkrow input{flex:1 1 240px;min-width:0;padding:13px 15px;border-radius:12px;border:1px dashed rgba(255,210,0,.4);background:rgba(255,210,0,.07);color:var(--yellow);font-family:'Courier New',monospace;font-size:.9rem;font-weight:700}
+.ref-copy{padding:13px 24px;border-radius:12px;border:none;background:var(--yellow);color:var(--navy);font-weight:900;font-size:.9rem;cursor:pointer;transition:transform .15s var(--ease-spring)}
+.ref-copy:hover{transform:translateY(-2px)}
+.ref-progress{margin-top:1.3rem}
+.ref-bar{height:9px;border-radius:20px;background:rgba(255,255,255,.09);overflow:hidden}
+.ref-bar span{display:block;height:100%;width:0;border-radius:20px;background:linear-gradient(90deg,var(--hot-pink),var(--yellow));transition:width .6s var(--ease-out)}
+.ref-stat{margin-top:.6rem;font-size:.86rem;font-weight:800;color:rgba(255,255,255,.62)}
+.ref-share{display:flex;gap:.6rem;flex-wrap:wrap;margin-top:1.3rem}
+.ref-share a,.ref-share button{padding:10px 18px;border-radius:11px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.05);color:#fff;font-family:inherit;font-size:.85rem;font-weight:800;text-decoration:none;cursor:pointer}
+.ref-share a:hover,.ref-share button:hover{border-color:rgba(255,210,0,.5);color:var(--yellow)}
 .testi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.2rem;max-width:1100px;margin:0 auto}
 .testi-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.06);border-radius:20px;padding:1.8rem;transition:border-color .2s;display:flex;flex-direction:column;justify-content:space-between}
 .testi-card:hover{border-color:rgba(255,210,0,.3)}
@@ -670,6 +684,7 @@ body.modal-active nav{display:none}
 <section class="section deals-section" id="deals"><p class="section-label reveal">Latest drops</p><div class="prefs-trigger-row"><h2 class="section-title" id="deals-title">RECENT <span>DEALS</span></h2><button class="btn-personalise" onclick="openPrefs();mcfTrack('personalise_click')">🎯 Personalise for me</button></div><div class="premium-section-banner" id="premium-section-banner" style="display:none"><div class="psb-text"><strong>⭐ Some deals are Premium-only</strong><span>Featured and Long Haul deals are unlocked for Premium members</span></div><button class="btn-go-premium" onclick="openSignup(event,'premium');mcfTrack('signup_intent',{plan:'premium',location:'deals_banner'})">Upgrade to Premium →</button></div><div id="prefs-banner"><div class="prefs-banner-text"><strong id="prefs-banner-title">Showing deals for you</strong><span id="prefs-banner-sub">Based on your preferences</span></div><button class="btn-edit-prefs" onclick="openPrefs()">✏️ Edit preferences</button></div><div class="airport-nav" id="airport-nav"></div><div class="deals-filter-bar" id="deals-filter-bar"><button class="filter-chip active" data-filter="all" onclick="setFilter('all',this)">🌍 All Deals <span class="chip-count" id="fc-all"></span></button><button class="filter-chip" data-filter="hot" onclick="setFilter('hot',this)">🔥 Hot <span class="chip-count" id="fc-hot"></span></button><button class="filter-chip" data-filter="flash" onclick="setFilter('flash',this)">⚡ Flash <span class="chip-count" id="fc-flash"></span></button><button class="filter-chip" data-filter="long" onclick="setFilter('long',this)">✈ Long Haul <span class="chip-count" id="fc-long"></span></button><button class="filter-chip" data-filter="feat" onclick="setFilter('feat',this)">⭐ Featured <span class="chip-count" id="fc-feat"></span></button><button class="filter-chip" data-filter="mistake" onclick="setFilter('mistake',this)">⚠️ Mistake Fare <span class="chip-count" id="fc-mistake"></span></button><div class="filter-sep"></div><select class="sort-select" id="sort-select" onchange="renderPublic()" aria-label="Sort deals"><option value="default">🕐 Newest first</option><option value="price-asc">💸 Cheapest first</option><option value="price-desc">💰 Most expensive</option><option value="expiry">⏳ Expiring soon</option></select></div><div class="deals-grid" id="public-grid" role="list" aria-label="Flight deals"></div><div id="no-deals-pub" style="display:none"><div class="empty-deals-state"><span class="eds-icon">✈️</span><h3>Deals Loading Soon</h3><p>Our hunters are finding the best fares. Sign up to be first to know.</p><button class="btn-plan primary" style="margin-top:1.2rem;max-width:280px" onclick="openSignup(event,'free')">Get Notified Free</button></div></div><div style="text-align:center;margin-top:2.5rem"><p style="color:#777;font-weight:700;margin-bottom:1rem">🔒 Members see every deal the moment it drops — including mistake fares</p><button class="btn-primary" style="font-size:1.05rem;padding:14px 32px" onclick="openSignup(event,'free');mcfTrack('signup_intent',{plan:'free',location:'below_deals'})">Unlock All Deals – It's Free</button></div></section>
 <div class="section-wave"><svg viewBox="0 0 1440 40" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg"><path d="M0,0 C480,40 960,0 1440,30 L1440,40 L0,40 Z" fill="#0a1628"/></svg></div>
 <section class="section" id="pricing" style="background:linear-gradient(180deg,#0a1628,#081220)"><p class="section-label reveal">Plans</p><h2 class="section-title reveal reveal-delay-1">JOIN THE <span>CLUB</span></h2><div class="pricing-toggle-row reveal reveal-delay-2"><span class="pricing-toggle-label active" id="lbl-monthly">Monthly</span><button class="pricing-toggle" id="pricing-toggle-btn" onclick="togglePricingMode()"></button><span class="pricing-toggle-label" id="lbl-annual">Annual</span><span class="annual-badge">Save 33%</span></div><div class="plans"><div class="plan reveal reveal-delay-2"><div class="plan-name">Free</div><div class="plan-price"><span class="plan-price-currency">€</span><span>0</span><span>/mo</span></div><div class="plan-price-annual">€0/year — always free</div><p class="plan-desc">The basics — perfect to get started.</p><ul class="plan-features"><li>Daily deals newsletter</li><li>Verified fare details on free deals</li><li id="plan-free-airport">Dublin departures only</li><li>Destination price alerts</li><li class="locked">Instant mistake-fare alerts</li><li class="locked">Premium-only deals (Long Haul + Featured)</li><li class="locked" id="plan-free-airport-locked">All Irish airports</li></ul><button class="btn-plan secondary" onclick="openSignup(event,'free');mcfTrack('signup_intent',{plan:'free',location:'pricing_card'})">Join Free — No Card Needed</button></div><div class="plan featured reveal reveal-delay-3"><div class="plan-badge">🔥 Most Popular</div><div class="plan-name">Premium ⭐</div><div class="plan-price"><span class="plan-price-currency">€</span><span id="prem-price-num">4.99</span><span id="prem-price-period">/mo</span></div><div class="plan-price-annual" id="prem-annual-note">€39.99/year — billed once</div><div class="plan-saving-tag" id="prem-saving-tag">🎉 Save €19.89 vs monthly</div><p class="plan-desc">For serious deal hunters. Never miss a fare again.</p><ul class="plan-features"><li>Instant mistake-fare alerts — be first</li><li>Premium-only deals (Long Haul + Featured)</li><li id="plan-prem-airport">All Irish airports covered</li><li>Verified flight details on every deal</li><li>Destination price alerts</li><li>Email support</li><li>Cancel anytime</li></ul><button class="btn-plan primary" id="btn-start-premium" onclick="openSignup(event,'premium');mcfTrack('signup_intent',{plan:'premium',location:'pricing_card'})">Start for €4.99/mo →</button></div></div></section>
+<section class="section" id="referral" style="display:none"><p class="section-label reveal">Members only</p><h2 class="section-title">GIVE CHEAP FLIGHTS, <span>GET PREMIUM</span></h2><div class="ref-card reveal"><p class="ref-lead">Send your link to the group chat. Every <b id="ref-per">3</b> mates who join gets you <b id="ref-days">30</b> days of Premium — mistake fares, long-haul, the lot. Free, forever, as long as you keep sharing.</p><div class="ref-linkrow"><input id="ref-link" readonly onclick="this.select()" aria-label="Your referral link"/><button class="ref-copy" id="ref-copy-btn" onclick="copyReferral()">Copy</button></div><div class="ref-progress"><div class="ref-bar"><span id="ref-fill"></span></div><div class="ref-stat" id="ref-stat">—</div></div><div class="ref-share"><a href="#" id="ref-wa" target="_blank" rel="noopener" onclick="mcfTrack('referral_share',{channel:'whatsapp'})">💬 WhatsApp</a><a href="#" id="ref-tw" target="_blank" rel="noopener" onclick="mcfTrack('referral_share',{channel:'twitter'})">🐦 Post</a><button id="ref-native" onclick="shareReferral()">📤 Share…</button></div></div></section>
 <section id="testimonials" class="section testi-section"><p class="section-label reveal">Straight from the deal feed</p><h2 class="section-title">RECENT <span>WINS</span></h2><div class="testi-grid" id="recent-wins-grid"><!-- populated from real live deal data by renderRecentWins() --></div></section>
 <section class="cta-banner"><h2 id="cta-h2">STOP PAYING FULL PRICE ✈</h2><p id="cta-p">Insane deals from Irish airports — free in your inbox every week.</p><button class="btn-white" onclick="openSignup(event,'free');mcfTrack('signup_intent',{plan:'free',location:'cta_banner'})">Join Mr Cheap Flights — Free</button></section>
 <section class="wa-section" id="whatsapp"><div class="wa-inner"><div class="wa-icon-big">💬</div><div class="wa-text"><h2>GET DEALS ON WHATSAPP</h2><p>Join our WhatsApp broadcast and get instant alerts the moment a deal drops.</p><a class="btn-wa mcf-wa-link" href="#" target="_blank" rel="noopener noreferrer" onclick="mcfTrack('whatsapp_click',{location:'section'})"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>Join WhatsApp Alerts</a></div></div></section>
@@ -705,6 +720,7 @@ async function submitSignup(plan){var emailEl=el(plan==='free'?'su-free-email':'
   mcfTrack('sign_up',{method:'email',plan:plan});
   try{await fetch('/api/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,region:currentRegion})});}catch(e){}
   await refreshPremiumStatus();
+  renderReferral();
   closeSignup();var hf=el('hero-form');if(hf){hf.style.display='none';el('hero-trust-line').style.display='none';el('signup-success').style.display='block';}toast('🎉 Welcome!');}
 var pendingPremiumEmail='',pendingPremiumName='';
 async function continueToPayment(){var name=el('su-prem-name').value.trim(),email=el('su-prem-email').value.trim();if(!name){toast('⚠️ Enter your name!');return;}if(!email||!email.includes('@')){toast('⚠️ Enter email!');return;}pendingPremiumName=name;pendingPremiumEmail=email;
@@ -747,6 +763,35 @@ function escapeHtml(s){if(typeof s!=='string')return'';return s.replace(/&/g,'&a
 function sanitiseUrl(url){if(!url)return'#';var t=url.trim();if(t==='#')return'#';if(/^https?:\/\//i.test(t))return t;if(/^www\./i.test(t))return'https://'+t;return'#';}
 function isPremium(){return premiumState.premium;}
 async function refreshPremiumStatus(){try{var res=await fetch('/api/me');if(res.ok)premiumState=await res.json();}catch(e){}}
+// ── Referral: members-only share block (hidden for guests) ──
+function renderReferral(){
+  var sec=el('referral');if(!sec)return;
+  var r=premiumState&&premiumState.referral;
+  if(!r||!r.link){sec.style.display='none';return;}
+  sec.style.display='';
+  el('ref-per').textContent=r.per_reward;el('ref-days').textContent=r.reward_days;
+  el('ref-link').value=r.link;
+  var done=r.count%r.per_reward,earned=Math.floor(r.count/r.per_reward);
+  el('ref-fill').style.width=Math.round((done/r.per_reward)*100)+'%';
+  el('ref-stat').textContent=r.count===0
+    ? 'No referrals yet — '+r.per_reward+' mates unlocks '+r.reward_days+' free days.'
+    : r.count+' mate'+(r.count===1?'':'s')+' joined · '+r.to_next+' more for '+r.reward_days+' days'+(earned?' · '+earned+' reward'+(earned===1?'':'s')+' earned 🎉':'');
+  var msg=encodeURIComponent("I'm getting ridiculous flight deals from Mr Cheap Flights — join free: "+r.link);
+  el('ref-wa').href='https://wa.me/?text='+msg;
+  el('ref-tw').href='https://twitter.com/intent/tweet?text='+msg;
+  var nb=el('ref-native');if(nb&&!navigator.share)nb.style.display='none';
+}
+function copyReferral(){
+  var i=el('ref-link');if(!i||!i.value)return;
+  var done=function(){var b=el('ref-copy-btn');if(b){var t=b.textContent;b.textContent='Copied ✓';setTimeout(function(){b.textContent=t;},1800);}mcfTrack('referral_copy',{});};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(i.value).then(done).catch(function(){i.select();});}
+  else{i.select();try{document.execCommand('copy');done();}catch(e){}}
+}
+function shareReferral(){
+  var r=premiumState&&premiumState.referral;if(!r||!navigator.share)return;
+  navigator.share({title:'Mr Cheap Flights',text:'Ridiculous flight deals — join free:',url:r.link})
+    .then(function(){mcfTrack('referral_share',{channel:'native'});}).catch(function(){});
+}
 function isGated(badge){if(isPremium())return false;return badge.includes('Long Haul')||badge.includes('Featured');}
 var userPrefs={};
 function loadPrefs(){try{var p=localStorage.getItem(STORAGE_KEYS.prefs);if(p)userPrefs=JSON.parse(p);}catch(e){}}
@@ -900,6 +945,7 @@ async function submitEmail(e){if(e)e.preventDefault();var emailEl=el('hero-email
   mcfTrack('sign_up',{method:'email',plan:'free',location:'hero'});
   try{await fetch('/api/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,region:currentRegion})});}catch(e){}
   await refreshPremiumStatus();
+  renderReferral();
   var hf=el('hero-form');if(hf)hf.style.display='none';var ht=el('hero-trust-line');if(ht)ht.style.display='none';var ss=el('signup-success');if(ss)ss.style.display='block';toast('🎉 Welcome to the club!');}
 function togglePricingMode(){document.body.classList.toggle('annual-mode');el('pricing-toggle-btn').classList.toggle('annual');var isAnnual=document.body.classList.contains('annual-mode');selectedBilling=isAnnual?'annual':'monthly';el('lbl-monthly').classList.toggle('active',!isAnnual);el('lbl-annual').classList.toggle('active',isAnnual);
   // ── GA: pricing toggle ──
@@ -935,7 +981,7 @@ async function boot(){
     toast('⚠️ Network error — please refresh.');
     return;
   }
-  renderAirportNav();renderPublic();renderRecentWins();renderTicker();updateHeroStats();updateCounterBar();updatePrefsBanner();applySettings();checkGdpr();syncSocialIcons();initReveal();initBackToTop();loadDealPageFromHash();updateUIBasedOnRegion();
+  renderAirportNav();renderPublic();renderReferral();renderRecentWins();renderTicker();updateHeroStats();updateCounterBar();updatePrefsBanner();applySettings();checkGdpr();syncSocialIcons();initReveal();initBackToTop();loadDealPageFromHash();updateUIBasedOnRegion();
   var qs=new URLSearchParams(window.location.search);
   if(qs.get('checkout')==='success'){
     // Optimistically mark as premium — the Stripe webhook may not have fired yet.
