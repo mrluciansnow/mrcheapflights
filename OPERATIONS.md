@@ -105,6 +105,20 @@ With no tokens set the system is inert (plans/reports only). Prod currently has
 filler sandbox tokens, so it simulates. See MANUAL-TASKS.md → "Go live on the
 ad-automation service" to swap in real tokens.
 
+## Growth loops
+
+- **Custom Audience export** — `/marketing → 📤 Audiences` →
+  `GET /api/admin/audience-export?region=&tier=&format=` (admin). SHA-256-hashes
+  normalised emails (raw never leaves; GDPR-friendly), excludes newsletter
+  opt-outs by default. Download CSV → upload to Meta/TikTok as a Custom Audience
+  → build a Lookalike.
+- **Referral loop** — a subscriber's `member_token` is their referral token:
+  `/r/<token>` (branded capture, drops the `mcf_ref` cookie). On signup,
+  `_lib/referrals.js` credits the referrer; **every 3 referrals = 30 premium
+  days** (time-based, like promo codes). Reward terms in `REFERRAL_TERMS`. Every
+  welcome email carries the subscriber's share link. Stats in the daily digest
+  (🎁 Referrals) and `subscribers.referred_by / referral_count / referral_rewarded`.
+
 ## Monitoring
 
 - **`/api/health`** — public probe. 200 when D1 is reachable AND op_log has a
