@@ -112,12 +112,17 @@ ad-automation service" to swap in real tokens.
   normalised emails (raw never leaves; GDPR-friendly), excludes newsletter
   opt-outs by default. Download CSV → upload to Meta/TikTok as a Custom Audience
   → build a Lookalike.
-- **Referral loop** — a subscriber's `member_token` is their referral token:
-  `/r/<token>` (branded capture, drops the `mcf_ref` cookie). On signup,
+- **Referral loop** — each subscriber has a dedicated `referral_code` (20 hex):
+  `/r/<code>` (branded capture, drops the `mcf_ref` cookie). On signup,
   `_lib/referrals.js` credits the referrer; **every 3 referrals = 30 premium
   days** (time-based, like promo codes). Reward terms in `REFERRAL_TERMS`. Every
   welcome email carries the subscriber's share link. Stats in the daily digest
   (🎁 Referrals) and `subscribers.referred_by / referral_count / referral_rewarded`.
+  ⚠️ **Never use `member_token` as a public or shareable identifier.** It is a
+  capability credential — `GET /api/unsubscribe?token=<member_token>` opts a
+  person out with no auth (and `&dest=` kills an alert). That is exactly the bug
+  migration 0024 fixed: referrals get their own non-privileged `referral_code`.
+  Keep `member_token` to emails and the signed `mcf_member` cookie.
 
 ## Monitoring
 
