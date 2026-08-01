@@ -9,6 +9,7 @@
 import { requireAdmin } from '../../_lib/auth.js';
 import { logOp } from '../../_lib/oplog.js';
 import { destSlugForText, getDestination } from '../../_lib/destinations.js';
+import { deriveExpiry } from '../../_lib/scraper.js';
 
 const VALID_TYPES  = new Set(['sun', 'city', 'longhaul', 'wintersun']);
 const VALID_BADGES = new Set(['🔥 Hot', '⚡ Flash', '✈ Long Haul', '⭐ Featured', '⚠️ Mistake Fare']);
@@ -179,13 +180,15 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
       const flag = hub?.flag || row.flag || '✈️';
 
       aStmts.push(context.env.DB.prepare(
-        `INSERT INTO deals (flag, route, dates, price, badge, url, slug, region, status, dest_type, ai_copy)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        `INSERT INTO deals (flag, route, dates, price, badge, url, slug, region, status, dest_type, ai_copy, expiry)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
          ON CONFLICT(slug,region) DO UPDATE SET
            price=excluded.price, dates=excluded.dates, badge=excluded.badge,
-           ai_copy=COALESCE(excluded.ai_copy, deals.ai_copy), updated_at=unixepoch()`
+           ai_copy=COALESCE(excluded.ai_copy, deals.ai_copy),
+           expiry=COALESCE(excluded.expiry, deals.expiry), updated_at=unixepoch()`
       ).bind(flag, row.route, row.dates || '', row.price, row.badge || '🔥 Hot',
-             row.source_url, slug, row.region, status, row.dest_type || 'city', row.ai_copy || null));
+             row.source_url, slug, row.region, status, row.dest_type || 'city', row.ai_copy || null,
+             deriveExpiry(row.dates)));
 
       aStmts.push(context.env.DB.prepare(
         'UPDATE scraped_deals SET status=?,updated_at=unixepoch() WHERE id=?'

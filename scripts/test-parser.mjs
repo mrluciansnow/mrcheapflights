@@ -10,7 +10,7 @@
 //
 //   npm run test:parser
 
-import { parseDealTitle, extractPrice, extractRoute, extractDates } from '../functions/_lib/scraper.js';
+import { parseDealTitle, extractPrice, extractRoute, extractDates, deriveExpiry } from '../functions/_lib/scraper.js';
 
 let pass = 0, fail = 0;
 const ok = (name, cond, got) => {
@@ -97,6 +97,23 @@ ok('"Nov 12-19"', extractDates('depart Nov 12-19') === '12–19 Nov', extractDat
 ok('month range', extractDates('flying Jan-Mar 2027') === 'Jan–Mar', extractDates('flying Jan-Mar 2027'));
 ok('"travel in October"', extractDates('travel in October') === 'Oct', extractDates('travel in October'));
 ok('no date ⇒ empty string, not a guess', extractDates('great deal to Lisbon') === '');
+
+console.log('\n── Expiry: nothing lives forever, nothing dies silently ──');
+const NOW = new Date('2026-08-01T12:00:00Z');
+ok('dated window expires when the trip starts',
+  deriveExpiry('12–19 Nov', NOW) === '2026-11-12', deriveExpiry('12–19 Nov', NOW));
+ok('bare month expires at month end',
+  deriveExpiry('Oct', NOW) === '2026-10-31', deriveExpiry('Oct', NOW));
+ok('month already past rolls to next year',
+  deriveExpiry('Feb', NOW) === '2027-02-28', deriveExpiry('Feb', NOW));
+ok('no dates ⇒ conservative shelf life, never null',
+  deriveExpiry('', NOW) === '2026-08-22', deriveExpiry('', NOW));
+ok('never returns an already-expired date',
+  deriveExpiry('1–3 Aug', NOW) > '2026-08-01', deriveExpiry('1–3 Aug', NOW));
+ok('capped at a year out',
+  deriveExpiry('Jul', NOW) <= '2027-08-01', deriveExpiry('Jul', NOW));
+ok('always yields a date (a deal can never be immortal)',
+  /^\d{4}-\d{2}-\d{2}$/.test(deriveExpiry('nonsense', NOW)), deriveExpiry('nonsense', NOW));
 
 console.log('\n── Full shape ──');
 const full = parseDealTitle('Cork to Lisbon for €29 return', 'https://x.test', 'ie', 'Travel 12–19 Nov 2026');

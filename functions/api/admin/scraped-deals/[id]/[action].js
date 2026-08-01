@@ -9,6 +9,7 @@
 
 import { requireAdmin } from '../../../../_lib/auth.js';
 import { destSlugForText, getDestination } from '../../../../_lib/destinations.js';
+import { deriveExpiry } from '../../../../_lib/scraper.js';
 
 function slugify(s) {
   return String(s).toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').slice(0, 100);
@@ -75,12 +76,13 @@ export async function onRequestPost(context) {
       // status must be EXPLICIT: the table default is 'live', which would put
       // plain approves straight on the site and skip the Draft Deals stage.
       // (Existing live deals aren't demoted — the conflict clause leaves status alone.)
-      `INSERT INTO deals (flag, route, dates, price, badge, url, slug, region, status, dest_type, ai_copy)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)
+      `INSERT INTO deals (flag, route, dates, price, badge, url, slug, region, status, dest_type, ai_copy, expiry)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)
        ON CONFLICT(slug, region) DO UPDATE SET
          price=excluded.price, dates=excluded.dates, dest_type=excluded.dest_type,
-         ai_copy=COALESCE(excluded.ai_copy, deals.ai_copy), updated_at=unixepoch()`
-    ).bind(flag, row.route, row.dates || '', row.price, row.badge || '🔥 Hot', dealUrl, slug, row.region, row.dest_type || null, row.ai_copy || null),
+         ai_copy=COALESCE(excluded.ai_copy, deals.ai_copy),
+         expiry=COALESCE(excluded.expiry, deals.expiry), updated_at=unixepoch()`
+    ).bind(flag, row.route, row.dates || '', row.price, row.badge || '🔥 Hot', dealUrl, slug, row.region, row.dest_type || null, row.ai_copy || null, deriveExpiry(row.dates)),
     context.env.DB.prepare(
       'UPDATE scraped_deals SET status=?, updated_at=unixepoch() WHERE id=?'
     ).bind('approved', id),

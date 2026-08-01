@@ -322,6 +322,48 @@ export function isFlightDeal(text) {
   return true;
 }
 
+// ── Expiry ───────────────────────────────────────────────────────────────────
+// Nothing ever set deals.expiry, with two bad consequences: dated deals died
+// silently once their travel window passed (mrcheapflights.ie hit ZERO live
+// deals on 2026-08-01 this way), and deals without dates never expired at all,
+// so a months-old fare could sit on the site indefinitely.
+//
+// Rule: a deal is worth showing until shortly before its travel window opens;
+// with no parsed window, fall back to a conservative shelf life. Deal pages
+// stay reachable — expiry only removes it from the live listings.
+const DEFAULT_SHELF_DAYS = 21;
+const MON_NUM = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+
+export function deriveExpiry(dates, now = new Date()) {
+  const iso = (d) => d.toISOString().slice(0, 10);
+  const fallback = () => iso(new Date(now.getTime() + DEFAULT_SHELF_DAYS * 86400000));
+  const t = String(dates || '').trim();
+  if (!t) return fallback();
+
+  // "12–19 Nov" → expire the day the trip starts. "Nov" / "Jan–Mar" → expire at
+  // the end of that month (the window is vague, so don't over-claim precision).
+  const m = t.match(/^(\d{1,2})[–—-]\d{1,2}\s+([A-Za-z]{3})/) || t.match(/^([A-Za-z]{3})/);
+  let month, day = null;
+  if (m && /^\d/.test(m[1])) { day = parseInt(m[1], 10); month = MON_NUM[m[2].toLowerCase()]; }
+  else if (m) { month = MON_NUM[m[1].toLowerCase()]; }
+  if (month == null) return fallback();
+
+  // Month with no year: pick the next occurrence, so "Feb" seen in December
+  // means next February rather than one already past.
+  let year = now.getUTCFullYear();
+  const candidate = new Date(Date.UTC(year, month, day || 1));
+  if (candidate < now) { year++; }
+  const target = day
+    ? new Date(Date.UTC(year, month, day))
+    : new Date(Date.UTC(year, month + 1, 0)); // last day of that month
+
+  // Never publish something already expired, and never further out than a year.
+  const min = new Date(now.getTime() + 3 * 86400000);
+  const max = new Date(now.getTime() + 365 * 86400000);
+  if (target < min) return fallback();
+  return iso(target > max ? max : target);
+}
+
 export function parseDealTitle(title, link, region, desc) {
   const fullText = `${title} ${desc || ''}`;
 
