@@ -327,6 +327,19 @@ body.annual-mode .plan-saving-tag{display:inline-block}
 
 /* TESTIMONIALS */
 .testi-section{background:#040d1a;max-width:none;padding:80px max(5vw,20px)}
+.mco{margin-top:.9rem;background:rgba(0,170,255,.05);border:1px solid rgba(0,170,255,.22);border-radius:14px;padding:.9rem 1rem}
+.mco-head{font-weight:900;font-size:.85rem;color:var(--sky);margin-bottom:.6rem}
+.mco-list{display:flex;flex-direction:column;gap:.3rem}
+.mco-row{display:flex;align-items:center;gap:.6rem;padding:.5rem .65rem;border-radius:9px;background:rgba(255,255,255,.04);text-decoration:none;color:#fff;font-size:.88rem;font-weight:700;transition:background .15s}
+.mco-row:hover{background:rgba(255,255,255,.09)}
+.mco-row.best{background:rgba(255,210,0,.1);border:1px solid rgba(255,210,0,.3)}
+.mco-city{flex:1;min-width:0}
+.mco-price{font-weight:900;color:var(--yellow)}
+.mco-go{color:rgba(255,255,255,.35);font-size:.8rem}
+.mco-note{margin-top:.55rem;font-size:.68rem;color:rgba(255,255,255,.35)}
+.mco-cta{width:100%;padding:11px;border-radius:10px;border:1px dashed rgba(0,170,255,.45);background:rgba(0,170,255,.08);color:var(--sky);font-family:inherit;font-weight:800;font-size:.82rem;cursor:pointer}
+.mco-cta:hover{background:rgba(0,170,255,.15)}
+.deal-tile-cities{display:inline-block;margin-top:.3rem;font-size:.66rem;font-weight:900;letter-spacing:.04em;color:var(--sky);background:rgba(0,170,255,.12);border:1px solid rgba(0,170,255,.28);padding:2px 7px;border-radius:20px}
 .ref-card{background:linear-gradient(135deg,var(--card-dark),var(--card-darker));border:1px solid rgba(255,45,107,.28);border-radius:20px;padding:clamp(1.4rem,4vw,2.2rem);max-width:640px;box-shadow:0 18px 50px rgba(255,45,107,.12)}
 .ref-lead{color:rgba(255,255,255,.72);font-size:1rem;line-height:1.6;margin-bottom:1.3rem}
 .ref-lead b{color:var(--yellow)}
@@ -828,7 +841,7 @@ function updateHeroStats(){var live=deals.filter(function(d){return!isExpired(d.
 function updateDealsJsonLd(livDeals){try{var ld=document.getElementById('ld-deals');if(!ld)return;var items=livDeals.slice(0,10).map(function(d,i){var priceNum=d.price.replace(/[^0-9.]/g,'');var currency=d.price.startsWith('£')?'GBP':'EUR';return{'@type':'ListItem','position':i+1,'item':{'@type':'Product','name':d.route,'description':(d.dates||''),'offers':{'@type':'Offer','price':priceNum,'priceCurrency':currency,'availability':'https://schema.org/InStock','validThrough':d.expiry||undefined,'url':d.url||'https://mrcheapflights.ie'}}};});var obj=JSON.parse(ld.textContent||'{}');obj.itemListElement=items;ld.textContent=JSON.stringify(obj);}catch(e){}}
 function updateCounterBar(){var live=deals.filter(function(d){return!isExpired(d.expiry);});var le=el('dcb-live');if(le){if(live.length<5){le.textContent='24/7';var ll=le.parentElement&&le.parentElement.querySelector('.dcb-label');if(ll)ll.textContent='Deal hunting';}else{le.textContent=live.length;}}var mo=el('dcb-monthly');if(mo)mo.textContent=siteSettings.monthly||Math.max(live.length*3,12);var sv=el('dcb-saved');if(sv)sv.textContent=(currentRegion==='uk'?'£':'€')+String(siteSettings.saving||'183').replace(/[€£]/g,'');}
 function updateFilterCounts(){var live=deals.filter(function(d){return!isExpired(d.expiry) && d.region === currentRegion;});var counts={all:live.length,hot:live.filter(function(d){return d.badge.includes('Hot');}).length,flash:live.filter(function(d){return d.badge.includes('Flash');}).length,long:live.filter(function(d){return d.badge.includes('Long');}).length,feat:live.filter(function(d){return d.badge.includes('Featured');}).length,mistake:live.filter(function(d){return d.badge.includes('Mistake');}).length};Object.keys(counts).forEach(function(key){var chip=el('fc-'+key);if(chip)chip.textContent=counts[key]>0?counts[key]:'';});}
-function renderPublic(){updateFilterCounts();var grid=el('public-grid'),none=el('no-deals-pub');if(!grid)return;var livDeals=deals.filter(function(d){return!isExpired(d.expiry) && d.region === currentRegion;});livDeals=applyFilterSort(livDeals);var pb=el('premium-section-banner');if(pb)pb.style.display=livDeals.some(function(d){return isGated(d.badge);})?'flex':'none';if(!livDeals.length){grid.innerHTML='';if(none){var edsH=none.querySelector('h3'),edsP=none.querySelector('p');if(deals.length>0&&edsH){edsH.textContent='All Deals Currently Expired';if(edsP)edsP.textContent='New deals are being loaded. Sign up to be first to know when they drop.';}none.style.display='block';}return;}if(none)none.style.display='none';grid.innerHTML=livDeals.map(function(d){var gated=isGated(d.badge);var forYou=matchesPref(d);var tileClick=gated?"openSignup(event,'premium')":'openModal('+d.id+')';return'<div class="deal-tile'+(gated?' gated':'')+'" role="button" tabindex="0" aria-label="'+escapeHtml(d.route)+' from '+escapeHtml(d.price)+', '+escapeHtml(d.badge)+'" onclick="'+tileClick+'" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();'+tileClick+';}">'+(forYou?'<div class="deal-foryou-ring"></div><div class="deal-foryou-tag">⭐ For You</div>':'')+(gated?'<div class="deal-tile-lock"><span>🔒 Premium Only</span><button onclick="openSignup(event,\'premium\')">Unlock →</button></div>':'')+(d.image_url&&!gated?'<div class="deal-tile-media" style="background-image:url(\''+escapeHtml(d.image_url)+'\')"></div>':'')+'<div class="deal-tile-header"><span class="deal-tile-flag">'+flagHtml(d.flag,28)+'</span><span class="deal-tile-badge '+badgeCls(d.badge)+'">'+escapeHtml(d.badge)+'</span></div><div class="deal-tile-body"><div class="deal-tile-route">'+escapeHtml(d.route)+(d.expiry?expiryChip(d.expiry):'')+'</div><div class="deal-tile-dates">'+escapeHtml(d.dates)+'</div>'+(d.fare_verified?'<div class="fare-verified-pill">✓ FARE VERIFIED</div>':'')+(d.airline?'<div class="deal-tile-airline">'+escapeHtml(d.airline)+'</div>':'')+'<div class="deal-tile-footer"><div class="deal-tile-price">'+(d.was_price?'<div class="deal-tile-was-price">was '+escapeHtml(d.was_price)+'</div>':'')+'<small>from</small>'+escapeHtml(d.price)+'</div><button class="deal-tile-btn">'+(gated?'🔒 Premium':'View Deal →')+'</button></div></div></div>';}).join('');updatePrefsBanner();updateDealsJsonLd(livDeals);}
+function renderPublic(){updateFilterCounts();var grid=el('public-grid'),none=el('no-deals-pub');if(!grid)return;var livDeals=deals.filter(function(d){return!isExpired(d.expiry) && d.region === currentRegion;});livDeals=applyFilterSort(livDeals);var pb=el('premium-section-banner');if(pb)pb.style.display=livDeals.some(function(d){return isGated(d.badge);})?'flex':'none';if(!livDeals.length){grid.innerHTML='';if(none){var edsH=none.querySelector('h3'),edsP=none.querySelector('p');if(deals.length>0&&edsH){edsH.textContent='All Deals Currently Expired';if(edsP)edsP.textContent='New deals are being loaded. Sign up to be first to know when they drop.';}none.style.display='block';}return;}if(none)none.style.display='none';grid.innerHTML=livDeals.map(function(d){var gated=isGated(d.badge);var forYou=matchesPref(d);var tileClick=gated?"openSignup(event,'premium')":'openModal('+d.id+')';return'<div class="deal-tile'+(gated?' gated':'')+'" role="button" tabindex="0" aria-label="'+escapeHtml(d.route)+' from '+escapeHtml(d.price)+', '+escapeHtml(d.badge)+'" onclick="'+tileClick+'" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();'+tileClick+';}">'+(forYou?'<div class="deal-foryou-ring"></div><div class="deal-foryou-tag">⭐ For You</div>':'')+(gated?'<div class="deal-tile-lock"><span>🔒 Premium Only</span><button onclick="openSignup(event,\'premium\')">Unlock →</button></div>':'')+(d.image_url&&!gated?'<div class="deal-tile-media" style="background-image:url(\''+escapeHtml(d.image_url)+'\')"></div>':'')+'<div class="deal-tile-header"><span class="deal-tile-flag">'+flagHtml(d.flag,28)+'</span><span class="deal-tile-badge '+badgeCls(d.badge)+'">'+escapeHtml(d.badge)+'</span></div><div class="deal-tile-body"><div class="deal-tile-route">'+escapeHtml(d.route)+(d.expiry?expiryChip(d.expiry):'')+'</div><div class="deal-tile-dates">'+escapeHtml(d.dates)+'</div>'+(d.fare_verified?'<div class="fare-verified-pill">✓ FARE VERIFIED</div>':'')+(d.origin_count>1?'<div class="deal-tile-cities">🛫 FROM '+d.origin_count+' CITIES</div>':'')+(d.airline?'<div class="deal-tile-airline">'+escapeHtml(d.airline)+'</div>':'')+'<div class="deal-tile-footer"><div class="deal-tile-price">'+(d.was_price?'<div class="deal-tile-was-price">was '+escapeHtml(d.was_price)+'</div>':'')+'<small>from</small>'+escapeHtml(d.price)+'</div><button class="deal-tile-btn">'+(gated?'🔒 Premium':'View Deal →')+'</button></div></div></div>';}).join('');updatePrefsBanner();updateDealsJsonLd(livDeals);}
 // "Recent wins" — real deals straight from the data, replacing the old
 // fabricated testimonial quotes (fake named reviews are a CMA/Omnibus
 // liability and, worse, everyone can smell them).
@@ -859,6 +872,29 @@ function renderRecentWins(){
   });
 }
 function renderTicker(){var src=deals.filter(function(d){return!isExpired(d.expiry) && d.region === currentRegion;});var base=src.length?src:[{id:null,flag:'🇪🇸',route:'Dublin → Ibiza',price:'€47'},{id:null,flag:'🇵🇹',route:'Dublin → Lisbon',price:'€29'},{id:null,flag:'🇺🇸',route:'Dublin → New York',price:'€289'},{id:null,flag:'🇮🇹',route:'Dublin → Rome',price:'€52'}];var set=base.concat(base).concat(base);var tw=el('ticker-wrap');if(tw)tw.innerHTML=set.map(function(d){var oc=d.id?'openDealSmart('+d.id+')':'openDealByRouteSmart(\''+d.route.replace(/'/g,"\\'")+'\')';return'<button class="ticker-item" onclick="'+oc+'"><span class="ti-flag">'+flagHtml(d.flag,20)+'</span><span class="ti-route">'+escapeHtml(d.route)+'</span><span class="ti-price">'+escapeHtml(d.price)+'</span></button>';}).join('');}
+// "Same trip from your airport" — per-city prices for one destination.
+// Same gating discipline as fares: for guests the API sends only origin_count
+// (a number, no prices), so the teaser below is built from that count alone
+// and there is nothing real to reveal in the DOM.
+function originsBlockHtml(d){
+  var n=d.origin_count||0;
+  if(n<2) return '';
+  var dest=(String(d.route||'').split('→')[1]||'').trim();
+  if(!d.origins||!d.origins.length){
+    return '<div class="mco"><div class="mco-head">🛫 Also flying from '+n+' other cities</div>'+
+      '<button class="mco-cta" onclick="openSignup(event,\'free\')">Log in to compare all '+n+' departure cities →</button></div>';
+  }
+  var rows=d.origins.map(function(o){
+    return '<a class="mco-row'+(o.cheapest?' best':'')+'" href="'+escapeHtml(o.book_url||'#')+'" target="_blank" rel="nofollow sponsored noopener" onclick="mcfTrack(\'origin_click\',{city:\''+escapeHtml(o.origin_city)+'\'})">'+
+      '<span class="mco-city">'+(o.cheapest?'★ ':'')+escapeHtml(o.origin_city)+'</span>'+
+      '<span class="mco-price">'+escapeHtml(o.symbol+Math.round(o.price))+'</span>'+
+      '<span class="mco-go">→</span></a>';
+  }).join('');
+  return '<div class="mco"><div class="mco-head">🛫 '+escapeHtml(dest||'This trip')+' from your airport</div>'+
+    '<div class="mco-list">'+rows+'</div>'+
+    '<div class="mco-note">Live fares via Aviasales · cheapest departure starred</div></div>';
+}
+
 // Verified flight-details block inside the deal modal. Gated data never
 // reaches the client — the API withholds it and sends fare_gate instead, so
 // the blur here covers PLACEHOLDER text only.
@@ -892,7 +928,7 @@ function fareBlockHtml(d){
     '<button onclick="closeModal();openSignup(null,\''+(isLogin?'free':'premium')+'\')">'+(isLogin?'Join free →':'Go Premium →')+'</button></div></div>';
 }
 function openModal(id){var d=deals.find(function(x){return x.id===id;});if(!d)return;currentDealId=id;
-  var mfEl=el('m-fare');if(mfEl)mfEl.innerHTML=fareBlockHtml(d);
+  var mfEl=el('m-fare');if(mfEl)mfEl.innerHTML=fareBlockHtml(d)+originsBlockHtml(d);
   // ── GA: deal modal view ──
   mcfTrack('view_item',{item_id:String(d.id),item_name:d.route,item_category:d.badge,price:parseDealPrice(d.price),currency:'EUR',deal_route:d.route,deal_price:d.price,deal_badge:d.badge});
   el('m-flag').innerHTML=flagHtml(d.flag,44);el('m-route').textContent=d.route;el('m-dates').textContent=d.dates;el('m-price').textContent=d.price;var mimg=el('m-deal-img');if(mimg){if(d.image_url){mimg.src=d.image_url;mimg.alt=d.route;mimg.style.display='block';}else{mimg.style.display='none';}}var mwp=el('m-was-price');if(mwp){if(d.was_price){mwp.textContent='was '+d.was_price;mwp.style.display='block';}else{mwp.style.display='none';}}el('m-book-btn').href=sanitiseUrl(d.url);var mf=el('m-fares-btn');if(mf){if(d.search_url){mf.href=sanitiseUrl(d.search_url);mf.style.display='block';mf.onclick=function(){mcfTrack('fares_search_click',{deal_route:d.route,deal_price:d.price,location:'modal'});};}else{mf.style.display='none';}}var be=el('m-badge');be.textContent=d.badge;be.className='modal-badge-big '+badgeCls(d.badge);var er=el('m-expiry-row');if(d.expiry){var dl=daysLeft(d.expiry);er.innerHTML=dl<=0?'Expired':dl<=3?'⚡ '+dl+' days left!':'🕐 '+dl+' days';er.style.color=dl<=2?'var(--hot-pink)':'rgba(255,255,255,.4)';}else{er.textContent='';}el('m-tips').innerHTML=['Book directly with the airline','Be flexible ±1–2 days for cheaper fares','Book ASAP — flash deals sell out fast','Check baggage allowance before booking'].map(function(t){return'<li>'+t+'</li>';}).join('');
