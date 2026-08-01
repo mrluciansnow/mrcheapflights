@@ -79,7 +79,7 @@ grant, so Claude can't do them autonomously. Ordered by priority.
     variants (headline / primary text / CTA / concept) to paste into Ads Manager.
     Works now (uses the existing `ANTHROPIC_API_KEY`), independent of go-live.
 
-- [ ] **Schedule the weekly marketing report** (2 min, needs your cron-job.org
+- [x] ~~**Schedule the weekly marketing report**~~ — DONE (job 8198131, Mondays 08:00) (2 min, needs your cron-job.org
   login). The report is built and deployed but nothing triggers it yet.
   cron-job.org → Create cronjob → URL
   `https://mrcheapflights.ie/api/cron/weekly-report`, schedule **Mondays 08:00**

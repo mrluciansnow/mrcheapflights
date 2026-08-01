@@ -60,7 +60,7 @@ then `npm run deploy` (secrets apply on the next deployment).
 | Job | Endpoint | Schedule |
 |---|---|---|
 | Scrape deals | /api/admin/trigger-scrape | 07:00 daily |
-| AI enrich + auto-approve | /api/admin/enrich-pending | 09:00 daily |
+| AI enrich + auto-approve | /api/admin/enrich-pending | hourly :05 (3 deals/run) |
 | Admin briefing | /api/admin/daily-digest | 09:15 daily |
 | Deal image backfill | /api/cron/generate-images | 09:20 daily |
 | Daily newsletter | /api/cron/send-newsletter | 09:30 daily |
@@ -69,8 +69,9 @@ then `npm run deploy` (secrets apply on the next deployment).
 | Destination SEO content | /api/admin/generate-destination-content | 03:00 daily |
 | Nightly cleanup | /api/admin/cleanup | 02:00 daily |
 | Health monitor | /api/health | every 10 min (emails on 2 fails) |
+| Multi-city fan-out | /api/cron/fan-out | every 4h :45 |
+| Weekly marketing report | /api/cron/weekly-report | Mondays 08:00 |
 | Ad sync + guardrail | /api/cron/ads-sync | every 6h (dry-run until armed) |
-| Weekly marketing report | /api/cron/weekly-report | Mondays 08:00 (**not yet scheduled**) |
 
 ## Ad automation (Meta + TikTok)
 

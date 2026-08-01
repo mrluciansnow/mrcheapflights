@@ -39,10 +39,17 @@ export async function onRequestPost(context) {
     });
   }
 
-  // Small batches: 3 Instagram-length captions per deal ≈ 700 output tokens
-  // each — 6 deals stays well inside max_tokens. (The old 12-deal batch could
-  // truncate the JSON mid-array, which surfaced as "unparseable JSON" errors.)
-  const BATCH = 6;
+  // Batch size is a TIMEOUT budget, not a token budget. Three IG-length
+  // captions per deal is ~600 output tokens; at 6 deals that generation ran
+  // past cron-job.org's 30s ceiling and the job was killed — and because every
+  // DB write happens after the AI call returns, a timeout lost the whole batch
+  // and the queue never drained. 3 deals comfortably fits the window.
+  //
+  // ?batch=N overrides it (1-8) for a manual catch-up run from the pipeline,
+  // where there's no 30s ceiling.
+  const url = new URL(context.request.url);
+  const batchParam = parseInt(url.searchParams.get('batch'));
+  const BATCH = Number.isFinite(batchParam) ? Math.min(8, Math.max(1, batchParam)) : 3;
   const { results: pending } = await context.env.DB.prepare(
     `SELECT id, source_name, route, price, badge, region, raw_snippet, dates
      FROM scraped_deals WHERE status='pending' AND confidence IS NULL
@@ -83,8 +90,11 @@ ${JSON.stringify(dealList, null, 0)}
 
 Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
 
+  // 24s, deliberately INSIDE cron-job.org's 30s cutoff: aborting ourselves
+  // returns a clean, logged error the digest can show, whereas being killed by
+  // the scheduler leaves no trace beyond "Failed (timeout)" in their console.
   const controller = new AbortController();
-  const to = setTimeout(() => controller.abort(), 30000);
+  const to = setTimeout(() => controller.abort(), 24000);
   let aiRes;
   try {
     aiRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -96,7 +106,10 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 8192,
+        // Scaled to the batch (~900 tokens/deal covers 3 captions plus the
+        // scoring fields) with headroom, rather than a flat 8192 that let the
+        // model run long enough to blow the timeout.
+        max_tokens: Math.min(8192, 1200 + BATCH * 900),
         messages: [{ role: 'user', content: prompt }],
       }),
       signal: controller.signal,
