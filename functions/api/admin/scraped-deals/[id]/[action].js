@@ -48,7 +48,7 @@ export async function onRequestPost(context) {
 
   // approve — validate and copy to `deals`
   const row = await context.env.DB.prepare(
-    'SELECT id, source_name, source_url, flag, route, dates, price, badge, region, dest_type, ai_copy FROM scraped_deals WHERE id=?'
+    'SELECT id, source_name, source_url, flag, route, dates, price, badge, region, dest_type, ai_copy, origins_json FROM scraped_deals WHERE id=?'
   ).bind(id).first();
   if (!row) return new Response('Not found', { status: 404 });
 
@@ -94,5 +94,26 @@ export async function onRequestPost(context) {
     'SELECT id FROM deals WHERE slug=? AND region=?'
   ).bind(slug, row.region).first();
 
-  return Response.json({ ok: true, dealId: draft?.id || null });
+  // Newsletters often quote one destination from several departure cities.
+  // A candidate can't own deal_origins rows (no deal id yet), so the origins
+  // travel on the candidate as JSON and are unpacked here — the deal arrives
+  // multi-city ready, without waiting for the fan-out cron.
+  let originsSeeded = 0;
+  if (draft?.id && row.origins_json) {
+    try {
+      const origins = JSON.parse(row.origins_json);
+      for (const o of Array.isArray(origins) ? origins.slice(0, 10) : []) {
+        if (!o?.iata || !Number.isFinite(+o.price)) continue;
+        await context.env.DB.prepare(
+          `INSERT INTO deal_origins (deal_id, origin_city, origin_iata, price, currency, source)
+           VALUES (?, ?, ?, ?, ?, 'newsletter')
+           ON CONFLICT(deal_id, origin_iata) DO UPDATE SET
+             price=excluded.price, currency=excluded.currency, checked_at=unixepoch()`
+        ).bind(draft.id, o.city, o.iata, +o.price, o.symbol === '£' ? 'GBP' : 'EUR').run();
+        originsSeeded++;
+      }
+    } catch { /* malformed JSON must not block the approve */ }
+  }
+
+  return Response.json({ ok: true, dealId: draft?.id || null, originsSeeded });
 }
