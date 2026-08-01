@@ -29,8 +29,12 @@ export async function onRequestGet(context) {
     const ie = row?.ie ?? 0, uk = row?.uk ?? 0;
     out.deals_live = ie + uk;
     out.deals_by_region = { ie, uk };
+    // Empty inventory is REPORTED, not failed. Returning 503 for it made the
+    // 10-minute monitor fail repeatedly until cron-job.org auto-disabled the
+    // job — which left the site with no outage alerting at all, a worse
+    // outcome than the problem it flagged. This probe answers "is the app
+    // up?"; the morning digest and smoke test raise empty regions.
     if (ie === 0 || uk === 0) {
-      out.ok = false;
       out.empty_regions = [ie === 0 ? 'ie' : null, uk === 0 ? 'uk' : null].filter(Boolean);
     }
   } catch {
