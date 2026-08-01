@@ -104,31 +104,25 @@ grant, so Claude can't do them autonomously. Ordered by priority.
   (Caching → Configuration). Activates the 30-day mascot cache that `_headers`
   already sets. Low value, zero risk.
 
-- [ ] **Finish switching on email newsletter ingestion.** The parser, the
-  endpoint and the worker are all built, tested and DEPLOYED
-  (`mrcheap-email-ingest`). Two steps left, both needing you:
+- [x] ~~**Email newsletter ingestion**~~ — **DONE, fully wired by Claude.**
+  Worker `mrcheap-email-ingest` deployed; Email Routing rule
+  `deals@mrcheapflights.ie → mrcheap-email-ingest` created and **Active**; a
+  fresh shared `INGEST_SECRET` generated and set on both the worker and the
+  Pages project (your existing CRON_SECRET was never read or needed).
 
-  1. **Give the worker the shared secret** — paste the SAME value as
-     `CRON_SECRET` on the Pages project (Claude can't read or type it):
-     ```
-     cd workers/email-ingest
-     npx wrangler secret put INGEST_SECRET
-     ```
-  2. **Route mail to it.** Cloudflare dashboard → mrcheapflights.ie → **Email**
-     → **Email Routing** → enable (adds the MX records), then create the
-     address `deals@mrcheapflights.ie` with action
-     **Send to a Worker → mrcheap-email-ingest**.
+  **Deliberately used mrcheapflights.ie, NOT .co.uk** — .co.uk's MX records
+  point at Google/Outlook (that's where admin@mrcheapflights.co.uk lives) and
+  enabling Cloudflare routing there would have broken your real mailbox. The
+  .ie domain already had Email Routing on with zero rules, so nothing was at
+  risk.
 
-  Then subscribe `deals@mrcheapflights.ie` to Jack's Flight Club, Secret Flying,
-  Going, Travel-Dealz, Fly4Free, HolidayPirates. Only those 7 allowlisted
-  senders are accepted, so a spoofed email can't inject deals.
-
-  *Test it before any of that* — this posts a sample newsletter straight to the
-  endpoint and should return `"inserted":1`:
-  ```
-  curl -X POST https://mrcheapflights.ie/api/ingest/email     -H "Authorization: Bearer $CRON_SECRET"     -H 'Content-Type: application/json'     -d '{"from":"deals@jacksflightclub.com","subject":"test","region":"ie",
-         "html":"<p>Dublin to Lisbon for €29 return, travel 12-19 Nov</p>"}'
-  ```
+  **All that's left is to use it:** subscribe `deals@mrcheapflights.ie` to
+  Jack's Flight Club, Secret Flying, Going, Travel-Dealz, Fly4Free,
+  HolidayPirates. Only those 7 allowlisted senders are accepted.
+  *Quick smoke test:* email `deals@mrcheapflights.ie` from anywhere — it should
+  be rejected as a non-allowlisted sender, which proves the chain is live.
+  Watch it in Cloudflare → Email Routing → **Activity Log**, and in the
+  pipeline queue for real newsletters.
 
 ---
 Done: Google Search Console (both domains verified + sitemaps submitted),
