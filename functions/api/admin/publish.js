@@ -56,6 +56,10 @@ export async function onRequestPost(context) {
   // draft:true → social posts land in Buffer for review instead of going live
   // (the safe "verify posting works" path).
   const draft = body?.draft === true;
+  // carousel:true → post the deal's multi-city slide set (one slide per
+  // departure city) instead of the single poster. Falls back to the single
+  // image when a deal has no slides built.
+  const carousel = body?.carousel === true;
   const wants = (c) => channels.includes(c);
 
   const marker = context.env.TRAVELPAYOUTS_MARKER || '';
@@ -127,7 +131,20 @@ export async function onRequestPost(context) {
         const socialImg = rawImg
           ? (String(rawImg).startsWith('/') ? siteUrl + rawImg : rawImg)
           : '';
-        const social = await publishSocial(copy, socialImg, context.env, { draft });
+        let slideUrls = [];
+        if (carousel) {
+          try {
+            const { results } = await context.env.DB.prepare(
+              'SELECT url FROM deal_posters WHERE deal_id=? ORDER BY slide_index ASC LIMIT 10'
+            ).bind(id).all();
+            slideUrls = (results || [])
+              .map((r) => (r.url ? (String(r.url).startsWith('/') ? siteUrl + r.url : r.url) : null))
+              .filter(Boolean);
+          } catch { /* table absent — fall through to the single image */ }
+          if (slideUrls.length < 2) dealResult.carousel_note = 'no slide set built — posted the single image instead';
+        }
+        const social = await publishSocial(copy, socialImg, context.env,
+          { draft, images: slideUrls.length > 1 ? slideUrls : undefined });
         dealResult.social = social;
         // A draft isn't a real publish — never mark the deal as posted for it.
         if (!social.shellMode && !social.draft && (social.instagram || social.facebook)) {

@@ -669,6 +669,7 @@ async function expressPublish(dealId, channels, icon, opts) {
     var body = { dealIds: [dealId] };
     if (channels) body.channels = channels;
     if (opts.draft) body.draft = true;
+    if (opts.carousel) body.carousel = true;
     var res = await fetch('/api/admin/publish', {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify(body),
@@ -728,7 +729,13 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
 
-async function composePoster(d) {
+// composePoster(d) builds the single 1080² deal poster.
+// composePoster(d, slide) builds ONE SLIDE of a multi-city carousel, where
+// slide = { city, price, index, total }: same template and background, but the
+// headline becomes "<City> → <Dest>" at that city's own price. Every follower
+// sees their own airport in the same post — the format that actually performs
+// for a deals brand.
+async function composePoster(d, slide) {
   await Promise.all([
     document.fonts.load('200px Bangers'), document.fonts.load('84px "Bebas Neue"'),
   ]).catch(function(){});
@@ -787,8 +794,10 @@ async function composePoster(d) {
     ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2;
     roundRect(ctx, 52, y - 54, fw, fh, 10); ctx.stroke();
   }
-  // Route auto-shrinks until it clears the mascot zone (right ~330px)
-  var routeTxt = String(d.route || '').toUpperCase();
+  // Route auto-shrinks until it clears the mascot zone (right ~330px).
+  // On a carousel slide the headline is that slide's own city → destination.
+  var destName = (String(d.route || '').split(/→|->/)[1] || '').trim();
+  var routeTxt = String(slide ? (slide.city + ' → ' + destName) : (d.route || '')).toUpperCase();
   var routeX = 52 + (flagImg ? 118 : 0);
   var maxRouteW = S - routeX - 340;
   var fs = 86;
@@ -809,11 +818,22 @@ async function composePoster(d) {
   // Price block
   ctx.font = '44px "Bebas Neue"'; ctx.fillStyle = 'rgba(255,255,255,0.65)';
   ctx.fillText('RETURN FROM', 56, y + 168);
+  var priceTxt = String((slide ? slide.price : d.price) || '');
   ctx.font = '210px Bangers'; ctx.fillStyle = '#FFD700';
   ctx.shadowColor = 'rgba(0,0,0,0.65)'; ctx.shadowBlur = 14;
-  ctx.fillText(String(d.price || ''), 48, S - 62);
+  ctx.fillText(priceTxt, 48, S - 62);
   ctx.shadowBlur = 0;
-  if (d.was_price) {
+  // Slide counter, so the carousel reads as a set rather than repeats.
+  if (slide && slide.total > 1) {
+    ctx.font = '40px "Bebas Neue"';
+    var st = slide.index + '/' + slide.total;
+    var stw = ctx.measureText(st).width + 34;
+    ctx.fillStyle = 'rgba(6,11,31,0.72)';
+    roundRect(ctx, S - stw - 44, 128, stw, 54, 27); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.fillText(st, S - stw - 27, 166);
+  }
+  if (!slide && d.was_price) {
     var pw = ctx.measureText(String(d.price || '')).width;
     ctx.font = '58px "Bebas Neue"'; ctx.fillStyle = 'rgba(255,255,255,0.55)';
     var wasTxt = 'WAS ' + String(d.was_price).toUpperCase();
@@ -874,6 +894,53 @@ async function makePoster(id, opts) {
   } catch(e) { toast('❌ Network error saving poster', 'err'); return null; }
 }
 
+// Build a multi-city carousel: slide 0 is the deal, then one slide per
+// departure city at that city's own price. Needs deal_origins, which the
+// fan-out cron fills — without it there's nothing to make a series from.
+async function makeCarousel(id) {
+  var d = findDealAnywhere(id);
+  if (!d) { toast('Deal not loaded — refresh the tab.', 'warn'); return null; }
+  if (!d.image_url) { toast('No AI image yet — hit 🎨 Images first, then build the carousel.', 'warn'); return null; }
+
+  var res = await fetch('/api/admin/deal-origins?dealId=' + id, { cache: 'no-store' });
+  if (!res.ok) { toast('❌ Could not load city prices (HTTP ' + res.status + ')', 'err'); return null; }
+  var data = await res.json();
+  var origins = (data.origins || []).slice(0, 7);   // IG allows 10; keep it tight
+  if (origins.length < 2) {
+    toast('Only ' + origins.length + ' city price on file — run the fan-out cron (/api/cron/fan-out) to price this destination from every airport first.', 'warn', 7000);
+    return null;
+  }
+
+  var total = origins.length + 1;
+  toast('🎠 Composing ' + total + ' slides…', 'ok', 3000);
+
+  var urls = [];
+  for (var i = 0; i < total; i++) {
+    var slide = i === 0 ? { index: 1, total: total }
+      : { city: origins[i - 1].origin_city,
+          price: origins[i - 1].symbol + Math.round(origins[i - 1].price),
+          index: i + 1, total: total };
+    // Slide 0 keeps the deal's own headline; the counter still marks it 1/N.
+    var out = await composePoster(d, i === 0 ? Object.assign({}, slide, { city: null }) : slide);
+    if (out.error) { toast('❌ Slide ' + (i + 1) + ': ' + escHtml(out.error), 'err'); return null; }
+    var sr = await fetch('/api/admin/save-poster', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dealId: id, dataUrl: out.dataUrl, slide: i,
+        city: slide.city || null, price: slide.price || d.price }),
+    });
+    if (!sr.ok) { toast('❌ Saving slide ' + (i + 1) + ' failed (HTTP ' + sr.status + ')', 'err'); return null; }
+    var sd = await sr.json();
+    urls.push(sd.url);
+    if (i === 0) { d.poster_url = sd.url; }
+  }
+
+  d.slide_count = urls.length;
+  renderDeals();
+  toast('🎠 Carousel ready — ' + urls.length + ' slides (cheapest: ' + origins[0].origin_city + ' ' + origins[0].symbol + Math.round(origins[0].price) + ')');
+  window.open(urls[0], '_blank', 'noopener');
+  return urls;
+}
+
 // Socials with the branded creative guaranteed: build the poster first when
 // one doesn't exist yet, then fire the social-only publish.
 async function socialsFire(id) {
@@ -892,6 +959,21 @@ async function socialsDraft(id) {
   if (d && !d.poster_url && d.image_url) { await makePoster(id, { quiet: true }); }
   toast('🧪 Sending a draft to Buffer…', 'ok', 2500);
   await expressPublish(id, ['social'], '🧪', { draft: true });
+}
+
+// Post the multi-city slide set as an Instagram carousel. Builds the series
+// first if it doesn't exist yet, so one click is enough.
+async function socialsCarousel(id, draft) {
+  var have = await fetch('/api/admin/deal-origins?dealId=' + id, { cache: 'no-store' })
+    .then(function(r){ return r.ok ? r.json() : { origins: [] }; }).catch(function(){ return { origins: [] }; });
+  if ((have.origins || []).length < 2) {
+    toast('No multi-city prices yet — run /api/cron/fan-out to price this destination from every airport first.', 'warn', 7000);
+    return;
+  }
+  var urls = await makeCarousel(id);
+  if (!urls) return;                      // makeCarousel already explained why
+  toast((draft ? '🧪 Drafting' : '🎠 Posting') + ' a ' + urls.length + '-slide carousel…', 'ok', 3000);
+  await expressPublish(id, ['social'], draft ? '🧪' : '🎠', { draft: !!draft, carousel: true });
 }
 
 // ── AI Creative Studio ────────────────────────────────────────────────────────
@@ -1170,7 +1252,7 @@ async function loadLiveDeals() {
         <div class="deal-meta">${d.dates||''} ${d.region?'· '+d.region.toUpperCase():''}</div>
         ${dealChips(d)}
         <div class="card-actions">
-          <button class="btn-mini" onclick="makePoster(${d.id})" title="Compose the branded ad poster (background + price + flag + mascot). Opens a preview.">🖼 Poster</button>
+          <button class="btn-mini" onclick="makePoster(${d.id})" title="Compose the branded ad poster (background + price + flag + mascot). Opens a preview.">🖼 Poster</button><button class="mini" onclick="makeCarousel(${d.id})" title="Build a multi-city Instagram carousel: one slide per departure city at that city's own price. Needs fan-out prices.">🎠 Carousel</button><button class="mini" onclick="socialsCarousel(${d.id}, true)" title="Build the slide set and send it to Buffer as a DRAFT carousel for review.">🎠🧪 Carousel draft</button>
           <button class="btn-mini" onclick="generateCreative(${d.id})" title="AI Creative Studio: TikTok slideshow brief + IG Reel script for this deal.">🎬 Creative</button>
           <button class="btn-mini" onclick="socialsDraft(${d.id})" title="Safe test: saves a DRAFT to Buffer (nothing goes public). Review + publish it inside Buffer.">🧪 Test draft</button>
           <button class="btn-mini alt" onclick="socialsFire(${d.id})" ${d.published_social?'disabled title="Already posted — idempotency guard will skip it"':'title="Post to Instagram/Facebook right now via Buffer (auto-builds the poster first)"'}>📱 Post now</button>
