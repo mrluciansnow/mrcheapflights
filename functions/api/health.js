@@ -11,12 +11,28 @@
 export async function onRequestGet(context) {
   const out = { ok: true, db: false, deals_live: null, ts: Math.floor(Date.now() / 1000) };
 
+  // SERVABLE deals only — status='live' AND not past expiry, counted per region.
+  // The old query counted status='live' alone, so 8 deals that expired in July
+  // still read as inventory and the probe reported a healthy 14 while
+  // mrcheapflights.ie was actually serving ZERO deals. An empty shop must not
+  // look healthy: a region with nothing to show now fails the probe, which the
+  // existing 10-minute monitor turns into an email.
   try {
     const row = await context.env.DB.prepare(
-      `SELECT COUNT(*) AS n FROM deals WHERE status='live'`
+      `SELECT
+         SUM(CASE WHEN region='ie' THEN 1 ELSE 0 END) AS ie,
+         SUM(CASE WHEN region='uk' THEN 1 ELSE 0 END) AS uk
+       FROM deals
+       WHERE status='live' AND (expiry IS NULL OR date(expiry) >= date('now'))`
     ).first();
     out.db = true;
-    out.deals_live = row?.n ?? 0;
+    const ie = row?.ie ?? 0, uk = row?.uk ?? 0;
+    out.deals_live = ie + uk;
+    out.deals_by_region = { ie, uk };
+    if (ie === 0 || uk === 0) {
+      out.ok = false;
+      out.empty_regions = [ie === 0 ? 'ie' : null, uk === 0 ? 'uk' : null].filter(Boolean);
+    }
   } catch {
     out.ok = false;
   }

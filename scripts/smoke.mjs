@@ -41,7 +41,14 @@ async function run() {
   {
     const { status, text } = await get('/api/health');
     let j = {}; try { j = JSON.parse(text); } catch {}
-    check('/api/health ok', status === 200 && j.ok === true && j.db === true, `status ${status}, ok=${j.ok}, db=${j.db}`);
+    // Separate "the app is broken" from "the shop is empty" — both are real
+    // failures but they need different responses, so don't blur them into one.
+    check('/api/health: DB reachable', j.db === true, `status ${status}, db=${j.db}`);
+    check('/api/health: every region has live deals',
+      !j.empty_regions || j.empty_regions.length === 0,
+      `EMPTY: ${(j.empty_regions || []).join(', ')} — by region ${JSON.stringify(j.deals_by_region || {})}`);
+    check('/api/health ok', status === 200 && j.ok === true,
+      `status ${status}, ok=${j.ok}${j.empty_regions ? ' (empty regions: ' + j.empty_regions.join(',') + ')' : ''}`);
   }
 
   // 3. Deals API + guest fare-gating (SECURITY: guests must not get fare data)
