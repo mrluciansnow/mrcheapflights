@@ -104,9 +104,31 @@ grant, so Claude can't do them autonomously. Ordered by priority.
   (Caching → Configuration). Activates the 30-day mascot cache that `_headers`
   already sets. Low value, zero risk.
 
-- [ ] **(Optional) Deploy the email-ingest worker** for more deal flow — say
-  "deploy the email worker" to Claude, then enable Email Routing (deals@ →
-  worker) in the Cloudflare dashboard.
+- [ ] **Finish switching on email newsletter ingestion.** The parser, the
+  endpoint and the worker are all built, tested and DEPLOYED
+  (`mrcheap-email-ingest`). Two steps left, both needing you:
+
+  1. **Give the worker the shared secret** — paste the SAME value as
+     `CRON_SECRET` on the Pages project (Claude can't read or type it):
+     ```
+     cd workers/email-ingest
+     npx wrangler secret put INGEST_SECRET
+     ```
+  2. **Route mail to it.** Cloudflare dashboard → mrcheapflights.ie → **Email**
+     → **Email Routing** → enable (adds the MX records), then create the
+     address `deals@mrcheapflights.ie` with action
+     **Send to a Worker → mrcheap-email-ingest**.
+
+  Then subscribe `deals@mrcheapflights.ie` to Jack's Flight Club, Secret Flying,
+  Going, Travel-Dealz, Fly4Free, HolidayPirates. Only those 7 allowlisted
+  senders are accepted, so a spoofed email can't inject deals.
+
+  *Test it before any of that* — this posts a sample newsletter straight to the
+  endpoint and should return `"inserted":1`:
+  ```
+  curl -X POST https://mrcheapflights.ie/api/ingest/email     -H "Authorization: Bearer $CRON_SECRET"     -H 'Content-Type: application/json'     -d '{"from":"deals@jacksflightclub.com","subject":"test","region":"ie",
+         "html":"<p>Dublin to Lisbon for €29 return, travel 12-19 Nov</p>"}'
+  ```
 
 ---
 Done: Google Search Console (both domains verified + sitemaps submitted),
