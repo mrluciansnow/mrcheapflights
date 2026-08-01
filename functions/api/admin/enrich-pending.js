@@ -184,7 +184,15 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
       // SSRF guard: only promote deals with real https:// source URLs
       if (!row.source_url || !row.source_url.startsWith('https://')) continue;
 
-      const slug = slugify(row.route) + '-' + String(row.price).replace(/[^0-9]/g, '');
+      // Match on ROUTE+REGION, not slug. The slug used to embed the price, so
+      // the same route at a new price minted a fresh slug and the
+      // ON CONFLICT(slug,region) upsert could never fire — production ended up
+      // with "London → Bangkok" listed twice at £407 and £426. Existing slugs
+      // are left untouched so already-shared /deals/<slug> links keep working.
+      const existing = await context.env.DB.prepare(
+        'SELECT id, slug FROM deals WHERE route=? AND region=? ORDER BY updated_at DESC LIMIT 1'
+      ).bind(row.route, row.region).first();
+      const slug = existing?.slug || slugify(row.route);
       const goLive = autoPublish && row.confidence >= 90;
       const status = goLive ? 'live' : 'draft';
 

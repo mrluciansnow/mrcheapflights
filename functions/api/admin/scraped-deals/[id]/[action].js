@@ -63,7 +63,14 @@ export async function onRequestPost(context) {
     return new Response('Scraped deal has missing or invalid source URL — edit before approving', { status: 422 });
   }
 
-  const slug = slugify(row.route) + '-' + String(row.price).replace(/[^0-9]/g, '');
+  // Match on ROUTE+REGION, not slug — the slug used to embed the price, so
+  // re-approving the same route at a new price created a SECOND deal instead of
+  // updating the first. Reuse the existing slug so shared /deals/<slug> links
+  // keep working; only a genuinely new route mints one.
+  const existingDeal = await context.env.DB.prepare(
+    'SELECT slug FROM deals WHERE route=? AND region=? ORDER BY updated_at DESC LIMIT 1'
+  ).bind(row.route, row.region).first();
+  const slug = existingDeal?.slug || slugify(row.route);
 
   // Scraped flags are unreliable (feeds tag wrong countries constantly —
   // "Hawaii" arrived flying a Mexican flag). The destinations registry is the
