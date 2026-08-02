@@ -1,4 +1,11 @@
-# Croker Flicks — Gameplay Development Roadmap
+# Croker Flicks — Gameplay Development Roadmap (Roadmap I)
+
+> **Stages 1–4 of this roadmap are shipped.** Stage 5 below ("Reasons to
+> Return") is **deferred** — most of it is absorbed into
+> [Roadmap II](./game-roadmap-2.md), which covers ranks and an economy, kits,
+> stadiums, multiplayer and live seasons. This document is kept as the record of
+> what shipped and why, including two deliberate deviations from plan.
+
 
 A five-stage plan for taking `game.html` from "a nice-looking penalty shootout"
 to a game with a real skill ceiling, progression and reasons to come back.
@@ -167,7 +174,7 @@ correctly irrelevant at range.
 
 ---
 
-## Stage 5 — Reasons to Return *(planned)*
+## Stage 5 — Reasons to Return *(deferred — see Roadmap II)*
 
 **Goal.** Turn a session into a habit.
 
