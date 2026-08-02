@@ -25,14 +25,18 @@ venues, and other people to play against.
 Three constraints that shape several stages. Worth settling now rather than
 unpicking later.
 
-- **Kits.** Heritage kits reproduce *pattern families and colour combinations*
-  (hoops, sashes, halves, quarters, bands) under original in-game names. No
-  county crests, sponsor wordmarks or manufacturer logos — those are live
-  trademarks with active commercial deals behind them. The look is what players
-  recognise; the badge is what gets you a letter.
-- **Venues.** Original names and silhouettes *inspired by* famous grounds — a
-  vast double-decker end, a steep open terrace, a tight provincial ground. No
-  reproduced signage or branding.
+- **Kits.** Heritage kits reproduce the real historic county designs — the
+  actual colours and patterns those counties wore, named by county and era.
+  What stays out is the *badge*: no county crests, sponsor wordmarks or
+  manufacturer logos. Those are live trademarks with active commercial deals
+  behind them, and they are also not what anyone recognises a jersey by. The
+  colours and the pattern are the jersey.
+- **Venues.** The real grounds, under their real names, with their actual
+  architecture and orientation — Croke Park, Semple Stadium, Fitzgerald
+  Stadium, Páirc Uí Chaoimh and the rest. Buildings and place names are fair to
+  depict; what stays out is *branding* — no reproduced sponsor wordmarks on the
+  hoardings and no county crests. The pitch-side boards carry Mr Cheap Flights,
+  which is the site's own brand.
 - **Betting is virtual only.** Currency is earned in play. It is never
   purchasable with real money and never cashable out, and the game never
   simulates a real sportsbook. That keeps it a wager mechanic rather than
@@ -87,12 +91,16 @@ Currency (working name: **gate receipts**) comes from three places:
 
 - **Fixed purses.** Championship round win 250, final 1000; quick match 80;
   survival 10/kick survived; free kicks 25/score.
-- **Match bet.** Before a match, stake on yourself at odds derived from the
-  keeper tier and your recent form. Win the match, win stake × odds.
-- **Shot bet ("call it").** Before a single kick, declare an outcome — *score*
-  (evens), *goal* (3.5×), *two-pointer* (4×), *goal with curl* (6×). Hit it and
-  it pays. This is the more interesting of the two and the one that will get
-  used every kick.
+- **Match bet.** Before a match, stake on yourself to win. **Evens.**
+- **Shot bet ("back yourself").** Before a single kick, stake on scoring it.
+  **Evens.**
+
+**All wagers are evens — no odds ladder.** Money is a flat risk/reward dial:
+stake it, double it or lose it. Differentiation by *type* of score lives
+entirely in the points system above, where a curled two-pointer against an
+All-Ireland keeper is worth many times a tapped-over point. Points are the skill
+ledger; money is the nerve ledger. Keeping odds out of it also keeps the
+mechanic unambiguously a game feature rather than a simulated sportsbook.
 
 **Anti-soft-lock:** a minimum stipend per match, and stakes capped at a
 percentage of balance, so a losing streak can never leave a player unable to
@@ -103,9 +111,9 @@ Money buys kits, in three rarities:
 
 - **Standard** — your county's colours in the base pattern.
 - **Rare** — pattern variants: hoops, sash, halves, quarters, band, trim.
-- **Heritage** — pattern/colour combinations evocative of famous historical
-  designs, each with an original in-game name and a short blurb. These are the
-  chase items.
+- **Heritage** — the real historic designs, named by county and era ("Kerry
+  1975 Hoops", "Dublin 1995", "Donegal 1992"), each with a short blurb on why
+  that jersey is remembered. These are the chase items.
 
 ### 1.4 The prerequisite nobody asks for but the whole stage needs
 **The player's kit is currently invisible.** The camera sits behind the kicker
@@ -148,13 +156,24 @@ style. Stage 2 extracts a **venue descriptor**:
   endTerrace, floodlights, hoardingStyle, pitchWear, weatherBias }
 ```
 
-Then builds five or six venues with genuinely different silhouettes:
+Then builds the real grounds, each modelled on its actual architecture:
 
-- **The national ground** — vast, four tiers, a famous open terrace at one end.
-- **A provincial fortress** — one dominant steep stand, open ends, low sun.
-- **A tight town ground** — low terracing, trees and rooftops beyond.
-- **A modern bowl** — continuous roof, even tiers, enclosed acoustics.
-- **A coastal ground** — exposed, weather-biased toward wind and rain.
+- **Croke Park**, Dublin — 82,300. Three vast tiers across the Cusack, Hogan and
+  Davin stands, with Hill 16 as a single open terrace at one end. The flagship,
+  and the neutral venue for finals.
+- **Semple Stadium**, Thurles — 45,000. The old Ard Craobh terrace opposite a
+  long covered stand, wide open at the ends.
+- **Fitzgerald Stadium**, Killarney — 38,000. Grass banks and terracing with
+  MacGillycuddy's Reeks over the far side — the most distinctive skyline in the
+  country.
+- **Páirc Uí Chaoimh**, Cork — 45,000. The rebuilt continuous bowl under a
+  sweeping single-tier roof.
+- **MacHale Park**, Castlebar — 30,000. Steep covered stand, open terracing,
+  exposed western weather.
+- **St Tiernach's Park**, Clones — 36,000. The sloping Ulster ground with banked
+  terracing on the hill side.
+
+Each carries its real capacity, crowd density, stand geometry and weather bias.
 
 ### 2.2 Home and away
 Each county gets a home venue. Matches use the home team's ground; finals go to
