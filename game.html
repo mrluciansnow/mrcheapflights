@@ -158,6 +158,14 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
   background:rgba(4,13,22,.62);border:1px solid rgba(255,255,255,.12);color:#fff}
 .passwrap{display:flex;align-items:center;gap:.7rem;margin:.3rem 0}
 .passcrest{width:30px;height:30px;border-radius:8px;box-shadow:0 0 0 2px rgba(255,255,255,.25)}
+.ptable{display:flex;flex-direction:column;gap:.22rem;margin:.7rem 0 .2rem;width:100%;max-width:280px}
+.prow{display:flex;align-items:center;gap:.5rem;font-size:.74rem;font-weight:800;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);
+  border-radius:9px;padding:.3rem .55rem}
+.prow.up{border-color:var(--yellow);background:rgba(255,210,0,.1)}
+.prow span{opacity:.45;width:12px}
+.prow b{flex:1;text-align:left}
+.prow i{font-style:normal;font-variant-numeric:tabular-nums;opacity:.7}
 
 /* ---------- stage: ranks, money, kitbag ---------- */
 .rankbar{position:absolute;top:126px;left:10px;right:10px;display:flex;align-items:center;
@@ -282,6 +290,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
     <div class="gv w" id="passTo">DUBLIN</div>
   </div>
   <div class="gb" id="passSub">Penalty 1 of 5</div>
+  <div class="ptable" id="passTable"></div>
   <button class="btn" id="bPass">TAKE THE KICK</button>
   <div class="ft">Hand the device over</div>
 </div>
@@ -313,6 +322,8 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
   <div class="modes sub2">
     <button class="btn sm kitbtn" id="bKit">🎽 KITBAG</button>
   </div>
+  <div class="pl">Players on this device</div>
+  <div class="ds" id="pc" style="max-width:230px"></div>
   <div class="strip" id="pStrip"></div>
   <div class="ft">Championship: 4 rounds, best of 5, keeper sharpens each round</div>
 </div>
@@ -511,6 +522,34 @@ addEventListener('resize', resize);
 
 const lerp=(a,b,t)=>a+(b-a)*t, clamp=(v,a,b)=>v<a?a:v>b?b:v, rand=(a,b)=>a+Math.random()*(b-a);
 const ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+
+/* ==================================================================
+   SEEDED RANDOMNESS
+   Everything that decides an outcome — wind, weather, the keeper's
+   reaction and read, contact slip, the CPU's choice — comes from a
+   seeded stream. Everything cosmetic — crowd, grass, confetti, rain —
+   stays on Math.random. That split is what makes a kick reproducible
+   from a tiny input record, which local fairness, online play and
+   seeded challenges all depend on.
+   ================================================================== */
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a>>>15, 1 | a);
+    t = t + Math.imul(t ^ t>>>7, 61 | t) ^ t;
+    return ((t ^ t>>>14) >>> 0) / 4294967296;
+  };
+}
+let gRng = mulberry32(1);
+let matchSeed = 1, kickIndex = 0, matchSeedFixed = false;
+const gRand = (a,b) => a + gRng()*(b-a);
+const gPick = arr => arr[(gRng()*arr.length)|0];
+function hash2(a,b){
+  let h = Math.imul(a ^ 0x9E3779B9, 0x85EBCA6B) ^ Math.imul(b+0x165667B1, 0xC2B2AE35);
+  h ^= h>>>15; return h>>>0;
+}
+function seedFrom(n){ gRng = mulberry32(n>>>0); }
+const newSeed = () => (Math.random()*0xFFFFFFFF)>>>0;
 
 /* ==================================================================
    STATIC BACKGROUND  (sky · stand · crowd · hoardings · turf · lines)
@@ -1042,7 +1081,7 @@ function newKeeper(defendingCounty, tier){
     co: defendingCounty,
     wz: 0.42, wx: 0, wy: 0,
     tx: 0, ty: 1.35, side: 1,
-    react: rand(d.rMin, d.rMax),
+    react: gRand(d.rMin, d.rMax),
     dur: d.dur, reach: d.reach, range: d.range, err: d.err,
     dive: 0, committed: false,
   };
@@ -1053,8 +1092,8 @@ function keeperCommit(k, b){
   const t = b.wz / Math.max(0.6, -b.vz);          // time left to the plane
   let px = b.wx + b.vx*t;
   let py = b.wy + b.vy*t - 0.5*CFG.G*t*t;
-  px += rand(-k.err, k.err);
-  py += rand(-k.err, k.err)*0.55;
+  px += gRand(-k.err, k.err);
+  py += gRand(-k.err, k.err)*0.55;
   k.tx   = clamp(px, -k.range, k.range);
   k.ty   = clamp(py, 0.20, 2.25);
   k.side = Math.sign(k.tx) || 1;
@@ -1541,6 +1580,29 @@ let lastPurse = 0, lastMatchBet = 0;
 let mode = 'championship';   // championship | quick | freekick | survival | duel
 let career = {round:0};
 let kickNo = 0, survivalLevel = 0, duelTurn = 'a', duel = null;
+/* ---- local multiplayer: 2-4 on one device ----
+   Every player in a round kicks at the same kick index, so the seeded
+   stream hands them identical wind, weather and keeper behaviour. The
+   only variable is the kick. */
+let duelCount = 2, duelPlayers = [], duelIdx = 0, duelOwner = null;
+function setupDuel(){
+  duelOwner = CO_P;
+  const pool = COUNTIES.filter(c=>c!==CO_P);
+  duelPlayers = [{co:CO_P, kit:profile.kit, s:{g:0,t:0,p:0,r:[]}}];
+  for(let i=1;i<duelCount;i++){
+    const c = pool.splice((Math.random()*pool.length)|0, 1)[0] || COUNTIES[i];
+    duelPlayers.push({co:c, kit:'std', s:{g:0,t:0,p:0,r:[]}});
+  }
+  duelIdx = 0;
+}
+/* point the shared scoring machinery at whoever is kicking */
+function duelBind(){
+  const dp = duelPlayers[duelIdx];
+  CO_P = dp.co; P = dp.s;
+}
+const duelStandings = () =>
+  duelPlayers.map((d,i)=>({i, n:d.co.n, t:total(d.s), line:line(d.s)}))
+             .sort((a,b)=>b.t-a.t);
 
 /* ---------- Free-kick placements ----------
    Distance and angle are the difficulty here, not the keeper. Anything
@@ -1562,8 +1624,8 @@ const FK_KICKS = 10;
 /* Survival: keeps stepping further out and turning the screw. */
 function survivalSpot(level){
   const t  = Math.min(level/14, 1);
-  const d  = lerp(13, 48, t) + rand(-2.5, 2.5);
-  const ang= rand(-1,1) * lerp(0.18, 0.85, t);        // radians off centre
+  const d  = lerp(13, 48, t) + gRand(-2.5, 2.5);
+  const ang= gRand(-1,1) * lerp(0.18, 0.85, t);        // radians off centre
   const x  = Math.sin(ang)*d, z = Math.cos(ang)*d;
   const tiers = ['junior','intermediate','senior','allireland'];
   difficulty = tiers[Math.min(3, Math.floor(level/3))];
@@ -1754,25 +1816,30 @@ function chooseVenue(){
     setVenue('croke', 0.5, true);
   } else {                                   // free kicks / survival tour
     const keys = Object.keys(VENUES);
-    setVenue(keys[(Math.random()*keys.length)|0], 0.6, true);
+    setVenue(gPick(keys), 0.6, true);
   }
 }
 function pickWeather(){
   const bias = venue.wetBias || 1;
   const wts = WEATHERS.map(w => w.w * (w.wet>0 ? bias : 1/bias));
   const tot = wts.reduce((a,b)=>a+b,0);
-  let r = Math.random()*tot;
+  let r = gRng()*tot;
   for(let i=0;i<WEATHERS.length;i++){ r-=wts[i]; if(r<=0){ weather=WEATHERS[i]; return; } }
   weather = WEATHERS[0];
 }
 function setWind(){
-  wind = rand(-1,1);
-  windKmh = Math.abs(wind)*rand(3,24);
+  wind = gRand(-1,1);
+  windKmh = Math.abs(wind)*gRand(3,24);
   windAcc = wind * (windKmh/24) * 5.2;    // lateral acceleration m/s²
 }
 
 function newShot(who){
   shooter = who;
+  if(mode==='duel') duelBind();
+  kickIndex = mode==='freekick' ? kickNo
+            : mode==='survival' ? survivalLevel
+            : round;
+  seedFrom(hash2(matchSeed, kickIndex));
   // place the ball for this mode, which also aims the camera
   if(mode==='freekick'){
     const f = FK_SPOTS[kickNo % FK_SPOTS.length];
@@ -1820,17 +1887,17 @@ function newShot(who){
 /* ---- CPU shot selection: sharper opponents pick better corners ---- */
 function cpuShoot(){
   const sharp = {junior:.45, intermediate:.62, senior:.76, allireland:.92}[difficulty];
-  const roll = Math.random();
+  const roll = gRng();
   let target;                                        // where it wants the ball to cross
   if(roll < 0.26){                                   // safe point over the bar
-    power = rand(0.83, 0.97); target = rand(-1.5, 1.5); curl = rand(-.25,.25);
+    power = gRand(0.83, 0.97); target = gRand(-1.5, 1.5); curl = gRand(-.25,.25);
   } else if(roll < 0.93){                            // go for the corner
-    const side = Math.random()<.5 ? -1 : 1;
-    power = rand(0.36, 0.62);
-    target = side * lerp(rand(1.4,2.3), rand(2.62,2.95), sharp);
-    curl   = side * rand(0, 0.8) * sharp;            // bend it away from the keeper
+    const side = gRng()<.5 ? -1 : 1;
+    power = gRand(0.36, 0.62);
+    target = side * lerp(gRand(1.4,2.3), gRand(2.62,2.95), sharp);
+    curl   = side * gRand(0, 0.8) * sharp;            // bend it away from the keeper
   } else {                                           // over-ambitious
-    power = rand(0.25, 1.0); target = rand(-4, 4); curl = rand(-1,1);
+    power = gRand(0.25, 1.0); target = gRand(-4, 4); curl = gRand(-1,1);
   }
   // aim off the curl, the way a player does by reading the preview arc
   const sp = shotParams(power);
@@ -1843,7 +1910,7 @@ function fire(){
   strikeCurl = curl;
   if(shotStake>0) debit(shotStake);
   // contact is never perfect — harder strikes stray more
-  const slip = rand(-0.17, 0.17) * (0.55 + power);
+  const slip = gRand(-0.17, 0.17) * (0.55 + power);
   launchBall(power, aimM + slip);
   state = ST.FLIGHT; flightT = 0;
   zoomTarget = 1.07;
@@ -1883,7 +1950,7 @@ function award(kind){
   else if(kind==='point'){ who.p++; who.r.push('point'); }
   else who.r.push('miss');
 
-  if(shooter==='p'){
+  if(shooter==='p' && !(mode==='duel' && duelIdx!==0)){
     profile.shots++;
     if(scored){ profile.scored++; streak++;
       if(kind==='goal') profile.goals++; else profile.points += (kind==='twopoint'?2:1); }
@@ -2069,16 +2136,17 @@ function advance(){
     survivalLevel++; kickNo++;
     return newShot('p');
   }
-  /* ---- two-player: alternate the county taking the kick ---- */
+  /* ---- local multiplayer: hand on round-robin, then next round ---- */
   if(mode==='duel'){
-    if(duelTurn==='a'){ duelTurn='b'; return showPassScreen(); }
-    duelTurn='a';
-    if(decided()) return endMatch();
-    if(round >= ROUNDS){
-      if(total(P)===total(C)){ sudden=true; round++; return showPassScreen(); }
-      return endMatch();
-    }
-    round++; return showPassScreen();
+    duelIdx++;
+    if(duelIdx < duelPlayers.length) return showPassScreen();
+    duelIdx = 0;
+    const st = duelStandings();
+    if(round >= ROUNDS && st[0].t !== st[1].t) return endMatch();
+    if(round >= ROUNDS + 4) return endMatch();      // cap sudden death
+    if(round >= ROUNDS) sudden = true;
+    round++;
+    return showPassScreen();
   }
 
   if(decided()) return endMatch();
@@ -2120,6 +2188,26 @@ function endMatch(){
 
   const v=$('gv'), btn=$('bNext');
   let stageLbl = 'Full Time', blurb = '', unlocked = null;
+
+  /* ---- local multiplayer: a table, not a head to head ---- */
+  if(mode==='duel'){
+    const st = duelStandings();
+    const v2=$('gv'), btn2=$('bNext');
+    const drawn = st.length>1 && st[0].t === st[1].t;
+    v2.textContent = drawn ? 'ALL SQUARE' : st[0].n.toUpperCase()+' WIN';
+    v2.className = drawn ? 'gv d' : 'gv w';
+    $('gStage').textContent = 'Local Multiplayer';
+    $('gs').textContent = st.map(r=>r.n+' '+r.line+' ('+r.t+')').join('   ·   ');
+    $('gb').innerHTML = drawn
+      ? 'Level after '+(round)+' rounds — honours even.'
+      : (st.length>2 ? st.map((r,i)=>(i+1)+'. '+r.n+' — '+r.t).join('<br>')
+                     : 'Nothing between the counties all evening.');
+    $('gStats').innerHTML = '';
+    btn2.textContent='BACK TO MENU'; btn2.dataset.act='menu';
+    if(duelOwner) CO_P = duelOwner;
+    $('ovEnd').classList.remove('hidden');
+    return;
+  }
 
   /* ---- solo modes are scored against your own record ---- */
   if(mode==='freekick' || mode==='survival'){
@@ -2252,7 +2340,7 @@ function updateRoundBar(){
       mode==='championship' ? BRACKET[career.round].short+' · '+DIFF[difficulty].n :
       mode==='freekick'     ? 'FREE KICKS · '+spot.label.toUpperCase() :
       mode==='survival'     ? 'SURVIVAL · '+spot.label.toUpperCase() :
-      mode==='duel'         ? 'TWO-PLAYER · '+(shooter==='p'?CO_P.n:CO_C.n).toUpperCase() :
+      mode==='duel'         ? 'LOCAL · P'+(duelIdx+1)+'/'+duelPlayers.length+' · '+CO_P.n.toUpperCase() :
                               'QUICK MATCH · '+DIFF[difficulty].n) + wx;
   $('rbS').textContent = streak>1 ? streak+' IN A ROW' : '';
   $('rbS').style.display = streak>1 ? '' : 'none';
@@ -2614,6 +2702,16 @@ function buildCounties(){
     w.appendChild(d);
   });
 }
+function buildPlayerCount(){
+  const w=$('pc'); w.innerHTML='';
+  for(const n of [2,3,4]){
+    const d=document.createElement('div');
+    d.className='dif'+(n===duelCount?' sel':'');
+    d.textContent=n+' players';
+    d.onclick=()=>{ duelCount=n; buildPlayerCount(); };
+    w.appendChild(d);
+  }
+}
 function buildDiffs(){
   const w=$('ds'); w.innerHTML='';
   Object.keys(DIFF).forEach(k=>{
@@ -2628,12 +2726,16 @@ function buildDiffs(){
 /* pick an opponent the player is not using */
 function pickOpponent(){
   const pool = COUNTIES.filter(c=>c!==CO_P);
-  return pool[(Math.random()*pool.length)|0];
+  return gPick(pool);
 }
 function startMatch(){
   round=1; sudden=false; shooter='p'; streak=0;
   kickNo=0; survivalLevel=0; duelTurn='a';
+  if(mode==='duel') setupDuel();
   P={g:0,t:0,p:0,r:[]}; C={g:0,t:0,p:0,r:[]}; confetti=[]; parts=[];
+  if(!matchSeedFixed) matchSeed = newSeed();
+  matchSeedFixed = false;
+  seedFrom(matchSeed);                       // opponent, ground and weather
   CO_C = pickOpponent();
   chooseVenue();
   pickWeather();
@@ -2664,17 +2766,21 @@ function startDuel(){ if(!gate('duel')) return; mode='duel'; startMatch(); }
 
 /* two-player: hand the device over between kicks */
 function showPassScreen(){
-  const co = duelTurn==='a' ? CO_P : CO_C;
-  $('passTo').textContent = co.n.toUpperCase();
-  $('passCrest').style.background = crestCss(co);
-  $('passSub').textContent = sudden ? 'Sudden death — one kick each'
-                                    : 'Penalty '+Math.min(round,ROUNDS)+' of '+ROUNDS;
+  const dp = duelPlayers[duelIdx];
+  $('passTo').textContent = dp.co.n.toUpperCase();
+  $('passCrest').style.background = crestCss(dp.co);
+  $('passSub').textContent = (sudden ? 'Sudden death · ' : '')
+      + 'Kick ' + Math.min(round,ROUNDS) + ' of ' + ROUNDS
+      + ' · player ' + (duelIdx+1) + ' of ' + duelPlayers.length;
+  $('passTable').innerHTML = duelStandings().map((r,i)=>
+      '<div class="prow'+(r.i===duelIdx?' up':'')+'"><span>'+(i+1)+'</span>'
+      + '<b>'+r.n+'</b><i>'+r.line+' ('+r.t+')</i></div>').join('');
   $('ovPass').classList.remove('hidden');
   state = ST.OVER;                          // freeze play behind the overlay
 }
 $('bPass').onclick = ()=>{
   $('ovPass').classList.add('hidden');
-  newShot(duelTurn==='a' ? 'p' : 'c');
+  newShot('p');
 };
 function nextRound(){
   career.round++;
@@ -2683,6 +2789,7 @@ function nextRound(){
   startMatch();
 }
 function toMenu(){
+  if(duelOwner){ CO_P = duelOwner; duelOwner = null; }
   $('ovEnd').classList.add('hidden');
   $('ovTitle').classList.remove('hidden');
   state=ST.TITLE; buildCounties(); refreshProfileStrip();
@@ -2701,6 +2808,66 @@ $('bMute').onclick  = ()=>{
   if(ambGain) ambGain.gain.value = muted ? 0 : ambBase;
 };
 
+/* ==================================================================
+   DEBUG API — enabled with ?debug=1
+   Exposes the deterministic core so the regression suite can prove that
+   an input record replays to the same outcome every time. This is the
+   gate Stage 4's online model depends on, so it ships rather than being
+   bolted on for one test run.
+   ================================================================== */
+if(new URLSearchParams(location.search).has('debug')){
+  window.CF = {
+    /* Replay a shot from an input record and return the outcome. Pure:
+       it restores the game state it borrowed. */
+    simulate(rec){
+      const save = {spot:spot, dist:shotDist, u:shotU, r:shotR, ball:ball,
+                    keeper:keeper, wall:wall, curl:curl, diff:difficulty,
+                    weather:weather, windAcc:windAcc, mode:mode};
+      difficulty = rec.difficulty || 'senior';
+      mode = rec.mode || 'quick';
+      seedFrom(hash2(rec.matchSeed>>>0, rec.kickIndex|0));
+      setSpot(rec.x||0, rec.z||CFG.PEN_Z, 'sim', rec.wall||0);
+      wall = newWall(spot.wall);
+      weather = WEATHERS[rec.weather||0];
+      setWind();
+      keeper = newKeeper(CO_C, difficulty);
+      curl = rec.curl||0;
+      ball = newBall();
+      const slip = gRand(-0.17,0.17)*(0.55+rec.power);
+      launchBall(rec.power, (rec.aimM||0) + slip);
+      let t=0, pz, px, py, pa, res='short';
+      for(let i=0;i<900;i++){
+        pz=ball.wz; px=ball.wx; py=ball.wy; pa=wall?alongShot(ball):0;
+        t+=1/60; stepBall(1/60); keeperUpdate(keeper,t,ball); if(wall) wallUpdate(wall,t);
+        if(wall && pa<wall.at && alongShot(ball)>=wall.at){
+          const f2=(wall.at-pa)/(alongShot(ball)-pa);
+          if(wallBlocks(wall, acrossShot({wx:lerp(px,ball.wx,f2),wz:lerp(pz,ball.wz,f2)}),
+                        lerp(py,ball.wy,f2))){ res='blocked'; break; }
+        }
+        if(pz>0 && ball.wz<=0){
+          const f=pz/(pz-ball.wz);
+          res = evaluateAtPlane(lerp(px,ball.wx,f), lerp(py,ball.wy,f));
+          break;
+        }
+        if(t>6) break;
+      }
+      const out = {outcome:res, x:+ball.wx.toFixed(9), y:+ball.wy.toFixed(9),
+                   z:+ball.wz.toFixed(9), wind:+wind.toFixed(9)};
+      spot=save.spot; shotDist=save.dist; shotU=save.u; shotR=save.r;
+      ball=save.ball; keeper=save.keeper; wall=save.wall; curl=save.curl;
+      difficulty=save.diff; weather=save.weather; windAcc=save.windAcc; mode=save.mode;
+      return out;
+    },
+    conditions(matchSeed, kickIndex){
+      seedFrom(hash2(matchSeed>>>0, kickIndex|0));
+      setWind();
+      return {wind:+wind.toFixed(9), kmh:+windKmh.toFixed(9)};
+    },
+    venues: Object.keys(VENUES),
+    ranks: RANKS.map(r=>r.n),
+  };
+}
+
 loadProfile();
 if(!isUnlocked(CO_P)) CO_P = COUNTIES[0];
 if(!tierOpen(difficulty)){
@@ -2710,6 +2877,7 @@ if(!tierOpen(difficulty)){
 setSpot(0, CFG.PEN_Z, 'Penalty', 0);
 buildCounties();
 buildDiffs();
+buildPlayerCount();
 refreshProfileStrip();
 resize();
 ball = newBall();

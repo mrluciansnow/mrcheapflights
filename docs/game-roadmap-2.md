@@ -12,9 +12,9 @@ venues, and other people to play against.
 
 | Stage | Theme | Status |
 |---|---|---|
-| 1 | Ranks, Money and the Kitbag | Planned |
-| 2 | Grounds and Fidelity | Planned |
-| 3 | Multiplayer: local play, and the online blueprint | Planned |
+| 1 | Ranks, Money and the Kitbag | **Shipped** |
+| 2 | Grounds and Fidelity | **Shipped** |
+| 3 | Multiplayer: local play, and the online blueprint | **Shipped** |
 | 4 | Online, Accounts and Hardening | Planned |
 | 5 | The Living Season | Planned |
 
@@ -290,12 +290,29 @@ score.
 **Resilience:** submit-and-forget with retry, optimistic local display,
 reconciliation on poll. A dropped connection mid-kick must never lose a turn.
 
-### Acceptance criteria
-- Local rounds are provably fair: same seed, same conditions for every player.
-- **Determinism proof:** an input record replays to a bit-identical outcome
-  across reloads and across devices. This is a hard gate — Stage 4 is not
-  startable until it passes.
-- The online spec is detailed enough that Stage 4 is implementation, not design.
+### What shipped
+- **Seeded gameplay randomness.** Wind, weather, ground, the keeper's reaction
+  and read, the CPU's choice and contact slip all draw from a seeded
+  `mulberry32` stream; crowd, grass, confetti, rain and camera shake stay on
+  `Math.random`. Each kick re-seeds from `hash2(matchSeed, kickIndex)`.
+- **Local multiplayer for 2–4** on one device: round-robin kicking, a hand-over
+  screen with live standings, and a final table. Guest players do not earn the
+  device owner's points or money.
+- **A `?debug=1` API** exposing `CF.simulate(record)` and `CF.conditions()`, so
+  the determinism guarantee is permanently testable rather than asserted.
+- **[The online specification](./multiplayer-spec.md)** — input records, async
+  turn-based model, Cloudflare stack with schema and endpoints, the match state
+  machine, anti-cheat by server re-simulation, and the float-determinism risk.
+
+### Verified
+40 input records spanning every keeper tier, both wall configurations and spots
+from 11m to 45m replay **40/40 identically** when reordered on the same page and
+**40/40 identically** in a fresh browser context, agreeing to nine decimal
+places on ball rest position. Two players at the same kick index get identical
+wind and weather; consecutive indices differ. The determinism gate for Stage 4
+is passed — for Chromium. Cross-engine agreement on iOS Safari and Android
+Chrome is explicitly still unmeasured, and Stage 4 must measure it before
+matchmaking is built.
 
 ---
 
