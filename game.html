@@ -103,6 +103,35 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 .gv.w{color:var(--yellow)}.gv.l{color:var(--hot-pink)}.gv.d{color:var(--sky)}
 .gs{font-family:'Bebas Neue',sans-serif;font-size:1.85rem;letter-spacing:.03em;margin:.5rem 0 .1rem}
 .gb{font-size:.82rem;font-weight:700;opacity:.7;max-width:290px;line-height:1.6;margin-top:.5rem}
+
+/* ---------- round bar ---------- */
+.rbar{position:absolute;top:72px;left:0;right:0;display:flex;align-items:center;justify-content:center;gap:.5rem;
+  font-size:.6rem;font-weight:900;letter-spacing:.14em;color:rgba(255,255,255,.4);
+  background:linear-gradient(180deg,rgba(3,10,18,.5),transparent);padding:.28rem 0 .5rem}
+.rb-must{color:#fff;background:var(--hot-pink);border-radius:20px;padding:2px 8px;letter-spacing:.1em;
+  animation:pulse 1s ease-in-out infinite}
+.rb-streak{color:var(--yellow);letter-spacing:.1em}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+
+/* ---------- title extras ---------- */
+.rr.tip{justify-content:center;opacity:.75;font-size:.74rem}
+.rr.tip b{margin:0;font-family:'Nunito',sans-serif;font-size:.74rem;color:var(--yellow)}
+.ds{display:grid;grid-template-columns:repeat(4,1fr);gap:.35rem;width:100%;max-width:330px}
+.dif{cursor:pointer;text-align:center;font-size:.6rem;font-weight:900;letter-spacing:.03em;padding:.42rem .2rem;
+  border:1.5px solid rgba(255,255,255,.09);border-radius:9px;background:rgba(255,255,255,.03);transition:all .15s}
+.dif:hover{border-color:rgba(255,255,255,.28)}
+.dif.sel{border-color:var(--sky);background:rgba(0,170,255,.13);color:var(--sky)}
+.cty.locked{opacity:.3;cursor:not-allowed;filter:grayscale(.75)}
+.cty.locked:hover{border-color:rgba(255,255,255,.09);transform:none}
+.modes{display:flex;gap:.6rem;margin-top:1.15rem;flex-wrap:wrap;justify-content:center}
+.modes .btn{margin-top:0;font-size:1.25rem;padding:.4rem 1.35rem}
+.btn.alt{background:transparent;color:var(--sky);box-shadow:none;border:2px solid rgba(0,170,255,.45)}
+.strip{display:flex;gap:.9rem;margin-top:1.05rem;flex-wrap:wrap;justify-content:center}
+.st{display:flex;flex-direction:column;align-items:center;gap:1px}
+.st span{font-size:.53rem;font-weight:900;letter-spacing:.13em;opacity:.4;text-transform:uppercase}
+.st b{font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:.02em;color:var(--yellow)}
+.ov{overflow-y:auto}
+@media(max-height:840px){.ov{justify-content:flex-start}.ttl{font-size:clamp(2.4rem,11vw,3.4rem)}}
 </style>
 </head>
 <body>
@@ -125,6 +154,12 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
     </div>
   </div>
 
+  <div class="rbar">
+    <span id="rbL">QUICK MATCH · SENIOR</span>
+    <span class="rb-must" id="rbM" style="display:none">MUST SCORE</span>
+    <span class="rb-streak" id="rbS" style="display:none"></span>
+  </div>
+
   <div class="gauge" id="gDist"><div class="l">DIST</div><div class="v">11m</div></div>
   <div class="gauge" id="gWind"><div class="l">WIND</div><span class="warrow" id="wArr">→</span><div class="v" id="wVal">0.0</div></div>
 
@@ -141,20 +176,30 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
   <div class="rw">
     <div class="rr"><span class="flag" style="background:#17a04a"></span>Into the net, past the keeper<b>GOAL · 3</b></div>
     <div class="rr"><span class="flag" style="background:#fff"></span>Over the bar, between the posts<b>POINT · 1</b></div>
-    <div class="rr"><span class="flag" style="background:repeating-linear-gradient(45deg,#e03,#e03 4px,#fff 4px,#fff 8px)"></span>Off the frame or wide<b>NO SCORE</b></div>
+    <div class="rr tip">Hook your swipe to <b>curl</b> it around the keeper.</div>
   </div>
+
   <div class="pl">Pick your county</div>
   <div class="cs" id="cs"></div>
-  <button class="btn" id="bStart">THROW-IN</button>
-  <div class="ft">Best of 5 · sudden death if level</div>
+
+  <div class="pl">Quick match difficulty</div>
+  <div class="ds" id="ds"></div>
+
+  <div class="modes">
+    <button class="btn" id="bChamp">CHAMPIONSHIP</button>
+    <button class="btn alt" id="bQuick">QUICK MATCH</button>
+  </div>
+  <div class="strip" id="pStrip"></div>
+  <div class="ft">Championship: 4 rounds, best of 5, keeper sharpens each round</div>
 </div>
 
 <div class="ov hidden" id="ovEnd">
-  <div class="sub">Full Time</div>
+  <div class="sub" id="gStage">Full Time</div>
   <div class="gv" id="gv">—</div>
   <div class="gs" id="gs"></div>
   <div class="gb" id="gb"></div>
-  <button class="btn" id="bAgain">PLAY AGAIN</button>
+  <div class="strip" id="gStats"></div>
+  <button class="btn" id="bNext" data-act="menu">BACK TO MENU</button>
   <div class="ft">Croke Park · Championship Sunday</div>
 </div>
 </div>
@@ -176,22 +221,51 @@ const CFG = {
   BALL_PHYS: 0.11,   // true size 5 football; used for frame collisions
   G        : 9.81,
   DRAG     : 0.010,
+  CURL     : 14,     // lateral bend at full sidespin (m/s² at 20 m/s)
   NET_DEEP : 2.55,   // how far the net runs behind the line at ground
   NET_TOPZ : 1.75,   // net top rail behind the line
   NET_TOPY : 2.05,
 };
 
+/* first eight are available from the start; the rest are earned */
 const COUNTIES = [
-  {n:'Dublin', a:'#3f8fd8', b:'#0b2a56', kit:'#3f8fd8', trim:'#0b2a56'},
-  {n:'Kerry',  a:'#0d8a3e', b:'#ffd200', kit:'#0d8a3e', trim:'#ffd200'},
-  {n:'Tyrone', a:'#d92b2b', b:'#ffffff', kit:'#ffffff', trim:'#d92b2b'},
-  {n:'Mayo',   a:'#0c7a3c', b:'#d92b2b', kit:'#0c7a3c', trim:'#d92b2b'},
-  {n:'Cork',   a:'#d92b2b', b:'#ffffff', kit:'#d92b2b', trim:'#ffffff'},
-  {n:'Galway', a:'#7d1236', b:'#ffffff', kit:'#7d1236', trim:'#ffffff'},
-  {n:'Donegal',a:'#f0c419', b:'#0c7a3c', kit:'#f0c419', trim:'#0c7a3c'},
-  {n:'Armagh', a:'#ef7622', b:'#ffffff', kit:'#ef7622', trim:'#ffffff'},
+  {n:'Dublin',   a:'#3f8fd8', b:'#0b2a56'},
+  {n:'Kerry',    a:'#0d8a3e', b:'#ffd200'},
+  {n:'Tyrone',   a:'#d92b2b', b:'#ffffff'},
+  {n:'Mayo',     a:'#0c7a3c', b:'#d92b2b'},
+  {n:'Cork',     a:'#d92b2b', b:'#ffffff'},
+  {n:'Galway',   a:'#7d1236', b:'#ffffff'},
+  {n:'Donegal',  a:'#f0c419', b:'#0c7a3c'},
+  {n:'Armagh',   a:'#ef7622', b:'#ffffff'},
+  {n:'Meath',    a:'#0c7a3c', b:'#f0c419'},
+  {n:'Derry',    a:'#d92b2b', b:'#ffffff'},
+  {n:'Monaghan', a:'#ffffff', b:'#1a3f8f'},
+  {n:'Roscommon',a:'#f5e05a', b:'#1a3f8f'},
+  {n:'Down',     a:'#d92b2b', b:'#141414'},
+  {n:'Kildare',  a:'#ffffff', b:'#1a5fbf'},
+  {n:'Tipperary',a:'#1a5fbf', b:'#f0c419'},
+  {n:'Louth',    a:'#d92b2b', b:'#ffffff'},
 ];
+const STARTER = 8;
 let CO_P = COUNTIES[0], CO_C = COUNTIES[2];
+
+/* Keeper skill tiers. reach/range decide how much of the goal he can cover;
+   err is how badly he mis-reads the flight. */
+const DIFF = {
+  junior      : {n:'Junior',       rMin:.25, rMax:.35, dur:.52, reach:.42, range:1.70, err:.95},
+  intermediate: {n:'Intermediate', rMin:.22, rMax:.31, dur:.47, reach:.45, range:2.05, err:.68},
+  senior      : {n:'Senior',       rMin:.19, rMax:.27, dur:.43, reach:.48, range:2.32, err:.46},
+  allireland  : {n:'All-Ireland',  rMin:.15, rMax:.22, dur:.38, reach:.52, range:2.42, err:.30},
+};
+let difficulty = 'senior';
+
+/* Championship ladder — the keeper gets sharper every round */
+const BRACKET = [
+  {n:'Preliminary Quarter-Final', short:'PREL. QF', diff:'junior'},
+  {n:'Quarter-Final',             short:'QUARTER-FINAL', diff:'intermediate'},
+  {n:'Semi-Final',                short:'SEMI-FINAL', diff:'senior'},
+  {n:'All-Ireland Final',         short:'ALL-IRELAND FINAL', diff:'allireland'},
+];
 
 /* ==================================================================
    CANVAS + PINHOLE CAMERA
@@ -559,29 +633,41 @@ function raiseFlags(kind){ for(const u of umpires){ u.flag = kind; u.raise = 0; 
    KEEPER — articulated figure; dives to a chosen point in the goal
    ================================================================== */
 let keeper = null;
-function newKeeper(defendingCounty, shotPlan){
-  const guessRight = Math.random() < 0.5;
-  let side = guessRight ? 1 : -1;
-  const stayCentre = Math.random() < 0.14;
-  // the keeper reads it correctly some of the time — never a certainty
-  if(shotPlan && Math.random() < 0.22) side = Math.sign(shotPlan.aimM) || side;
-  // he guards the middle well but cannot reach the top/bottom corners —
-  // that narrow strip inside each post is where the goals live
-  const tx = stayCentre ? rand(-0.5,0.5) : side * rand(0.7, 2.2);
-  const ty = Math.random()<0.42 ? rand(1.2, 2.0) : rand(0.25, 1.0);
+/* The difficulty tier is the keeper the PLAYER faces. Your own keeper stays a
+   steady Senior at every tier, so picking Junior makes the match easier
+   overall instead of turning it into a free-for-all at both ends. */
+const OWN_KEEPER_TIER = 'senior';
+function newKeeper(defendingCounty, tier){
+  const d = DIFF[tier || difficulty];
   return {
     co: defendingCounty,
     wz: 0.42, wx: 0, wy: 0,
-    tx, ty, side: Math.sign(tx)||1,
-    react: rand(0.16, 0.26),
-    dive: 0, set: 0,
-    reach: 0.48,
-    beaten: false,
+    tx: 0, ty: 1.35, side: 1,
+    react: rand(d.rMin, d.rMax),
+    dur: d.dur, reach: d.reach, range: d.range, err: d.err,
+    dive: 0, committed: false,
   };
 }
-function keeperUpdate(k, t){
+/* He watches the opening of the flight and extrapolates a straight line to
+   the goal — which is precisely why curl beats him. */
+function keeperCommit(k, b){
+  const t = b.wz / Math.max(0.6, -b.vz);          // time left to the plane
+  let px = b.wx + b.vx*t;
+  let py = b.wy + b.vy*t - 0.5*CFG.G*t*t;
+  px += rand(-k.err, k.err);
+  py += rand(-k.err, k.err)*0.55;
+  k.tx   = clamp(px, -k.range, k.range);
+  k.ty   = clamp(py, 0.20, 2.25);
+  k.side = Math.sign(k.tx) || 1;
+  k.committed = true;
+}
+function keeperUpdate(k, t, b){
+  if(!k.committed){
+    if(t >= k.react) keeperCommit(k, b);
+    else return;
+  }
   const dt = Math.max(0, t - k.react);
-  k.dive = clamp(dt / 0.42, 0, 1);
+  k.dive = clamp(dt / k.dur, 0, 1);
   const e = ease(k.dive);
   k.wx = lerp(0, k.tx*0.56, e);
   k.wy = lerp(0, Math.max(0, k.ty*0.52 - 0.14), e);
@@ -687,7 +773,9 @@ function stepBall(dt){
   const b = ball;
   const sp = Math.hypot(b.vx,b.vy,b.vz);
   const k  = CFG.DRAG*sp;
-  b.vx += (-k*b.vx + windAcc)*dt;
+  // curl: sidespin bends the flight, and bites harder the faster it travels
+  const magnus = curl * CFG.CURL * (sp/20);
+  b.vx += (-k*b.vx + windAcc + magnus)*dt;
   b.vy += (-CFG.G - k*b.vy)*dt;
   b.vz += (-k*b.vz)*dt;
   b.wx += b.vx*dt; b.wy += b.vy*dt; b.wz += b.vz*dt;
@@ -829,9 +917,34 @@ let round = 1, ROUNDS = 5, sudden = false;
 let shooter = 'p';
 let P = {g:0,p:0,r:[]}, C = {g:0,p:0,r:[]};
 let wind = 0, windKmh = 0, windAcc = 0;
-let power = 0, aimM = 0, dragging = false, dragA = null;
+let power = 0, aimM = 0, curl = 0, dragging = false, dragA = null, dragPath = [];
 let flightT = 0, resultT = 0, cpuT = 0, shake = 0, flash = 0;
 let outcome = null, crossed = false;
+let streak = 0;
+let mode = 'championship';                  // 'championship' | 'quick'
+let career = {round:0};
+
+/* ---------- persistent profile ---------- */
+const SAVE_KEY = 'crokerFlicks.v1';
+const freshProfile = () => ({
+  played:0, won:0, titles:0, goals:0, points:0, shots:0, scored:0,
+  bestStreak:0, bestRound:0, unlocked: COUNTIES.slice(0,STARTER).map(c=>c.n),
+});
+let profile = freshProfile();
+function loadProfile(){
+  try{
+    const raw = localStorage.getItem(SAVE_KEY);
+    if(raw) profile = Object.assign(freshProfile(), JSON.parse(raw));
+  }catch(e){ /* private mode or blocked storage — play unsaved */ }
+}
+function saveProfile(){
+  try{ localStorage.setItem(SAVE_KEY, JSON.stringify(profile)); }catch(e){}
+}
+const isUnlocked = c => profile.unlocked.indexOf(c.n) !== -1;
+function unlockNext(){
+  for(const c of COUNTIES) if(!isUnlocked(c)){ profile.unlocked.push(c.n); return c; }
+  return null;
+}
 
 const $ = id => document.getElementById(id);
 const total = o => o.g*3 + o.p;
@@ -848,16 +961,18 @@ function newShot(who){
   ball = newBall();
   trail.length = 0;
   setWind();
-  power = 0.62; aimM = 0; dragging = false;
+  power = 0.62; aimM = 0; curl = 0; dragging = false; dragPath = [];
   crossed = false; outcome = null; flightT = 0;
   ripple.t = 0;
   for(const u of umpires){ u.raise = 0; u.flag = 0; }
-  keeper = newKeeper(who==='p' ? CO_C : CO_P, null);
+  keeper = newKeeper(who==='p' ? CO_C : CO_P, who==='p' ? difficulty : OWN_KEEPER_TIER);
   zoomTarget = 1;
   if(who==='p'){
     state = ST.AIM;
     $('prompt').style.display='';
-    $('prompt').textContent = sudden ? 'SUDDEN DEATH — drag back & release' : 'Drag back from the ball, then release';
+    $('prompt').textContent = mustScore() ? 'MUST SCORE — drag back & release'
+                            : sudden      ? 'SUDDEN DEATH — drag back & release'
+                            : 'Drag back from the ball, then release';
     $('meter').classList.remove('live');
     $('mfill').style.height = '0%';
   } else {
@@ -869,13 +984,26 @@ function newShot(who){
   refreshHUD();
 }
 
-/* ---- CPU shot selection ---- */
+/* ---- CPU shot selection: sharper opponents pick better corners ---- */
 function cpuShoot(){
+  const sharp = {junior:.45, intermediate:.62, senior:.76, allireland:.92}[difficulty];
   const roll = Math.random();
-  if(roll < 0.34){ power = rand(0.83, 0.97); aimM = rand(-1.6, 1.6); }        // safe point
-  else if(roll < 0.90){ power = rand(0.34, 0.66); aimM = rand(-3.0, 3.0); }   // go for goal
-  else { power = rand(0.25, 1.0); aimM = rand(-5.2, 5.2); }                   // ambitious
-  keeper = newKeeper(CO_P, {aimM});
+  let target;                                        // where it wants the ball to cross
+  if(roll < 0.26){                                   // safe point over the bar
+    power = rand(0.83, 0.97); target = rand(-1.5, 1.5); curl = rand(-.25,.25);
+  } else if(roll < 0.93){                            // go for the corner
+    const side = Math.random()<.5 ? -1 : 1;
+    power = rand(0.36, 0.62);
+    target = side * lerp(rand(1.4,2.3), rand(2.62,2.95), sharp);
+    curl   = side * rand(0, 0.8) * sharp;            // bend it away from the keeper
+  } else {                                           // over-ambitious
+    power = rand(0.25, 1.0); target = rand(-4, 4); curl = rand(-1,1);
+  }
+  // aim off the curl, the way a player does by reading the preview arc
+  const S = lerp(13,27,power), th = lerp(9,20,power)*Math.PI/180;
+  const tf = CFG.PEN_Z/(S*Math.cos(th));
+  aimM = target - 0.5*(curl*CFG.CURL*(S/20))*tf*tf;
+  keeper = newKeeper(CO_P, OWN_KEEPER_TIER);
   fire();
 }
 function fire(){
@@ -909,9 +1037,18 @@ function evaluateAtPlane(bx, by){
 
 function award(kind){
   const who = shooter==='p' ? P : C;
+  const scored = kind==='goal' || kind==='point';
   if(kind==='goal'){ who.g++; who.r.push('goal'); }
   else if(kind==='point'){ who.p++; who.r.push('point'); }
   else who.r.push('miss');
+
+  if(shooter==='p'){
+    profile.shots++;
+    if(scored){ profile.scored++; streak++; if(kind==='goal') profile.goals++; else profile.points++; }
+    else streak = 0;
+    if(streak > profile.bestStreak) profile.bestStreak = streak;
+    saveProfile();
+  }
 
   outcome = kind;
   state = ST.RESULT; resultT = 1.7;
@@ -945,33 +1082,96 @@ function award(kind){
   refreshHUD();
 }
 
+/* Would a scoreless kick here put the match beyond reach? */
+function mustScore(){
+  if(sudden) return true;
+  const left = ROUNDS - P.r.length - 1;              // player kicks after this one
+  return total(C) - total(P) > 3*left;
+}
+/* A shootout stops the moment it cannot be changed — no dead rubbers. */
+function decided(){
+  if(sudden) return P.r.length===C.r.length && total(P)!==total(C);
+  const pLeft = ROUNDS - P.r.length, cLeft = ROUNDS - C.r.length;
+  return total(P) - total(C) > 3*cLeft || total(C) - total(P) > 3*pLeft;
+}
+
 function advance(){
   $('res').classList.remove('show');
   zoomTarget = 1;
+  if(decided()) return endMatch();
   if(shooter==='p'){ newShot('c'); return; }
-  // round complete
+  // both have kicked this round
   if(sudden){
-    if(total(P)!==total(C)) return endGame();
+    if(total(P)!==total(C)) return endMatch();
     round++; return newShot('p');
   }
   if(round >= ROUNDS){
     if(total(P)===total(C)){ sudden=true; round++; return newShot('p'); }
-    return endGame();
+    return endMatch();
   }
   round++; newShot('p');
 }
 
-function endGame(){
+function endMatch(){
   state = ST.OVER; SFX.whistle();
-  const tp=total(P), tc=total(C), v=$('gv');
-  if(tp>tc){ v.textContent='YOU WIN'; v.className='gv w'; }
-  else if(tp<tc){ v.textContent='BEATEN'; v.className='gv l'; }
-  else { v.textContent='DEAD HEAT'; v.className='gv d'; }
-  $('gs').textContent = CO_P.n.toUpperCase()+' '+line(P)+' ('+tp+')   —   '+line(C)+' ('+tc+') '+CO_C.n.toUpperCase();
-  $('gb').innerHTML = tp>tc ? 'The '+CO_P.n+' crowd are on the pitch. Sam Maguire is going home with you.'
-                    : tp<tc ? 'Silence in the stand. There is always next year.'
-                            : 'Nothing between them — they will do it all again.';
+  const tp=total(P), tc=total(C), won = tp>tc;
+  const scoreline = CO_P.n.toUpperCase()+' '+line(P)+' ('+tp+')   —   '+line(C)+' ('+tc+') '+CO_C.n.toUpperCase();
+
+  profile.played++;
+  if(won) profile.won++;
+
+  const v=$('gv'), btn=$('bNext');
+  let stageLbl = 'Full Time', blurb = '', unlocked = null;
+
+  if(mode==='championship'){
+    const rd = BRACKET[career.round];
+    stageLbl = rd.n;
+    if(won){
+      if(career.round+1 > profile.bestRound) profile.bestRound = career.round+1;
+      unlocked = unlockNext();
+      if(career.round === BRACKET.length-1){        // won the lot
+        profile.titles++;
+        v.textContent='ALL-IRELAND CHAMPIONS'; v.className='gv w';
+        blurb = CO_P.n+' have the Sam Maguire. An unbeatable run from the '
+              + 'preliminary round to the steps of the Hogan Stand.';
+        btn.textContent='BACK TO MENU'; btn.dataset.act='menu';
+      } else {
+        v.textContent='THROUGH'; v.className='gv w';
+        blurb = 'Into the '+BRACKET[career.round+1].n+'. The keeper gets sharper from here.';
+        btn.textContent='NEXT ROUND'; btn.dataset.act='next';
+      }
+    } else {
+      v.textContent = tp===tc ? 'DEAD HEAT' : 'RUN OVER';
+      v.className   = tp===tc ? 'gv d' : 'gv l';
+      blurb = tp===tc ? 'Level after sudden death — but the draw goes against you.'
+                      : 'Beaten in the '+rd.n+'. The championship is over for another year.';
+      btn.textContent='BACK TO MENU'; btn.dataset.act='menu';
+    }
+  } else {
+    if(won){ v.textContent='YOU WIN'; v.className='gv w'; blurb='A clean win over '+CO_C.n+'.'; }
+    else if(tp<tc){ v.textContent='BEATEN'; v.className='gv l'; blurb='Silence in the stand. There is always next year.'; }
+    else { v.textContent='DEAD HEAT'; v.className='gv d'; blurb='Nothing between them.'; }
+    btn.textContent='BACK TO MENU'; btn.dataset.act='menu';
+  }
+
+  if(unlocked) blurb += ' <span style="color:var(--yellow)">'+unlocked.n+' unlocked.</span>';
+  saveProfile();
+
+  $('gStage').textContent = stageLbl;
+  $('gs').textContent = scoreline;
+  $('gb').innerHTML = blurb;
+  $('gStats').innerHTML = matchStatsHTML();
   $('ovEnd').classList.remove('hidden');
+}
+
+function matchStatsHTML(){
+  const conv = profile.shots ? Math.round(profile.scored/profile.shots*100) : 0;
+  const rows = [
+    ['Career conversion', conv+'%'],
+    ['Best streak', profile.bestStreak],
+    ['Titles won', profile.titles],
+  ];
+  return rows.map(r=>'<div class="st"><span>'+r[0]+'</span><b>'+r[1]+'</b></div>').join('');
 }
 
 /* ==================================================================
@@ -996,6 +1196,26 @@ function refreshHUD(){
   $('wVal').textContent = windKmh.toFixed(1);
   const a=$('wArr'); a.textContent = wind>=0?'→':'←';
   a.style.opacity = 0.35 + Math.abs(wind)*0.65;
+  updateRoundBar();
+}
+function updateRoundBar(){
+  const rb=$('rbL');
+  rb.textContent = mode==='championship'
+      ? BRACKET[career.round].short+' · '+DIFF[difficulty].n
+      : 'QUICK MATCH · '+DIFF[difficulty].n;
+  $('rbS').textContent = streak>1 ? streak+' IN A ROW' : '';
+  $('rbS').style.display = streak>1 ? '' : 'none';
+  const m=$('rbM');
+  const show = state!==ST.TITLE && state!==ST.OVER && shooter==='p' && mustScore();
+  m.style.display = show ? '' : 'none';
+}
+function refreshProfileStrip(){
+  const conv = profile.shots ? Math.round(profile.scored/profile.shots*100) : 0;
+  $('pStrip').innerHTML =
+    '<div class="st"><span>Played</span><b>'+profile.played+'</b></div>'+
+    '<div class="st"><span>Conversion</span><b>'+conv+'%</b></div>'+
+    '<div class="st"><span>Best streak</span><b>'+profile.bestStreak+'</b></div>'+
+    '<div class="st"><span>Titles</span><b>'+profile.titles+'</b></div>';
 }
 
 /* ==================================================================
@@ -1009,16 +1229,32 @@ function down(e){
   if(state!==ST.AIM) return;
   const p=pos(e), b=prj(ball.wx,ball.wy,ball.wz);
   if(Math.hypot(p.x-b.x,p.y-b.y) < CFG.BALL_R*b.s*3.4){
-    dragging=true; dragA=p; $('meter').classList.add('live');
+    dragging=true; dragA=p; dragPath=[p]; curl=0;
+    $('meter').classList.add('live');
     const a=ac(); if(a&&a.state==='suspended') a.resume();
   }
   e.preventDefault();
 }
+/* A straight swipe goes straight. Hook the swipe and the ball bends:
+   curl is the average sideways bow of the drag away from its own chord. */
+function computeCurl(path){
+  if(path.length < 5) return 0;
+  const a=path[0], b=path[path.length-1];
+  const dx=b.x-a.x, dy=b.y-a.y, len=Math.hypot(dx,dy);
+  if(len < 26) return 0;
+  const nx=-dy/len, ny=dx/len;
+  let sum=0;
+  for(const p of path) sum += (p.x-a.x)*nx + (p.y-a.y)*ny;
+  return clamp((sum/path.length)/(len*0.26), -1, 1);
+}
 function move(e){
   if(!dragging) return;
   const p=pos(e);
+  dragPath.push(p);
+  if(dragPath.length>60) dragPath.shift();
   power = clamp((p.y-dragA.y)/(H*0.30), 0, 1);
   aimM  = clamp(-(p.x-dragA.x)/(W*0.30), -1, 1) * 5.4;
+  curl  = computeCurl(dragPath);
   $('mfill').style.height = (power*100)+'%';
   e.preventDefault();
 }
@@ -1041,7 +1277,8 @@ function drawAimPreview(){
   const dt=1/90; const pts=[];
   for(let i=0;i<130 && z>-0.2;i++){
     const sp=Math.hypot(vx,vy,vz), k=CFG.DRAG*sp;
-    vx+=(-k*vx+windAcc)*dt; vy+=(-CFG.G-k*vy)*dt; vz+=(-k*vz)*dt;
+    const magnus = curl*CFG.CURL*(sp/20);
+    vx+=(-k*vx+windAcc+magnus)*dt; vy+=(-CFG.G-k*vy)*dt; vz+=(-k*vz)*dt;
     x+=vx*dt; y+=vy*dt; z+=vz*dt;
     if(y<CFG.BALL_R){ y=CFG.BALL_R; vy=-vy*0.48; vx*=0.78; vz*=0.82; }
     pts.push({x,y,z});
@@ -1086,7 +1323,7 @@ function update(dt){
     flightT += dt;
     const prevZ = ball.wz;
     stepBall(dt);
-    keeperUpdate(keeper, flightT);
+    keeperUpdate(keeper, flightT, ball);
     if(!crossed && prevZ > 0 && ball.wz <= 0){
       const f = prevZ/(prevZ-ball.wz);
       const bx = lerp(trail.length>1?trail[trail.length-2].x:ball.wx, ball.wx, f);
@@ -1145,27 +1382,70 @@ function frame(t){
    ================================================================== */
 function buildCounties(){
   const w=$('cs'); w.innerHTML='';
-  COUNTIES.forEach((c,i)=>{
+  COUNTIES.forEach(c=>{
+    const open = isUnlocked(c);
     const d=document.createElement('div');
-    d.className='cty'+(c===CO_P?' sel':'');
-    d.innerHTML='<div class="sw" style="background:'+crestCss(c)+'"></div><div class="cn">'+c.n+'</div>';
-    d.onclick=()=>{ CO_P=c; CO_C=COUNTIES[(i+2)%COUNTIES.length]; buildCounties(); buildBackground(); refreshHUD(); };
+    d.className='cty'+(c===CO_P?' sel':'')+(open?'':' locked');
+    d.innerHTML='<div class="sw" style="background:'+crestCss(c)+'"></div>'+
+                '<div class="cn">'+(open?c.n:'🔒')+'</div>';
+    if(open) d.onclick=()=>{ CO_P=c; buildCounties(); };
     w.appendChild(d);
   });
 }
-$('bStart').onclick = ()=>{
-  round=1; sudden=false; shooter='p';
+function buildDiffs(){
+  const w=$('ds'); w.innerHTML='';
+  Object.keys(DIFF).forEach(k=>{
+    const d=document.createElement('div');
+    d.className='dif'+(k===difficulty?' sel':'');
+    d.textContent=DIFF[k].n;
+    d.onclick=()=>{ difficulty=k; buildDiffs(); };
+    w.appendChild(d);
+  });
+}
+/* pick an opponent the player is not using */
+function pickOpponent(){
+  const pool = COUNTIES.filter(c=>c!==CO_P);
+  return pool[(Math.random()*pool.length)|0];
+}
+function startMatch(){
+  round=1; sudden=false; shooter='p'; streak=0;
   P={g:0,p:0,r:[]}; C={g:0,p:0,r:[]}; confetti=[]; parts=[];
+  CO_C = pickOpponent();
+  buildBackground();                       // crowd colours follow the counties
   $('ovTitle').classList.add('hidden'); $('ovEnd').classList.add('hidden');
   const a=ac(); if(a&&a.state==='suspended') a.resume();
+  updateRoundBar();
   newShot('p');
-};
-$('bAgain').onclick = ()=>{ $('ovEnd').classList.add('hidden'); $('ovTitle').classList.remove('hidden'); state=ST.TITLE; };
+}
+function startChampionship(){
+  mode='championship'; career.round=0; difficulty=BRACKET[0].diff; startMatch();
+}
+function startQuick(){
+  mode='quick'; startMatch();
+}
+function nextRound(){
+  career.round++;
+  difficulty = BRACKET[career.round].diff;
+  $('ovEnd').classList.add('hidden');
+  startMatch();
+}
+function toMenu(){
+  $('ovEnd').classList.add('hidden');
+  $('ovTitle').classList.remove('hidden');
+  state=ST.TITLE; buildCounties(); refreshProfileStrip();
+}
+$('bChamp').onclick = startChampionship;
+$('bQuick').onclick = startQuick;
+$('bNext').onclick  = ()=>{ ($('bNext').dataset.act==='next' ? nextRound : toMenu)(); };
 
+loadProfile();
+if(!isUnlocked(CO_P)) CO_P = COUNTIES[0];
 buildCounties();
+buildDiffs();
+refreshProfileStrip();
 resize();
 ball = newBall();
-keeper = newKeeper(CO_C, null);
+keeper = newKeeper(CO_C);
 refreshHUD();
 requestAnimationFrame(t=>{ lastT=t; frame(t); });
 })();
