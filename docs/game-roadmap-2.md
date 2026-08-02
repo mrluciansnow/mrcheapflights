@@ -15,7 +15,7 @@ venues, and other people to play against.
 | 1 | Ranks, Money and the Kitbag | **Shipped** |
 | 2 | Grounds and Fidelity | **Shipped** |
 | 3 | Multiplayer: local play, and the online blueprint | **Shipped** |
-| 4 | Online, Accounts and Hardening | Planned |
+| 4 | Online, Accounts and Hardening | **Backend shipped** · client wiring outstanding |
 | 5 | The Living Season | Planned |
 
 ---
@@ -374,11 +374,54 @@ Additions worth building once the above is in place:
 - **Clubs**: player groups with shared weekly totals (sets up Stage 5).
 - **Spectate** a friend's match replay after it resolves.
 
-### Acceptance criteria
-- A full async online match completes between two real devices.
-- Server rejects a tampered input record.
-- Regression suite runs green in CI; no console errors on any supported device.
-- Anonymous → registered upgrade loses nothing.
+### What shipped
+
+**The gate, cleared by removing the risk rather than measuring it.** The spec
+flagged `Math.sin/cos/atan2/pow/hypot` as implementation-defined and therefore a
+threat to cross-device replay. Rather than test six devices and hope, the
+outcome path no longer calls them: `hypot` became `sqrt` of a sum of squares,
+`atan2` and its trig pair dropped out of the launch entirely (cos and sin of the
+aim angle come straight from the triangle), `pow(x,2)` became `x*x`, and the
+remaining `sin`/`cos` are an 11th-order polynomial using only `+ - * /`.
+Determinism now follows from the IEEE-754 spec instead of from luck. Cosmetic
+code still uses the native functions.
+
+**Server-side simulation.** `functions/_lib/sim.js` is the server's copy of the
+physics, with the PRNG draw order — wind, keeper reaction, contact slip, keeper
+read — as part of the contract.
+
+**The API**, as Pages Functions on the existing D1 binding:
+`POST /api/mp/match` (create or join), `POST /api/mp/turn` (submit a record),
+`GET /api/mp/:id` (poll and settle). Migration `0006_multiplayer.sql` adds
+players, matches, turns and a ledger. Anonymous device accounts from the first
+kick, hashed before storage, claimable by email later.
+
+**Committed test suite** (`npm test`, `npm run test:api`) replacing the
+throwaway scripts.
+
+**Accessibility**: score pips now encode outcome in *shape* as well as colour
+(goal square, two-pointer diamond, point circle) because green/white/orange
+flags are close to worst case for red-green colour blindness, plus
+`prefers-reduced-motion` support that also calms the camera shake.
+
+### Verified
+- **Simulation parity:** 120 records across all four tiers, both wall states,
+  spots from 11m to 47m and every weather state produce **120/120 identical**
+  outcomes between the Node server module and the browser build.
+- **API, against a real Workers runtime and local D1: 18/18 green** — including
+  that a client-claimed outcome is ignored, a client-supplied seed cannot change
+  the match, out-of-order and replayed kicks are refused, a third player cannot
+  read a match, and polling a settled match does not pay twice.
+
+### Still outstanding
+- **Client wiring.** The game still plays entirely offline; the online match
+  flow, inbox and account-claim UI are not built, and `awardXP`/`credit`/`debit`
+  still mutate locally rather than calling the API.
+- **Cross-engine measurement.** The maths change makes divergence very unlikely,
+  but it has still not been *measured* on iOS Safari or Android Chrome — only
+  Chromium is available in this environment. Worth confirming before ranked play.
+- Matchmaking is a simple first-waiting-match queue, not rank-banded.
+- Turn timers, push notifications and leaderboards.
 
 ---
 

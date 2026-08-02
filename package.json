@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler pages dev",
-    "deploy": "wrangler pages deploy ."
+    "deploy": "wrangler pages deploy .",
+    "test": "node tests/sim-parity.mjs && node tests/determinism.mjs",
+    "test:api": "node tests/mp-api.mjs",
+    "db:mp": "wrangler d1 execute mrcheapflights-prod --local --file=migrations/0006_multiplayer.sql"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

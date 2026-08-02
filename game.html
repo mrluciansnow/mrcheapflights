@@ -37,8 +37,11 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 .pips{display:flex;gap:3px;margin-top:3px}
 .pip{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.15);transition:background .2s}
 .pip.g{background:var(--yellow);box-shadow:0 0 6px var(--yellow)}
-.pip.p{background:#7ee0a0}.pip.m{background:var(--hot-pink)}
-.pip.t{background:#ff8a1f;box-shadow:0 0 6px #ff8a1f}
+.pip.p{background:#7ee0a0}.pip.m{background:var(--hot-pink);opacity:.55;transform:scale(.62)}
+/* shape carries the outcome too, so hue is never the only signal */
+.pip.g{border-radius:2px}                      /* goal: square */
+.pip.t{border-radius:1px;transform:rotate(45deg)}  /* two-pointer: diamond */
+.pip.t{background:#ff8a1f;box-shadow:0 0 5px #ff8a1f}
 
 /* ---------- gauges ---------- */
 .gauge{position:absolute;top:74px;background:rgba(4,13,22,.62);border:1px solid rgba(255,255,255,.1);
@@ -142,6 +145,10 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
    earlier in the markup, so they need an explicit stacking order */
 #ovKit{z-index:6}#ovPass{z-index:5}#ovEnd{z-index:4}
 @media(max-height:840px){.ov{justify-content:flex-start}.ttl{font-size:clamp(2.4rem,11vw,3.4rem)}}
+@media(prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms !important;animation-iteration-count:1 !important;
+    transition-duration:.01ms !important}
+}
 
 /* ---------- stage 3/4 additions ---------- */
 .modes.sub2{margin-top:.55rem}
@@ -395,7 +402,7 @@ const DIFF = {
   junior      : {n:'Junior',       rMin:.25, rMax:.35, dur:.52, reach:.42, range:1.70, err:.95},
   intermediate: {n:'Intermediate', rMin:.22, rMax:.31, dur:.47, reach:.45, range:2.05, err:.68},
   senior      : {n:'Senior',       rMin:.19, rMax:.27, dur:.43, reach:.48, range:2.32, err:.46},
-  allireland  : {n:'All-Ireland',  rMin:.15, rMax:.22, dur:.38, reach:.52, range:2.42, err:.30},
+  allireland  : {n:'All-Ireland',  rMin:.15, rMax:.22, dur:.38, reach:.52, range:2.28, err:.30},
 };
 let difficulty = 'senior';
 
@@ -486,10 +493,12 @@ let W=0, H=0, DPR=1, F=800, HZ=0;
 const CAM_BACK = 6.2, CAM_H = 2.8;
 const CAM = {x:0, y:CAM_H, z:17.2, fx:0, fz:-1, rx:-1, rz:0};
 let zoom = 1, zoomTarget = 1, panX = 0, panTarget = 0;
+const reduceMotion = window.matchMedia &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function setCamera(bx, bz){
   let dx = -bx, dz = -bz;                       // ball -> goal centre
-  const L = Math.hypot(dx,dz) || 1;
+  const L = dhyp2(dx,dz) || 1;
   dx/=L; dz/=L;
   CAM.fx=dx;  CAM.fz=dz;
   CAM.rx=-dz; CAM.rz=dx;                        // forward rotated 90°
@@ -521,7 +530,22 @@ function resize(){
 addEventListener('resize', resize);
 
 const lerp=(a,b,t)=>a+(b-a)*t, clamp=(v,a,b)=>v<a?a:v>b?b:v, rand=(a,b)=>a+Math.random()*(b-a);
-const ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+/* ---- deterministic maths ----
+   Only + - * / and sqrt are exactly specified by IEEE-754. Math.sin, cos,
+   atan2, pow and hypot are implementation-defined and MAY differ between JS
+   engines, which would break cross-device replay and server re-simulation.
+   Everything on the outcome path uses these instead, so determinism follows
+   from the float spec rather than from luck. */
+const D_PI = 3.141592653589793, D_2PI = 6.283185307179586, D_HPI = 1.5707963267948966;
+function dsin(x){
+  x -= D_2PI * Math.floor((x + D_PI) / D_2PI);        // Math.floor is exact
+  const t = x*x;
+  return x*(1 + t*(-1/6 + t*(1/120 + t*(-1/5040 + t*(1/362880 - t/39916800)))));
+}
+const dcos  = x => dsin(x + D_HPI);
+const dhyp2 = (a,b)   => Math.sqrt(a*a + b*b);
+const dhyp3 = (a,b,c) => Math.sqrt(a*a + b*b + c*c);
+const ease=t=>t<.5?2*t*t:1-((-2*t+2)*(-2*t+2))/2;
 
 /* ==================================================================
    SEEDED RANDOMNESS
@@ -1202,7 +1226,7 @@ function newWall(n){
   return {men:men, at:at, jump:0, h:1.92, jumpH:0.60};
 }
 function wallUpdate(w, t){
-  w.jump = t < 0.62 ? Math.sin(clamp(t/0.62,0,1)*Math.PI) : 0;
+  w.jump = t < 0.62 ? dsin(clamp(t/0.62,0,1)*D_PI) : 0;
 }
 /* where the ball is, expressed along/across the line of the kick */
 const alongShot  = b => (b.wx-spot.x)*shotU.x + (b.wz-spot.z)*shotU.z;
@@ -1370,7 +1394,7 @@ let shotDist = CFG.PEN_Z, shotU = {x:0,z:-1}, shotR = {x:1,z:0};
 
 function setSpot(x, z, label, wall){
   spot = {x:x, z:z, label:label||'', wall:wall||0};
-  shotDist = Math.max(4, Math.hypot(x,z));
+  shotDist = Math.max(4, dhyp2(x,z));
   shotU = {x:-x/shotDist, z:-z/shotDist};
   shotR = {x:-shotU.z,    z: shotU.x};
   setCamera(x, z);
@@ -1388,18 +1412,20 @@ function shotParams(power){
 }
 function launchBall(power, aimM){
   const {S, th} = shotParams(power);
-  const az = Math.atan2(aimM, shotDist);       // lateral angle to the aim point
-  const ch = S*Math.cos(th);
-  const fwd = ch*Math.cos(az), lat = ch*Math.sin(az);
+  // cos/sin of the aim angle come straight from the triangle, so atan2 and a
+  // second trig pair drop out of the hot path entirely
+  const hyp = dhyp2(aimM, shotDist);
+  const ch = S*dcos(th);
+  const fwd = ch*(shotDist/hyp), lat = ch*(aimM/hyp);
   ball.vx = shotU.x*fwd + shotR.x*lat;
   ball.vz = shotU.z*fwd + shotR.z*lat;
-  ball.vy = S*Math.sin(th);
+  ball.vy = S*dsin(th);
   ball.live = true;
   trail.length = 0;
 }
 function stepBall(dt){
   const b = ball;
-  const sp = Math.hypot(b.vx,b.vy,b.vz);
+  const sp = dhyp3(b.vx,b.vy,b.vz);
   const k  = CFG.DRAG*(1 + weather.wet*0.28)*sp;   // a wet ball carries less
   // curl and wind push sideways relative to the flight line, not world x
   const side = (curl*CFG.CURL*(sp/20) + windAcc)*dt;
@@ -1626,7 +1652,7 @@ function survivalSpot(level){
   const t  = Math.min(level/14, 1);
   const d  = lerp(13, 48, t) + gRand(-2.5, 2.5);
   const ang= gRand(-1,1) * lerp(0.18, 0.85, t);        // radians off centre
-  const x  = Math.sin(ang)*d, z = Math.cos(ang)*d;
+  const x  = dsin(ang)*d, z = dcos(ang)*d;
   const tiers = ['junior','intermediate','senior','allireland'];
   difficulty = tiers[Math.min(3, Math.floor(level/3))];
   return {x:x, z:z, n:'Kick '+(level+1)+' · '+Math.round(d)+'m', wall: d<32 ? (level%3===0?3:4) : 0};
@@ -1901,7 +1927,7 @@ function cpuShoot(){
   }
   // aim off the curl, the way a player does by reading the preview arc
   const sp = shotParams(power);
-  const tf = shotDist/(sp.S*Math.cos(sp.th));
+  const tf = shotDist/(sp.S*dcos(sp.th));
   aimM = target - 0.5*(curl*CFG.CURL*(sp.S/20))*tf*tf;
   keeper = newKeeper(CO_P, OWN_KEEPER_TIER);
   fire();
@@ -1935,8 +1961,8 @@ function evaluateAtPlane(bx, by){
   // a shot that has already bounced arrives slow and sitting up: the keeper
   // has time to come off his line and smother it
   const smother = ball.bounced ? 0.55 : 0;
-  const dHand = Math.hypot(bx-hand.x, by-hand.y);
-  const dBody = Math.hypot(bx-keeper.wx, by-(keeper.wy+1.0));
+  const dHand = dhyp2(bx-hand.x, by-hand.y);
+  const dBody = dhyp2(bx-keeper.wx, by-(keeper.wy+1.0));
   if(dHand < keeper.reach+smother || dBody < 0.55+smother) return 'save';
   if(dHand < keeper.reach + smother + 0.16) return 'tip';
   return 'goal';
@@ -2448,7 +2474,7 @@ function down(e){
 function computeCurl(path){
   if(path.length < 5) return 0;
   const a=path[0], b=path[path.length-1];
-  const dx=b.x-a.x, dy=b.y-a.y, len=Math.hypot(dx,dy);
+  const dx=b.x-a.x, dy=b.y-a.y, len=dhyp2(dx,dy);
   if(len < 26) return 0;
   const nx=-dy/len, ny=dx/len;
   let sum=0;
@@ -2480,13 +2506,13 @@ cv.addEventListener('touchend',up,{passive:false});
 /* aim preview: integrate the same physics forward, dashed */
 function drawAimPreview(){
   const {S, th} = shotParams(power);
-  const az=Math.atan2(aimM,shotDist), ch=S*Math.cos(th);
-  const fwd=ch*Math.cos(az), lat=ch*Math.sin(az);
+  const hyp=dhyp2(aimM,shotDist), ch=S*dcos(th);
+  const fwd=ch*(shotDist/hyp), lat=ch*(aimM/hyp);
   let x=spot.x, y=CFG.BALL_R, z=spot.z;
-  let vx=shotU.x*fwd+shotR.x*lat, vy=S*Math.sin(th), vz=shotU.z*fwd+shotR.z*lat;
+  let vx=shotU.x*fwd+shotR.x*lat, vy=S*dsin(th), vz=shotU.z*fwd+shotR.z*lat;
   const dt=1/90; const pts=[];
   for(let i=0;i<260 && z>-0.2;i++){
-    const sp=Math.hypot(vx,vy,vz), k=CFG.DRAG*(1+weather.wet*0.28)*sp;
+    const sp=dhyp3(vx,vy,vz), k=CFG.DRAG*(1+weather.wet*0.28)*sp;
     const side=(curl*CFG.CURL*(sp/20)+windAcc)*dt;
     vx+=(-k*vx)*dt+shotR.x*side; vz+=(-k*vz)*dt+shotR.z*side; vy+=(-CFG.G-k*vy)*dt;
     x+=vx*dt; y+=vy*dt; z+=vz*dt;
@@ -2573,7 +2599,7 @@ function update(dt){
       setTimeout(()=>{ if(state===ST.FLIGHT) award(res); }, res==='goal'?170:60);
     }
     // never made it
-    if(!crossed && flightT>2.4 && Math.hypot(ball.vx,ball.vy,ball.vz)<1.2){
+    if(!crossed && flightT>2.4 && dhyp3(ball.vx,ball.vy,ball.vz)<1.2){
       crossed=true; award('short');
     }
     if(flightT>5 && !crossed){ crossed=true; award('wide'); }
@@ -2590,7 +2616,7 @@ function render(){
   // camera shake, push-in, and a drift that tracks the ball
   const cx=W*0.5, cy=HZ+ (H-HZ)*0.25;
   ctx.translate(cx+panX,cy); ctx.scale(zoom,zoom); ctx.translate(-cx,-cy);
-  if(shake>0) ctx.translate(rand(-shake,shake), rand(-shake,shake)*0.6);
+  if(shake>0 && !reduceMotion) ctx.translate(rand(-shake,shake), rand(-shake,shake)*0.6);
 
   ctx.drawImage(bg, 0, 0, W, H);
   drawUmpires();
