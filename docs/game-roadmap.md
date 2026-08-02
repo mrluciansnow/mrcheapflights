@@ -11,8 +11,8 @@ depth before breadth, breadth before polish, polish before meta.
 |---|---|---|
 | 1 | Shot Craft — raise the skill ceiling of a single kick | **Shipped** |
 | 2 | The Championship — progression, stakes, persistence | **Shipped** |
-| 3 | Beyond the Shootout — new ways to play | Planned |
-| 4 | Matchday Feel — presentation, drama, atmosphere | Planned |
+| 3 | Beyond the Shootout — new ways to play | **Shipped** |
+| 4 | Matchday Feel — presentation, drama, atmosphere | **Shipped** |
 | 5 | Reasons to Return — meta, challenge, sharing | Planned |
 
 ---
@@ -73,7 +73,7 @@ adds a run to lose and a record that persists.
 
 ---
 
-## Stage 3 — Beyond the Shootout *(planned)*
+## Stage 3 — Beyond the Shootout
 
 **Goal.** The penalty is one kick. Gaelic football has a whole vocabulary of
 set pieces — use it.
@@ -92,14 +92,35 @@ set pieces — use it.
    one miss and it is over. The natural home for a leaderboard in Stage 5.
 5. **Pass-and-play two-player.** Alternating kicks on one device.
 
-### Acceptance criteria
-- Free-kick mode reuses the existing physics and renderer with a moving camera
-  rather than a second engine.
-- Two-pointers score, display and flag correctly in the GAA format.
+### What shipped
+The enabler was the camera. It had been hard-wired to look straight down the
+z-axis from the penalty spot; it now sits behind the ball wherever that is and
+yaws to face the goal, with every piece of background geometry clipped against
+the near plane so nothing behind the camera projects to garbage.
+
+- **Free-kick mode**: ten placements from 16m to 47m, including 45s, sideline
+  balls and tight angles. Power maps to speed *and* elevation, and both scale
+  with range, so a 45 needs a genuinely different strike from a penalty.
+- **The two-point arc** is drawn on the pitch, and points struck from outside
+  40m score 2 with an orange flag. Scorelines switch to the three-part
+  goals-twopointers-points format only in the modes that can produce one.
+- **Defensive wall** at 13m, jumping as the ball is struck — clamped so it can
+  never retreat behind its own goal line, and only placed where it can matter.
+- **Survival**: endless kicks stepping from 13m to 48m with the keeper tier
+  ratcheting up; one miss ends the run.
+- **Two-player** pass-and-play with a hand-over screen between kicks.
+
+### Verified
+Sweeping power, aim and curl across all ten free-kick placements: every one is
+scoreable, with a sensible difficulty gradient (33% of blind trials at 16m down
+to 8% at the wide 45). Points below 40m are worth 1 with zero two-pointers;
+kicks beyond 44m produce only two-pointers. The wall blocked 40 shots at 16m,
+19 at 26m, 5 at 31m and none beyond — so it is a real obstacle up close and
+correctly irrelevant at range.
 
 ---
 
-## Stage 4 — Matchday Feel *(planned)*
+## Stage 4 — Matchday Feel
 
 **Goal.** Make scoring *feel* like scoring in Croke Park.
 
@@ -117,10 +138,32 @@ set pieces — use it.
 6. **Kit detail.** Per-county jersey patterns (hoops, sashes, halves) on the
    keeper rather than a flat colour.
 
-### Acceptance criteria
-- A goal produces a distinct, repeatable moment: shake, roar, flags, replay.
-- No frame-rate regression on mobile; replays reuse recorded state, not a
-  second simulation.
+### What shipped
+- **Replays** on goals and two-pointers: the flight is recorded frame by frame
+  and played back at about a third speed with letterbox bars and a REPLAY
+  badge, reusing recorded state rather than re-simulating.
+- **Dynamic camera**: a push-in on the strike and a drift that tracks the ball
+  through the air, applied as a 2D transform over the pre-rendered scene.
+- **Layered crowd audio**: a looping brown-noise bed that swells on the strike
+  and breaks into a roar on a goal, groans on a miss, with a mute toggle.
+- **Commentary** driven by the state already tracked — distance, streak,
+  must-score, and outcome.
+- **Weather**: clear through to driving rain, with slanted rain, a muted sky,
+  darker turf with standing-water sheen, and a wet ball that carries less and
+  bounces lower.
+- **Kit detail**: county jersey patterns — hoops, sashes, trim bands — on the
+  wall defenders.
+
+### Two deliberate deviations from the original plan
+- The plan put jersey patterns on the *keeper*. He stays hi-vis instead, which
+  is both correct (GAA keepers wear a contrasting strip) and necessary — a
+  county-coloured keeper disappears against the net. The patterns went to the
+  wall defenders, who are new in Stage 3 and wear the defending county's kit.
+- Replays play from the *same* camera with a push-in rather than a new
+  behind-the-net angle. The background is pre-rendered per camera position, so
+  a second angle would mean rebuilding it mid-celebration; the hitch was not
+  worth the angle. A cut to a genuinely new viewpoint needs the background
+  split into camera-independent layers, which is a Stage 5-sized job.
 
 ---
 
