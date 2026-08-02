@@ -406,6 +406,62 @@ const BRACKET = [
 ];
 
 /* ==================================================================
+   THE GROUNDS
+   Each venue is a stack of raked decks behind the goal, plus what you
+   can see over the top of them. Killarney's mountains and Clones' trees
+   are as much a part of those grounds as the terracing.
+   ================================================================== */
+const VENUES = {
+  croke: {n:"Croke Park", city:'Dublin', cap:82300,
+    decks:[{z0:-11.5,z1:-18.5,y0:1.1,y1:8.0},
+           {z0:-19.4,z1:-25.0,y0:10.6,y1:19.0},
+           {z0:-25.6,z1:-29.2,y0:21.2,y1:27.0}],
+    roof:true, roofY:29.5, roofZ:-21, lights:'roof',
+    seats:['#0d2747','#123b63','#0a1e36'], backdrop:null,
+    density:1.0, night:true, wetBias:1.0},
+  semple: {n:'Semple Stadium', city:'Thurles', cap:45000,
+    decks:[{z0:-11.5,z1:-20.0,y0:1.1,y1:7.6},
+           {z0:-21.0,z1:-27.0,y0:8.8,y1:14.0}],
+    roof:true, roofY:16.0, roofZ:-22, lights:'pylon',
+    seats:['#1b3550','#22496a'], backdrop:'hills',
+    density:.86, night:false, wetBias:1.0},
+  fitzgerald: {n:'Fitzgerald Stadium', city:'Killarney', cap:38000,
+    decks:[{z0:-11.5,z1:-22.5,y0:1.0,y1:6.8}],
+    roof:false, lights:'pylon',
+    seats:['#2b3f52'], backdrop:'mountains',
+    density:.70, night:false, wetBias:1.2},
+  pairc: {n:'Páirc Uí Chaoimh', city:'Cork', cap:45000,
+    decks:[{z0:-11.5,z1:-24.5,y0:1.2,y1:12.5}],
+    roof:true, roofY:14.8, roofZ:-23, lights:'roof',
+    seats:['#7e1220','#9d1a2b','#5a0d16'], backdrop:null,
+    density:.92, night:true, wetBias:1.0},
+  machale: {n:'MacHale Park', city:'Castlebar', cap:30000,
+    decks:[{z0:-11.5,z1:-19.0,y0:1.1,y1:7.2},
+           {z0:-20.0,z1:-25.5,y0:7.8,y1:11.4}],
+    roof:true, roofY:13.2, roofZ:-20.5, lights:'pylon',
+    seats:['#13402a','#1a5636'], backdrop:'hills',
+    density:.72, night:false, wetBias:1.9},
+  clones: {n:"St Tiernach's Park", city:'Clones', cap:36000,
+    decks:[{z0:-11.5,z1:-24.0,y0:1.0,y1:9.4}],
+    roof:false, lights:'pylon',
+    seats:['#2a2e39'], backdrop:'trees',
+    density:.76, night:false, wetBias:1.5},
+};
+/* every county has a home ground; the rest borrow the nearest big one */
+const HOME_GROUND = {
+  Dublin:'croke', Kerry:'fitzgerald', Cork:'pairc', Mayo:'machale',
+  Monaghan:'clones', Tipperary:'semple', Galway:'machale', Donegal:'clones',
+  Tyrone:'clones', Armagh:'clones', Derry:'clones', Down:'clones',
+  Meath:'croke', Kildare:'croke', Louth:'croke', Roscommon:'machale',
+};
+let venue = VENUES.croke, homeShare = 0.5, atHome = true;
+function setVenue(key, share, home){
+  venue = VENUES[key] || VENUES.croke;
+  homeShare = share===undefined ? 0.5 : share;
+  atHome = !!home;
+}
+
+/* ==================================================================
    CANVAS + PINHOLE CAMERA
    Screen = f * world / depth.  Everything is projected, so the
    markings, net, keeper and ball all share one consistent perspective.
@@ -517,6 +573,73 @@ function groundArc(g, r, a0, a1, wM, steps){
   }
 }
 
+/* nudge a hex colour lighter or darker */
+function shade(hex, f){
+  const n = parseInt(hex.slice(1),16);
+  const r = clamp(Math.round((n>>16)*f),0,255),
+        gg= clamp(Math.round(((n>>8)&255)*f),0,255),
+        b = clamp(Math.round((n&255)*f),0,255);
+  return 'rgb('+r+','+gg+','+b+')';
+}
+
+/* What sits beyond an open end. At Killarney that is the Reeks, and it is
+   as much a part of the ground as the terracing. Drawn in world space so it
+   parallaxes correctly when the camera yaws for a wide free. */
+function drawBackdrop(g, kind, night, wet){
+  const Z = -78;
+  if(depthOf(0,Z) < DMIN) return;
+  const haze = night ? 0.30 : (wet>0.4 ? 0.42 : 0.62);
+  const profile = [];
+  if(kind==='mountains'){
+    // a ridgeline of peaks — irregular, with the tallest off to one side
+    const peaks = [[-72,14],[-58,26],[-46,19],[-34,34],[-22,27],[-10,41],
+                   [2,30],[14,37],[26,24],[38,29],[50,18],[64,22],[76,13]];
+    for(const p of peaks) profile.push(p);
+  } else if(kind==='hills'){
+    for(let x=-76;x<=76;x+=9) profile.push([x, 9 + Math.sin(x*0.13)*4 + Math.cos(x*0.31)*2.6]);
+  } else {                                   // a treeline
+    for(let x=-76;x<=76;x+=3.4) profile.push([x, 7.2 + Math.sin(x*0.9)*1.5 + Math.cos(x*2.1)*1.0]);
+  }
+  // far ridge, hazed back
+  const far = kind==='mountains' ? '#5d7590' : kind==='hills' ? '#4a6b52' : '#24401f';
+  const pts = [];
+  for(const p of profile) pts.push([p[0], p[1], Z]);
+  pts.push([profile[profile.length-1][0], 0, Z]);
+  pts.push([profile[0][0], 0, Z]);
+  fillPoly(g, pts, night ? shade(far,0.42) : far);
+  g.save(); g.globalAlpha = 1-haze;
+  fillPoly(g, pts, night ? '#0d1b2e' : '#9fbcd0');
+  g.restore();
+
+  if(kind==='mountains'){
+    // a nearer, darker ridge for depth
+    const near=[];
+    for(const p of profile) near.push([p[0]*0.85, p[1]*0.62, Z+16]);
+    near.push([profile[profile.length-1][0]*0.85, 0, Z+16]);
+    near.push([profile[0][0]*0.85, 0, Z+16]);
+    fillPoly(g, near, night ? '#0a1826' : '#43604f');
+  }
+}
+
+/* tall corner pylons for the grounds without roof-mounted lighting */
+function drawPylons(g, lightY, lightZ, night){
+  for(const px of [-24, 24]){
+    if(depthOf(px,lightZ) < DMIN) continue;
+    const base = prj(px, 0, lightZ), top = prj(px, lightY, lightZ);
+    const w = Math.max(1.5, 0.55*top.s);
+    g.fillStyle = night ? '#0b1622' : '#3f4a56';
+    g.fillRect(top.x-w/2, top.y, w, base.y-top.y);
+    // lamp gantry
+    const gw = Math.max(6, 4.2*top.s);
+    g.fillStyle = night ? '#0d1a28' : '#4a5661';
+    g.fillRect(top.x-gw/2, top.y-Math.max(3,1.4*top.s), gw, Math.max(3,1.4*top.s));
+    g.fillStyle = night ? '#eaf4ff' : 'rgba(240,248,255,.75)';
+    for(let i=0;i<5;i++)
+      g.beginPath(), g.arc(top.x-gw/2+gw*(i+0.5)/5, top.y-Math.max(1.5,0.7*top.s),
+                           Math.max(1,0.22*top.s), 0, 6.283), g.fill();
+  }
+}
+
 function buildBackground(){
   bg = document.createElement('canvas');
   bg.width = Math.round(W*DPR); bg.height = Math.round(H*DPR);
@@ -524,51 +647,97 @@ function buildBackground(){
   g.setTransform(DPR,0,0,DPR,0,0);
   const wet = weather.wet;
 
-  /* ---- dusk sky ---- */
+  // floodlit is a property of the ground, not the weather — a wet day at
+  // Killarney is still a day, it is just a grim one
+  const V = venue, night = V.night;
+
+  /* ---- sky: floodlit night, or daylight over the open grounds ---- */
   const sky = g.createLinearGradient(0,0,0,HZ);
-  if(wet>.5){ sky.addColorStop(0,'#0a1220'); sky.addColorStop(.55,'#1b2c3e'); sky.addColorStop(1,'#33485c'); }
-  else      { sky.addColorStop(0,'#0a1730'); sky.addColorStop(.55,'#16375c'); sky.addColorStop(1,'#2a5c80'); }
+  if(night){        sky.addColorStop(0,'#08132a'); sky.addColorStop(.55,'#123153'); sky.addColorStop(1,'#255172'); }
+  else if(wet>.4){  sky.addColorStop(0,'#4a5a68'); sky.addColorStop(.55,'#6b7c8a'); sky.addColorStop(1,'#93a3ad'); }
+  else {            sky.addColorStop(0,'#2f6ea8'); sky.addColorStop(.55,'#6ea7ce'); sky.addColorStop(1,'#b9d6e6'); }
   g.fillStyle = sky; g.fillRect(0,0,W,HZ+2);
 
-  /* ---- roof canopy: a tall wall above the back of the stand ---- */
-  fillPoly(g, [[-X_FAR,13.0,-27],[X_FAR,13.0,-27],[X_FAR,46,-27],[-X_FAR,46,-27]], '#050d18');
+  /* ---- what you can see over an open end ---- */
+  if(V.backdrop) drawBackdrop(g, V.backdrop, night, wet);
 
-  /* ---- the stand: raked terracing on its own layer, so it can be
+  const topDeck = V.decks[V.decks.length-1];
+
+  /* ---- roof canopy, for the grounds that have one ---- */
+  if(V.roof){
+    fillPoly(g, [[-X_FAR,topDeck.y1,V.roofZ],[X_FAR,topDeck.y1,V.roofZ],
+                 [X_FAR,V.roofY+22,V.roofZ],[-X_FAR,V.roofY+22,V.roofZ]], '#050d18');
+  }
+
+  /* ---- the decks: raked terracing on its own layer, so it can be
          blurred into a shallow depth of field behind the goal ---- */
   const cc = document.createElement('canvas');
   cc.width = bg.width; cc.height = bg.height;
   const k = cc.getContext('2d');
   k.setTransform(DPR,0,0,DPR,0,0);
 
-  const ROWS = 34;
-  const crowdCols = ['#cfd6de','#9aa5b3','#6d7887','#e8ebef','#b0bac6','#828d9c','#5d6775'];
-  const teamCols  = [CO_P.a, CO_P.b, CO_C.a, CO_C.b];
+  const neutral = ['#cfd6de','#9aa5b3','#6d7887','#e8ebef','#b0bac6','#828d9c','#5d6775'];
+  const homeCols = atHome ? [CO_P.a, CO_P.b] : [CO_C.a, CO_C.b];
+  const awayCols = atHome ? [CO_C.a, CO_C.b] : [CO_P.a, CO_P.b];
   const GANGWAYS  = [-7.4, 0.6, 7.9];
-  const rowZ = i => lerp(-11.5, -27, i/(ROWS-1));
-  const rowY = i => lerp(1.15, 13.0, i/(ROWS-1));
-  for(let i=ROWS-1;i>=0;i--){
-    // terrace face, drawn as a true quad so it rakes correctly under yaw
-    fillPoly(k, [[-X_FAR,rowY(i),rowZ(i)],[X_FAR,rowY(i),rowZ(i)],
-                 [X_FAR,rowY(Math.max(i-1,0)),rowZ(Math.max(i-1,0))],
-                 [-X_FAR,rowY(Math.max(i-1,0)),rowZ(Math.max(i-1,0))]],
-             i%2 ? '#101f33' : '#142639');
-    // seated heads
-    const wz=rowZ(i), wy=rowY(i)+0.40;
-    for(let wx=-X_FAR; wx<=X_FAR; wx+=0.44){
-      if(depthOf(wx,wz)<DMIN) continue;
-      const q = prj(wx+rand(-.08,.08), wy, wz);
-      if(q.x<-6 || q.x>W+6) continue;
-      if(Math.random()<0.13) continue;                       // empty seats
-      if(GANGWAYS.some(gw=>Math.abs(wx-gw)<0.55)) continue;  // aisles
-      const rr = Math.max(0.7, 0.105*q.s);
-      k.fillStyle = Math.random()<0.42 ? teamCols[(Math.random()*4)|0]
-                                       : crowdCols[(Math.random()*crowdCols.length)|0];
-      k.globalAlpha = 0.5 + Math.random()*0.4;
-      k.beginPath(); k.arc(q.x, q.y, rr, 0, 6.283); k.fill();
-      k.globalAlpha *= .65;
-      k.fillRect(q.x-rr*1.2, q.y+rr*0.75, rr*2.4, rr*1.35);  // shoulders
+  const empties = 1 - V.density*0.92;
+
+  for(let di=0; di<V.decks.length; di++){
+    const d = V.decks[di];
+    const ROWS = Math.max(8, Math.round((d.y1-d.y0)*3.1));
+    const rowZ = i => lerp(d.z0, d.z1, i/(ROWS-1));
+    const rowY = i => lerp(d.y0, d.y1, i/(ROWS-1));
+    const seatCol = V.seats[di % V.seats.length];
+    for(let i=ROWS-1;i>=0;i--){
+      const j = Math.max(i-1,0);
+      fillPoly(k, [[-X_FAR,rowY(i),rowZ(i)],[X_FAR,rowY(i),rowZ(i)],
+                   [X_FAR,rowY(j),rowZ(j)],[-X_FAR,rowY(j),rowZ(j)]],
+               i%2 ? seatCol : shade(seatCol, 1.18));
+      const wz=rowZ(i), wy=rowY(i)+0.40;
+      for(let wx=-X_FAR; wx<=X_FAR; wx+=0.44){
+        if(depthOf(wx,wz)<DMIN) continue;
+        const q = prj(wx+rand(-.08,.08), wy, wz);
+        if(q.x<-6 || q.x>W+6) continue;
+        if(Math.random()<empties) continue;                    // empty seats
+        if(GANGWAYS.some(gw=>Math.abs(wx-gw)<0.55)) continue;  // aisles
+        const rr = Math.max(0.7, 0.105*q.s);
+        const roll = Math.random();
+        // the home end wears its own colours
+        k.fillStyle = roll < 0.52*homeShare       ? homeCols[(Math.random()*2)|0]
+                    : roll < 0.52                 ? awayCols[(Math.random()*2)|0]
+                    : neutral[(Math.random()*neutral.length)|0];
+        k.globalAlpha = 0.5 + Math.random()*0.4;
+        k.beginPath(); k.arc(q.x, q.y, rr, 0, 6.283); k.fill();
+        k.globalAlpha *= .65;
+        k.fillRect(q.x-rr*1.2, q.y+rr*0.75, rr*2.4, rr*1.35);  // shoulders
+      }
+      k.globalAlpha = 1;
     }
-    k.globalAlpha = 1;
+    // the facade between this deck and the one below: concrete, boxes and
+    // stairwells. Without it a three-tier stand reads as one wall of people.
+    if(di>0){
+      const lo = V.decks[di-1];
+      fillPoly(k, [[-X_FAR,lo.y1,lo.z1],[X_FAR,lo.y1,lo.z1],
+                   [X_FAR,d.y0,d.z0],[-X_FAR,d.y0,d.z0]], '#060e1a');
+      fillPoly(k, [[-X_FAR,lo.y1,lo.z1],[X_FAR,lo.y1,lo.z1],
+                   [X_FAR,lo.y1+0.30,lo.z1],[-X_FAR,lo.y1+0.30,lo.z1]], 'rgba(255,255,255,.10)');
+      // lit box windows along the facade
+      for(let bx=-30;bx<=30;bx+=3.1){
+        if(depthOf(bx,lo.z1)<DMIN) continue;
+        fillPoly(k, [[bx,lo.y1+0.55,lo.z1],[bx+1.7,lo.y1+0.55,lo.z1],
+                     [bx+1.7,lo.y1+1.35,lo.z1],[bx,lo.y1+1.35,lo.z1]],
+                 night ? 'rgba(255,226,160,.30)' : 'rgba(180,205,225,.22)');
+      }
+    }
+
+    // a few banners hung over the front rail of each deck
+    for(let b=0;b<4;b++){
+      const bx = rand(-26,26);
+      if(depthOf(bx,d.z0)<DMIN) continue;
+      const c1 = (b%2 ? homeCols : awayCols)[b%2];
+      fillPoly(k, [[bx,d.y0-0.1,d.z0],[bx+2.6,d.y0-0.1,d.z0],
+                   [bx+2.6,d.y0-0.95,d.z0],[bx,d.y0-0.95,d.z0]], c1);
+    }
   }
   g.save();
   g.filter = 'blur(1.5px)';
@@ -576,16 +745,22 @@ function buildBackground(){
   g.filter = 'none';
   g.restore();
   // atmospheric haze over the stand, heavier in the wet
-  fillPoly(g, [[-X_FAR,13.0,-27],[X_FAR,13.0,-27],[X_FAR,1.0,-11.5],[-X_FAR,1.0,-11.5]],
-           'rgba(14,32,54,'+(0.34+wet*0.3)+')');
-  // roof lip
-  fillPoly(g, [[-X_FAR,13.0,-27],[X_FAR,13.0,-27],[X_FAR,13.35,-27],[-X_FAR,13.35,-27]],
-           'rgba(255,255,255,.06)');
+  fillPoly(g, [[-X_FAR,topDeck.y1,topDeck.z1],[X_FAR,topDeck.y1,topDeck.z1],
+               [X_FAR,1.0,-11.5],[-X_FAR,1.0,-11.5]],
+           'rgba(14,32,54,'+(0.30+wet*0.3)*(night?1:0.55)+')');
+  if(V.roof){
+    fillPoly(g, [[-X_FAR,topDeck.y1,V.roofZ],[X_FAR,topDeck.y1,V.roofZ],
+                 [X_FAR,topDeck.y1+0.35,V.roofZ],[-X_FAR,topDeck.y1+0.35,V.roofZ]],
+             'rgba(255,255,255,.07)');
+  }
 
-  /* ---- floodlight banks washing down onto the pitch ---- */
-  for(const fx of [-10,-3.4,3.4,10]){
-    if(depthOf(fx,-18.5)<DMIN) continue;
-    const lp = prj(fx, 14.0, -18.5);
+  /* ---- floodlights: mounted on the roof, or up on pylons ---- */
+  const lightY = V.roof ? V.roofY : topDeck.y1 + 12;
+  const lightZ = V.roof ? V.roofZ : topDeck.z1 - 1;
+  if(V.lights==='pylon') drawPylons(g, lightY, lightZ, night);
+  for(const fx of (V.lights==='pylon' ? [-16,16] : [-10,-3.4,3.4,10])){
+    if(depthOf(fx,lightZ)<DMIN) continue;
+    const lp = prj(fx, lightY, lightZ);
     if(lp.x<-W || lp.x>2*W) continue;
     const gr = g.createRadialGradient(lp.x, lp.y, 0, lp.x, lp.y, W*0.5);
     gr.addColorStop(0,'rgba(215,238,255,'+(0.22-wet*0.07)+')');
@@ -642,6 +817,27 @@ function buildBackground(){
     const sh=g.createLinearGradient(0,HZ,0,H);
     sh.addColorStop(0,'rgba(150,200,230,'+(wet*0.10)+')'); sh.addColorStop(1,'rgba(150,200,230,0)');
     g.fillStyle=sh; g.fillRect(0,HZ,W,H-HZ); g.restore();
+  }
+
+  // a season's worth of boots: the goalmouth and penalty spot are scuffed bare
+  if(polyPath(g, apron)){
+    g.save(); g.clip();
+    const gm = prj(0,0,3.2);
+    if(gm.d>DMIN){
+      const gr = g.createRadialGradient(gm.x, gm.y, 0, gm.x, gm.y, 9*gm.s);
+      gr.addColorStop(0,'rgba(120,96,58,.34)'); gr.addColorStop(.6,'rgba(120,100,62,.13)');
+      gr.addColorStop(1,'rgba(120,100,62,0)');
+      g.fillStyle=gr;
+      g.beginPath(); g.ellipse(gm.x, gm.y, 9*gm.s, 3.4*gm.s, 0,0,6.283); g.fill();
+    }
+    const ps2 = prj(0,0,CFG.PEN_Z);
+    if(ps2.d>DMIN){
+      const gr2 = g.createRadialGradient(ps2.x, ps2.y, 0, ps2.x, ps2.y, 2.2*ps2.s);
+      gr2.addColorStop(0,'rgba(120,96,58,.30)'); gr2.addColorStop(1,'rgba(120,100,62,0)');
+      g.fillStyle=gr2;
+      g.beginPath(); g.ellipse(ps2.x, ps2.y, 2.2*ps2.s, 0.85*ps2.s, 0,0,6.283); g.fill();
+    }
+    g.restore();
   }
 
   drawMarkings(g);
@@ -1544,10 +1740,29 @@ const total = o => o.g*3 + o.t*2 + o.p;
    are possible; a penalty shootout can never produce one, so it stays 2-part. */
 const line  = o => twoPointMode() ? o.g+'-'+o.t+'-'+o.p : o.g+'-'+o.p;
 
+/* Championship alternates home and away; the final goes to Croke Park.
+   Solo modes tour the grounds. */
+function chooseVenue(){
+  if(mode==='championship'){
+    if(career.round === BRACKET.length-1){ setVenue('croke', 0.5, true); return; }
+    const home = career.round % 2 === 0;
+    const key = HOME_GROUND[(home?CO_P:CO_C).n] || 'croke';
+    setVenue(key, home ? 0.72 : 0.28, home);
+  } else if(mode==='quick'){
+    setVenue(HOME_GROUND[CO_P.n] || 'croke', 0.72, true);
+  } else if(mode==='duel'){
+    setVenue('croke', 0.5, true);
+  } else {                                   // free kicks / survival tour
+    const keys = Object.keys(VENUES);
+    setVenue(keys[(Math.random()*keys.length)|0], 0.6, true);
+  }
+}
 function pickWeather(){
-  const tot = WEATHERS.reduce((a,w)=>a+w.w,0);
+  const bias = venue.wetBias || 1;
+  const wts = WEATHERS.map(w => w.w * (w.wet>0 ? bias : 1/bias));
+  const tot = wts.reduce((a,b)=>a+b,0);
   let r = Math.random()*tot;
-  for(const w of WEATHERS){ r-=w.w; if(r<=0){ weather=w; return; } }
+  for(let i=0;i<WEATHERS.length;i++){ r-=wts[i]; if(r<=0){ weather=WEATHERS[i]; return; } }
   weather = WEATHERS[0];
 }
 function setWind(){
@@ -2031,7 +2246,8 @@ function refreshHUD(){
 }
 function updateRoundBar(){
   const rb=$('rbL');
-  const wx = weather.name!=='Clear' ? ' · '+weather.name.toUpperCase() : '';
+  const wx = (weather.name!=='Clear' ? ' · '+weather.name.toUpperCase() : '')
+           + ' · ' + venue.n.toUpperCase() + (mode==='championship'||mode==='quick' ? (atHome?' (H)':' (A)') : '');
   rb.textContent = (
       mode==='championship' ? BRACKET[career.round].short+' · '+DIFF[difficulty].n :
       mode==='freekick'     ? 'FREE KICKS · '+spot.label.toUpperCase() :
@@ -2419,6 +2635,7 @@ function startMatch(){
   kickNo=0; survivalLevel=0; duelTurn='a';
   P={g:0,t:0,p:0,r:[]}; C={g:0,t:0,p:0,r:[]}; confetti=[]; parts=[];
   CO_C = pickOpponent();
+  chooseVenue();
   pickWeather();
   $('ovTitle').classList.add('hidden'); $('ovEnd').classList.add('hidden');
   $('ovPass').classList.add('hidden');
