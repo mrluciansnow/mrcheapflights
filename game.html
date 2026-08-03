@@ -160,6 +160,9 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
   color:rgba(255,255,255,.82);text-shadow:0 2px 10px rgba(0,0,0,.85);
   transition:opacity .3s,transform .3s;pointer-events:none}
 .comm.show{opacity:1;transform:translate(-50%,0)}
+.fatal{position:absolute;left:10px;right:10px;bottom:66px;pointer-events:auto;cursor:pointer;
+  background:rgba(255,45,107,.92);color:#fff;font-size:.72rem;font-weight:800;
+  padding:.55rem .7rem;border-radius:10px;line-height:1.4;z-index:9}
 .mute{position:absolute;right:10px;bottom:22px;pointer-events:auto;cursor:pointer;
   width:34px;height:34px;border-radius:50%;font-size:.85rem;line-height:1;
   background:rgba(4,13,22,.62);border:1px solid rgba(255,255,255,.12);color:#fff}
@@ -280,6 +283,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
   <div class="comm" id="comm"></div>
   <div class="res" id="res"><div class="big"></div><div class="sub"></div></div>
   <button class="mute" id="bMute" aria-label="Toggle sound">🔊</button>
+  <div class="fatal" id="fatal" style="display:none"></div>
 </div>
 
 <div class="ov hidden" id="ovKit">
@@ -484,6 +488,27 @@ function setVenue(key, share, home){
    Screen = f * world / depth.  Everything is projected, so the
    markings, net, keeper and ball all share one consistent perspective.
    ================================================================== */
+/* iOS Safari only gained ctx.roundRect in 16.4. It is used all over the
+   drawing code, and a single missing method used to take down the whole
+   render loop — leaving a perfectly rendered title screen whose buttons
+   appeared to do nothing. */
+if(typeof CanvasRenderingContext2D !== 'undefined' &&
+   !CanvasRenderingContext2D.prototype.roundRect){
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r){
+    let rr = Array.isArray(r) ? (r[0] || 0) : (r || 0);
+    if(w < 0){ x += w; w = -w; }
+    if(h < 0){ y += h; h = -h; }
+    rr = Math.min(Math.abs(rr), w/2, h/2);
+    this.moveTo(x + rr, y);
+    this.lineTo(x + w - rr, y);   this.arcTo(x + w, y,     x + w,     y + rr,     rr);
+    this.lineTo(x + w, y + h - rr); this.arcTo(x + w, y + h, x + w - rr, y + h,     rr);
+    this.lineTo(x + rr, y + h);   this.arcTo(x,     y + h, x,         y + h - rr, rr);
+    this.lineTo(x, y + rr);       this.arcTo(x,     y,     x + rr,     y,         rr);
+    this.closePath();
+    return this;
+  };
+}
+
 const cv = document.getElementById('c');
 const ctx = cv.getContext('2d', {alpha:false});
 let W=0, H=0, DPR=1, F=800, HZ=0;
@@ -2706,11 +2731,28 @@ function drawReplayFurniture(){
   ctx.fillText('REPLAY', 38, y+1);
 }
 
+let reportedFault = false;
+function reportFault(err){
+  if(reportedFault) return;
+  reportedFault = true;
+  const el = $('fatal');
+  if(el){
+    el.textContent = 'Graphics error: ' + ((err && err.message) || err) +
+                     ' — tap to dismiss';
+    el.style.display = 'block';
+    el.onclick = () => { el.style.display = 'none'; };
+  }
+}
+addEventListener('error', e => reportFault(e.error || e.message));
+
 function frame(t){
+  // scheduled first: one bad frame can no longer stop every frame after it
+  requestAnimationFrame(frame);
   const dt = Math.min(0.033, (t-lastT)/1000 || 0.016);
   lastT = t;
-  if(state!==ST.TITLE || bg) { update(dt); render(); }
-  requestAnimationFrame(frame);
+  try{
+    if(state!==ST.TITLE || bg) { update(dt); render(); }
+  }catch(err){ reportFault(err); }
 }
 
 /* ==================================================================
