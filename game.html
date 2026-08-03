@@ -107,6 +107,10 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
   box-shadow:0 12px 34px rgba(255,210,0,.28);transition:transform .14s}
 .btn:hover{transform:scale(1.045)}.btn:active{transform:scale(.97)}
 .ft{position:absolute;bottom:13px;font-size:.62rem;font-weight:700;opacity:.3;letter-spacing:.04em}
+.bootmsg{margin-top:.9rem;font-size:.66rem;font-weight:800;line-height:1.45;max-width:320px;
+  padding:.5rem .7rem;border-radius:9px}
+.bootmsg.bad{background:rgba(255,45,107,.92);color:#fff}
+.bootmsg.ok{background:transparent;color:rgba(255,255,255,.30);padding:0}
 .gv{font-family:'Bebas Neue',sans-serif;font-size:clamp(2.3rem,10vw,3.4rem);line-height:.86}
 .gv.w{color:var(--yellow)}.gv.l{color:var(--hot-pink)}.gv.d{color:var(--sky)}
 .gs{font-family:'Bebas Neue',sans-serif;font-size:1.85rem;letter-spacing:.03em;margin:.5rem 0 .1rem}
@@ -232,6 +236,19 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 </style>
 </head>
 <body>
+<script>
+/* Installed before anything else, so a syntax error or an unsupported API
+   in the main script is reported on screen instead of leaving a perfect
+   looking menu whose buttons quietly do nothing. */
+window.__cfBoot = 'script-started';
+window.addEventListener('error', function(e){
+  var el = document.getElementById('bootmsg');
+  if(!el) return;
+  el.className = 'bootmsg bad';
+  el.textContent = 'Error: ' + ((e && e.message) || 'unknown') +
+                   ' \u2014 screenshot this and send it over';
+});
+</script>
 <div id="stage">
 <canvas id="c"></canvas>
 
@@ -336,6 +353,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
   <div class="pl">Players on this device</div>
   <div class="ds" id="pc" style="max-width:230px"></div>
   <div class="strip" id="pStrip"></div>
+  <div class="bootmsg bad" id="bootmsg">⚠️ JavaScript has not run — open this file in Safari or Chrome rather than an in-app preview</div>
   <div class="ft">Championship: 4 rounds, best of 5, keeper sharpens each round</div>
 </div>
 
@@ -2862,6 +2880,9 @@ function toMenu(){
   $('ovTitle').classList.remove('hidden');
   state=ST.TITLE; buildCounties(); refreshProfileStrip();
 }
+const bm = $('bootmsg');
+if(bm){ bm.className = 'bootmsg ok'; bm.textContent = 'Build 2026-08-03 \u00b7 ready'; }
+window.__cfBoot = 'wired';
 $('bChamp').onclick = startChampionship;
 $('bQuick').onclick = startQuick;
 $('bFree').onclick  = startFreekick;
