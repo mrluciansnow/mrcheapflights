@@ -65,8 +65,15 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 .mbar{position:absolute;left:-3px;right:-3px;height:2px;background:#fff;opacity:.85;box-shadow:0 0 6px #fff}
 .mlbl{position:absolute;left:7px;bottom:296px;font-size:.5rem;font-weight:900;letter-spacing:.16em;opacity:.45;
   transform:rotate(-90deg);transform-origin:left bottom;white-space:nowrap}
+.readout{position:absolute;left:32px;bottom:128px;display:flex;flex-direction:column;gap:3px;
+  opacity:0;transition:opacity .18s}
+body.dragging .readout{opacity:1}
+.readout .pwr{font-family:'Bebas Neue',sans-serif;font-size:1.9rem;line-height:.9;color:var(--yellow);
+  text-shadow:0 2px 10px rgba(0,0,0,.7);font-variant-numeric:tabular-nums}
+.readout .crl{font-size:.62rem;font-weight:900;letter-spacing:.06em;color:rgba(255,255,255,.45);
+  text-shadow:0 2px 8px rgba(0,0,0,.8)}
 
-.prompt{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);white-space:nowrap;
+.prompt{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);white-space:nowrap;pointer-events:none;
   background:rgba(4,13,22,.78);border:1px solid rgba(255,210,0,.28);border-radius:40px;
   padding:.5rem 1.1rem;font-weight:900;font-size:.8rem;backdrop-filter:blur(6px)}
 
@@ -147,7 +154,8 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 .ov{overflow-y:auto;z-index:2}
 /* the kitbag and hand-over screens open on top of the title, but sit
    earlier in the markup, so they need an explicit stacking order */
-#ovKit{z-index:6}#ovPass{z-index:5}#ovEnd{z-index:4}
+#ovKit{z-index:6}#ovPass{z-index:5}#ovEnd{z-index:4}#ovOnline{z-index:7}
+.mpbad{color:#ff2d6b}
 @media(max-height:840px){.ov{justify-content:flex-start}.ttl{font-size:clamp(2.4rem,11vw,3.4rem)}}
 @media(prefers-reduced-motion:reduce){
   *{animation-duration:.01ms !important;animation-iteration-count:1 !important;
@@ -194,13 +202,15 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
   padding:.22rem .6rem;font-size:.72rem;font-weight:900;color:var(--yellow);
   font-variant-numeric:tabular-nums;backdrop-filter:blur(6px)}
 
-.betbar{position:absolute;left:50%;bottom:118px;transform:translate(-50%,10px);opacity:0;
-  pointer-events:none;transition:opacity .25s,transform .25s;text-align:center}
+.betbar{position:absolute;left:50%;top:158px;transform:translate(-50%,-8px);opacity:0;
+  pointer-events:none;transition:opacity .22s,transform .22s;text-align:center;width:100%}
 .betbar.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+/* while a shot is being pulled back nothing in the HUD may steal the touch */
+body.dragging .betbar,body.dragging .prompt,body.dragging .comm{pointer-events:none;opacity:.25}
 .stakes{display:flex;gap:.3rem;justify-content:center}
-.stake{cursor:pointer;font-family:'Nunito',sans-serif;font-size:.66rem;font-weight:900;
-  padding:.3rem .6rem;border-radius:20px;border:1.5px solid rgba(255,255,255,.16);
-  background:rgba(4,13,22,.72);color:rgba(255,255,255,.75);backdrop-filter:blur(6px)}
+.stake{cursor:pointer;font-family:'Nunito',sans-serif;font-size:.74rem;font-weight:900;
+  min-width:56px;padding:.5rem .7rem;border-radius:22px;border:1.5px solid rgba(255,255,255,.18);
+  background:rgba(4,13,22,.82);color:rgba(255,255,255,.8);backdrop-filter:blur(6px)}
 .stake.sel{border-color:var(--yellow);color:var(--yellow);background:rgba(255,210,0,.14)}
 .stake.off{opacity:.3;cursor:not-allowed}
 .betnote{margin-top:.25rem;font-size:.58rem;font-weight:800;letter-spacing:.05em;opacity:.55}
@@ -278,6 +288,10 @@ window.addEventListener('error', function(e){
   <div class="rec" id="rec" style="display:none"><div class="l">YOUR BEST</div><div class="v" id="recV">0</div></div>
   <div class="gauge" id="gWind"><div class="l">WIND</div><span class="warrow" id="wArr">→</span><div class="v" id="wVal">0.0</div></div>
 
+  <div class="readout" id="readout">
+    <span class="pwr" id="pwrNum">0%</span>
+    <span class="crl" id="curlNum">straight</span>
+  </div>
   <div class="mlbl">SHOT HEIGHT</div>
   <div class="meter" id="meter"><div class="mfill" id="mfill"></div><div class="mbar" id="mbar" style="bottom:78%"></div></div>
 
@@ -301,6 +315,14 @@ window.addEventListener('error', function(e){
   <div class="res" id="res"><div class="big"></div><div class="sub"></div></div>
   <button class="mute" id="bMute" aria-label="Toggle sound">🔊</button>
   <div class="fatal" id="fatal" style="display:none"></div>
+</div>
+
+<div class="ov hidden" id="ovOnline">
+  <div class="sub">Online</div>
+  <div class="gv w" style="font-size:2rem">MATCHMAKING</div>
+  <div class="gb" id="mpMsg">Connecting…</div>
+  <button class="btn" id="bOnlineClose">BACK</button>
+  <div class="ft">Anonymous — no sign-up needed</div>
 </div>
 
 <div class="ov hidden" id="ovKit">
@@ -346,6 +368,7 @@ window.addEventListener('error', function(e){
     <button class="btn sm" id="bFree">FREE KICKS</button>
     <button class="btn sm" id="bSurv">SURVIVAL</button>
     <button class="btn sm" id="bDuel">2 PLAYER</button>
+    <button class="btn sm" id="bOnline">🌐 ONLINE</button>
   </div>
   <div class="modes sub2">
     <button class="btn sm kitbtn" id="bKit">🎽 KITBAG</button>
@@ -562,7 +585,9 @@ const groundYd = d => HZ + CAM.y * F / Math.max(d, 0.6);
 let bg = null;                     // pre-rendered static scene
 function resize(){
   const r = cv.getBoundingClientRect();
-  DPR = Math.min(window.devicePixelRatio||1, 2.25);
+  // render at full device resolution (up to 3x) — the whole scene is
+  // vector, so this is pure sharpness with no asset cost
+  DPR = Math.min(window.devicePixelRatio||1, 3);
   W = r.width; H = r.height;
   cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
   ctx.setTransform(DPR,0,0,DPR,0,0);
@@ -800,7 +825,7 @@ function buildBackground(){
                    [X_FAR,rowY(j),rowZ(j)],[-X_FAR,rowY(j),rowZ(j)]],
                i%2 ? seatCol : shade(seatCol, 1.18));
       const wz=rowZ(i), wy=rowY(i)+0.40;
-      for(let wx=-X_FAR; wx<=X_FAR; wx+=0.44){
+      for(let wx=-X_FAR; wx<=X_FAR; wx+=0.30){
         if(depthOf(wx,wz)<DMIN) continue;
         const q = prj(wx+rand(-.08,.08), wy, wz);
         if(q.x<-6 || q.x>W+6) continue;
@@ -908,7 +933,7 @@ function buildBackground(){
   // turf grain, clipped to the grass
   if(polyPath(g, apron)){
     g.save(); g.clip(); g.globalAlpha=.05;
-    for(let i=0;i<2200;i++){
+    for(let i=0;i<4400;i++){
       const y = HZ + Math.pow(Math.random(),0.6)*(H-HZ), x = Math.random()*W;
       const l = 1 + (y-HZ)/(H-HZ)*4;
       g.strokeStyle = Math.random()<.5 ? '#eaffe8' : '#042a12';
@@ -1090,8 +1115,8 @@ const umpires = [
 ];
 function drawUmpires(){
   for(const u of umpires){
-    const feet = prj(u.wx, 0, u.wz), head = prj(u.wx, 1.78, u.wz);
-    const s = feet.s, h = feet.y-head.y;
+    const feet = prj(u.wx, 0, u.wz), headP = prj(u.wx, 1.78, u.wz);
+    const s = feet.s, h = feet.y-headP.y;
     ctx.fillStyle='rgba(0,0,0,.3)';
     ctx.beginPath(); ctx.ellipse(feet.x, feet.y, 0.34*s, 0.13*s, 0,0,6.283); ctx.fill();
     // legs
@@ -1203,7 +1228,7 @@ function drawKeeper(k){
 
   // crouched "set" position that unfolds into the dive
   const cr = (1-e)*0.10;
-  const pelvis=J(0.90-cr,0), chest=J(1.32-cr,0), head=J(1.68-cr,0);
+  const pelvis=J(0.90-cr,0), chest=J(1.32-cr,0), head_=J(1.68-cr,0);
   const shL=J(1.28-cr,-0.21), shR=J(1.28-cr,0.21);
   const kneeL=J(0.48-cr*1.6,-0.24+k.side*e*0.22), kneeR=J(0.46-cr*1.6,0.24+k.side*e*0.30);
   const footL=J(0.05,-0.30+k.side*e*0.42), footR=J(0.03,0.30+k.side*e*0.62);
@@ -1214,46 +1239,96 @@ function drawKeeper(k){
   ctx.fillStyle='rgba(0,0,0,'+(0.34*(1-e*0.55))+')';
   ctx.beginPath(); ctx.ellipse(gp.x, gp.y, (0.42+e*0.5)*gp.s, 0.15*gp.s, 0,0,6.283); ctx.fill();
 
-  ctx.lineCap='round'; ctx.lineJoin='round';
-  // legs (dark keeper shorts/socks)
-  ctx.strokeStyle='#1b2029'; ctx.lineWidth=LW(0.26);
-  ctx.beginPath(); ctx.moveTo(pelvis.x,pelvis.y); ctx.lineTo(kneeL.x,kneeL.y); ctx.lineTo(footL.x,footL.y); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(pelvis.x,pelvis.y); ctx.lineTo(kneeR.x,kneeR.y); ctx.lineTo(footR.x,footR.y); ctx.stroke();
+  const dk = 'rgba(0,0,0,.20)';
+  // legs: thigh into calf, tapering
+  limb(ctx, pelvis.x,pelvis.y, kneeL.x,kneeL.y, LW(.15), LW(.10), '#252b36', dk);
+  limb(ctx, kneeL.x,kneeL.y, footL.x,footL.y, LW(.10), LW(.065), '#1b2029', dk);
+  limb(ctx, pelvis.x,pelvis.y, kneeR.x,kneeR.y, LW(.15), LW(.10), '#252b36', dk);
+  limb(ctx, kneeR.x,kneeR.y, footR.x,footR.y, LW(.10), LW(.065), '#1b2029', dk);
   // boots
-  ctx.strokeStyle='#f4f7fa'; ctx.lineWidth=LW(0.13);
-  ctx.beginPath(); ctx.moveTo(footL.x,footL.y); ctx.lineTo(footL.x+ux*5,footL.y+3); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(footR.x,footR.y); ctx.lineTo(footR.x+ux*5,footR.y+3); ctx.stroke();
+  ctx.fillStyle='#f4f7fa';
+  ctx.beginPath(); ctx.ellipse(footL.x+ux*3, footL.y+2, LW(.11), LW(.06), ang, 0, 6.283); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(footR.x+ux*3, footR.y+2, LW(.11), LW(.06), ang, 0, 6.283); ctx.fill();
   // off arm
-  ctx.strokeStyle=kit; ctx.lineWidth=LW(0.19);
-  ctx.beginPath(); ctx.moveTo(shL.x,shL.y); ctx.lineTo(offElb.x,offElb.y); ctx.lineTo(offHand.x,offHand.y); ctx.stroke();
-  // torso
-  ctx.strokeStyle=kit; ctx.lineWidth=LW(0.52);
-  ctx.beginPath(); ctx.moveTo(pelvis.x,pelvis.y); ctx.lineTo(chest.x,chest.y); ctx.stroke();
-  ctx.strokeStyle=trim; ctx.lineWidth=LW(0.13);       // county band across the chest
-  ctx.beginPath();
-  ctx.moveTo(lerp(pelvis.x,chest.x,.52), lerp(pelvis.y,chest.y,.52));
-  ctx.lineTo(lerp(pelvis.x,chest.x,.70), lerp(pelvis.y,chest.y,.70)); ctx.stroke();
-  // shoulders
-  ctx.strokeStyle=kit; ctx.lineWidth=LW(0.20);
-  ctx.beginPath(); ctx.moveTo(shL.x,shL.y); ctx.lineTo(shR.x,shR.y); ctx.stroke();
-  // reaching arm
-  ctx.strokeStyle=kit; ctx.lineWidth=LW(0.20);
-  const elb = { x:lerp(shR.x, handP.x, .5)+ux*3, y:lerp(shR.y, handP.y, .5)-7*(1-e) };
-  ctx.beginPath(); ctx.moveTo(shR.x,shR.y); ctx.lineTo(elb.x,elb.y); ctx.lineTo(handP.x,handP.y); ctx.stroke();
-  // head + hair, rotated with the body so it stays right way up in a dive
-  const hr = Math.max(3, 0.155*s);
+  limb(ctx, shL.x,shL.y, offElb.x,offElb.y, LW(.10), LW(.078), kit, dk);
+  limb(ctx, offElb.x,offElb.y, offHand.x,offHand.y, LW(.078), LW(.06), kit, dk);
+  // torso, narrowing to the waist
   ctx.save();
-  ctx.translate(head.x, head.y); ctx.rotate(ang);
-  ctx.fillStyle='#dba97c';
-  ctx.beginPath(); ctx.arc(0, 0, hr, 0, 6.283); ctx.fill();
-  ctx.fillStyle='#2e2118';
-  ctx.beginPath(); ctx.arc(0, -hr*0.12, hr*0.94, Math.PI*1.02, Math.PI*2.08); ctx.fill();
+  ctx.translate(chest.x, chest.y); ctx.rotate(ang);
+  const th2 = Math.hypot(chest.x-pelvis.x, chest.y-pelvis.y);
+  torso(ctx, 0, 0, th2, LW(.23), LW(.17), kit, 'rgba(0,0,0,.16)');
+  ctx.fillStyle=trim; ctx.fillRect(-LW(.21), th2*0.42, LW(.42), th2*0.16);
   ctx.restore();
+  // shoulders
+  limb(ctx, shL.x,shL.y, shR.x,shR.y, LW(.11), LW(.11), kit, dk);
+  // reaching arm
+  const elb = { x:lerp(shR.x, handP.x, .5)+ux*3, y:lerp(shR.y, handP.y, .5)-7*(1-e) };
+  limb(ctx, shR.x,shR.y, elb.x,elb.y, LW(.105), LW(.082), kit, dk);
+  limb(ctx, elb.x,elb.y, handP.x,handP.y, LW(.082), LW(.062), kit, dk);
+  head(ctx, head_.x, head_.y, Math.max(3,0.16*s), '#dba97c', '#2e2118', ang);
   // gloves
   ctx.fillStyle='#ff8a1f';
-  ctx.beginPath(); ctx.arc(handP.x, handP.y, Math.max(3,0.16*s), 0, 6.283); ctx.fill();
+  ctx.beginPath(); ctx.arc(handP.x, handP.y, Math.max(3,0.165*s), 0, 6.283); ctx.fill();
+  ctx.fillStyle='rgba(0,0,0,.18)';
+  ctx.beginPath(); ctx.arc(handP.x+2, handP.y+1, Math.max(2,0.10*s), 0, 6.283); ctx.fill();
   ctx.fillStyle='#e8760f';
-  ctx.beginPath(); ctx.arc(offHand.x, offHand.y, Math.max(2.6,0.14*s), 0, 6.283); ctx.fill();
+  ctx.beginPath(); ctx.arc(offHand.x, offHand.y, Math.max(2.6,0.145*s), 0, 6.283); ctx.fill();
+}
+
+/* ==================================================================
+   FIGURE DRAWING — shared by the wall, the umpires and the kicker.
+   Limbs are tapered rather than round-capped lines, torsos narrow at the
+   waist, and every surface gets a light side and a shadow side, which is
+   most of what separates a person from a stick figure.
+   ================================================================== */
+function limb(ctx, x1,y1, x2,y2, w1, w2, col, shade){
+  const dx=x2-x1, dy=y2-y1, L=Math.sqrt(dx*dx+dy*dy) || 1;
+  const nx=-dy/L, ny=dx/L;
+  ctx.fillStyle=col;
+  ctx.beginPath();
+  ctx.moveTo(x1+nx*w1, y1+ny*w1);
+  ctx.lineTo(x2+nx*w2, y2+ny*w2);
+  ctx.lineTo(x2-nx*w2, y2-ny*w2);
+  ctx.lineTo(x1-nx*w1, y1-ny*w1);
+  ctx.closePath(); ctx.fill();
+  // rounded joints
+  ctx.beginPath(); ctx.arc(x1,y1,w1,0,6.283); ctx.fill();
+  ctx.beginPath(); ctx.arc(x2,y2,w2,0,6.283); ctx.fill();
+  if(shade){
+    ctx.fillStyle=shade;
+    ctx.beginPath();
+    ctx.moveTo(x1+nx*w1, y1+ny*w1);
+    ctx.lineTo(x2+nx*w2, y2+ny*w2);
+    ctx.lineTo(x2+nx*w2*0.25, y2+ny*w2*0.25);
+    ctx.lineTo(x1+nx*w1*0.25, y1+ny*w1*0.25);
+    ctx.closePath(); ctx.fill();
+  }
+}
+/* a torso that narrows to the waist, with a highlight down one side */
+function torso(ctx, cx, shoulderY, waistY, halfShoulder, halfWaist, col, shade){
+  ctx.fillStyle=col;
+  ctx.beginPath();
+  ctx.moveTo(cx-halfShoulder, shoulderY);
+  ctx.quadraticCurveTo(cx-halfShoulder*1.05, (shoulderY+waistY)/2, cx-halfWaist, waistY);
+  ctx.lineTo(cx+halfWaist, waistY);
+  ctx.quadraticCurveTo(cx+halfShoulder*1.05, (shoulderY+waistY)/2, cx+halfShoulder, shoulderY);
+  ctx.closePath(); ctx.fill();
+  if(shade){
+    ctx.save(); ctx.clip();
+    ctx.fillStyle=shade;
+    ctx.fillRect(cx, shoulderY-2, halfShoulder*1.2, waistY-shoulderY+4);
+    ctx.restore();
+  }
+}
+function head(ctx, x, y, r, skin, hair, rot){
+  ctx.save(); ctx.translate(x,y); if(rot) ctx.rotate(rot);
+  ctx.fillStyle=skin;
+  ctx.beginPath(); ctx.ellipse(0,0,r*0.92,r,0,0,6.283); ctx.fill();
+  ctx.fillStyle='rgba(0,0,0,.16)';
+  ctx.beginPath(); ctx.ellipse(r*0.30,0,r*0.55,r*0.92,0,0,6.283); ctx.fill();
+  ctx.fillStyle=hair;
+  ctx.beginPath(); ctx.arc(0,-r*0.16,r*0.90,Math.PI*1.02,Math.PI*2.06); ctx.fill();
+  ctx.restore();
 }
 
 /* ==================================================================
@@ -1292,19 +1367,20 @@ function drawWall(){
   }).sort((a,b)=>b.d-a.d);
   for(const p of men){
     if(p.d < DMIN) continue;
-    const feet = prj(p.x, lift, p.z), head = prj(p.x, lift+1.78, p.z);
-    const s = feet.s, h = feet.y-head.y;
+    const feet = prj(p.x, lift, p.z), headP = prj(p.x, lift+1.78, p.z);
+    const s = feet.s, h = feet.y-headP.y;
     if(h < 4) continue;
     // shadow stays on the ground
     const gp = prj(p.x, 0, p.z);
     ctx.fillStyle='rgba(0,0,0,'+(0.3*(1-wall.jump*0.6))+')';
     ctx.beginPath(); ctx.ellipse(gp.x, gp.y, 0.34*s, 0.13*s, 0,0,6.283); ctx.fill();
-    ctx.lineCap='round'; ctx.lineJoin='round';
-    // legs
-    ctx.strokeStyle='#e9edf2'; ctx.lineWidth=Math.max(1.5,h*0.115);
     const spread = wall.jump>0.1 ? 0.045 : 0.075;
-    ctx.beginPath(); ctx.moveTo(feet.x-h*spread, feet.y); ctx.lineTo(feet.x-h*.04, feet.y-h*.40); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(feet.x+h*spread, feet.y); ctx.lineTo(feet.x+h*.04, feet.y-h*.40); ctx.stroke();
+    const dk2 = 'rgba(0,0,0,.20)';
+    // legs: white shorts into socks
+    limb(ctx, feet.x-h*.04, feet.y-h*.40, feet.x-h*spread, feet.y-h*.16, h*.062, h*.048, '#eef2f6', dk2);
+    limb(ctx, feet.x+h*.04, feet.y-h*.40, feet.x+h*spread, feet.y-h*.16, h*.062, h*.048, '#eef2f6', dk2);
+    limb(ctx, feet.x-h*spread, feet.y-h*.16, feet.x-h*spread, feet.y, h*.048, h*.040, co.a, dk2);
+    limb(ctx, feet.x+h*spread, feet.y-h*.16, feet.x+h*spread, feet.y, h*.048, h*.040, co.a, dk2);
     // jersey with the county's pattern
     const tx=feet.x-h*.135, ty=feet.y-h*.74, tw=h*.27, tht=h*.36;
     ctx.fillStyle=co.a;
@@ -1358,8 +1434,8 @@ function drawKicker(){
   const lunge  = kicker.striking ? clamp(t*4.5, 0, 1) * Math.exp(-t*2.2) : 0;
   const gx = wx + shotU.x*lunge*0.45, gz = wz + shotU.z*lunge*0.45;
 
-  const feet = prj(gx, 0, gz), head = prj(gx, 1.82, gz);
-  const s = feet.s, h = feet.y - head.y;
+  const feet = prj(gx, 0, gz), headP = prj(gx, 1.82, gz);
+  const s = feet.s, h = feet.y - headP.y;
   if(h < 20) return;
   const cx = feet.x;
 
@@ -1370,16 +1446,17 @@ function drawKicker(){
   ctx.beginPath(); ctx.ellipse(cx, feet.y, 0.44*s, 0.16*s, 0,0,6.283); ctx.fill();
 
   // legs — the kicking leg swings through on the strike
-  const swing = kicker.striking ? Math.sin(clamp(t*5.5,0,Math.PI))*0.55 : stride;
-  ctx.strokeStyle='#20262f'; ctx.lineWidth=Math.max(2,h*0.135);
-  ctx.beginPath(); ctx.moveTo(cx-h*.05, feet.y-h*.46);
-  ctx.lineTo(cx-h*.09, feet.y-h*.20); ctx.lineTo(cx-h*.10, feet.y); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(cx+h*.05, feet.y-h*.46);
-  ctx.lineTo(cx+h*.10+h*swing*.45, feet.y-h*.22-h*swing*.30);
-  ctx.lineTo(cx+h*.12+h*swing*.85, feet.y-h*.02-h*swing*.55); ctx.stroke();
+  const swing = kicker.striking ? dsin(clamp(t*5.5,0,D_PI))*0.55 : stride;
+  const dk3='rgba(0,0,0,.22)';
+  limb(ctx, cx-h*.05, feet.y-h*.46, cx-h*.09, feet.y-h*.20, h*.075, h*.055, '#2b3240', dk3);
+  limb(ctx, cx-h*.09, feet.y-h*.20, cx-h*.10, feet.y,       h*.055, h*.042, '#20262f', dk3);
+  limb(ctx, cx+h*.05, feet.y-h*.46, cx+h*.10+h*swing*.45, feet.y-h*.22-h*swing*.30,
+       h*.075, h*.055, '#2b3240', dk3);
+  limb(ctx, cx+h*.10+h*swing*.45, feet.y-h*.22-h*swing*.30,
+       cx+h*.12+h*swing*.85, feet.y-h*.02-h*swing*.55, h*.055, h*.042, '#20262f', dk3);
   // boots
-  ctx.strokeStyle='#f4f7fa'; ctx.lineWidth=Math.max(1.5,h*0.075);
-  ctx.beginPath(); ctx.moveTo(cx-h*.10, feet.y); ctx.lineTo(cx-h*.15, feet.y+2); ctx.stroke();
+  ctx.fillStyle='#f4f7fa';
+  ctx.beginPath(); ctx.ellipse(cx-h*.12, feet.y+1, h*.07, h*.038, 0,0,6.283); ctx.fill();
 
   // shorts
   ctx.fillStyle='#f2f4f7';
@@ -1420,10 +1497,9 @@ function drawKicker(){
   ctx.lineTo(jx+jw+h*(.10+arm*.06), jy+jh*(.52+arm*.10)); ctx.stroke();
 
   // neck + head from behind
-  ctx.fillStyle='#d9a97e';
-  ctx.beginPath(); ctx.arc(cx, feet.y-h*.92, h*.095, 0, 6.283); ctx.fill();
-  ctx.fillStyle='#2e2118';
-  ctx.beginPath(); ctx.arc(cx, feet.y-h*.945, h*.095, Math.PI*0.95, Math.PI*2.05); ctx.fill();
+  ctx.fillStyle='rgba(0,0,0,.18)';
+  ctx.fillRect(cx-h*.045, feet.y-h*.88, h*.09, h*.05);
+  head(ctx, cx, feet.y-h*.92, h*.105, '#d9a97e', '#2e2118', 0);
   ctx.restore();
 }
 
@@ -1941,7 +2017,7 @@ function newShot(who){
                             : sudden      ? 'SUDDEN DEATH — drag back & release'
                             : twoPointMode() && shotDist > TWO_PT_R
                                           ? 'Outside the arc — worth TWO'
-                            : 'Drag back from the ball, then release';
+                            : 'Pull back anywhere, aim, release';
     $('meter').classList.remove('live');
     $('mfill').style.height = '0%';
   } else {
@@ -2039,9 +2115,14 @@ function award(kind){
 
     // wagers are evens: double the stake or lose it
     if(shotStake>0){
-      if(scored){ credit(shotStake*2); lastBet = +shotStake; }
-      else lastBet = -shotStake;
-      if(scored && shotStake>=250) grantAward('punter');
+      if(kind==='goal' || kind==='twopoint'){
+        credit(shotStake*2); lastBet = shotStake;        // doubled
+        if(shotStake>=250) grantAward('punter');
+      } else if(kind==='point'){
+        credit(shotStake); lastBet = 0;                  // stake back, no more
+      } else {
+        lastBet = -shotStake;                            // gone
+      }
     } else lastBet = 0;
 
     checkAwards(kind, scored);
@@ -2070,8 +2151,9 @@ function award(kind){
   if(shooter==='p'){
     const bits=[];
     if(lastXP>0) bits.push('+'+lastXP+' pts');
-    if(lastBet>0) bits.push('+₡'+(lastBet*2));
+    if(lastBet>0) bits.push('₡'+(lastBet*2)+' back');
     else if(lastBet<0) bits.push('−₡'+(-lastBet));
+    else if(shotStake>0) bits.push('stake returned');
     if(bits.length) sub2 = M[1]+' · '+bits.join(' · ');
   }
   r.querySelector('.sub').textContent=sub2;
@@ -2092,6 +2174,7 @@ function award(kind){
   else { SFX.roar(false); crowdSwell(.2,.8); }
 
   sayCommentary(kind);
+  if(shooter==='p' && MP.match) mpSubmitTurn();
   refreshHUD();
   // the moments worth seeing again
   if(kind==='goal' || kind==='twopoint') startReplay(kind);
@@ -2435,8 +2518,8 @@ function buildStakes(){
     w.appendChild(d);
   }
   $('betNote').textContent = shotStake>0
-    ? 'Score and it pays '+(shotStake*2)+' · evens'
-    : 'Back yourself to score this kick';
+    ? 'Goal pays '+(shotStake*2)+' · a point only returns your stake'
+    : 'Back yourself — a goal doubles it, a point breaks even';
 }
 
 /* ---------- the kitbag ---------- */
@@ -2502,14 +2585,20 @@ function pos(e){
   const r=cv.getBoundingClientRect(), t=e.touches?e.touches[0]:e;
   return {x:t.clientX-r.left, y:t.clientY-r.top};
 }
+/* How far a pull has to travel for full power. Kept well inside the shortest
+   sensible screen so maximum power is always physically reachable. */
+const pullBudget = () => Math.max(120, Math.min(H*0.20, 190));
+
 function down(e){
   if(state!==ST.AIM) return;
-  const p=pos(e), b=prj(ball.wx,ball.wy,ball.wz);
-  if(Math.hypot(p.x-b.x,p.y-b.y) < CFG.BALL_R*b.s*3.4){
-    dragging=true; dragA=p; dragPath=[p]; curl=0;
-    $('meter').classList.add('live');
-    const a=ac(); if(a&&a.state==='suspended') a.resume();
-  }
+  const p = pos(e);
+  // anywhere on the pitch starts a shot — a fingertip should not have to find
+  // a 40px ball on a phone
+  dragging=true; dragA=p; dragPath=[p]; curl=0; power=0; aimM=0;
+  document.body.classList.add('dragging');
+  $('meter').classList.add('live');
+  try{ if(e.pointerId!==undefined && cv.setPointerCapture) cv.setPointerCapture(e.pointerId); }catch(err){}
+  const a=ac(); if(a&&a.state==='suspended') a.resume();
   e.preventDefault();
 }
 /* A straight swipe goes straight. Hook the swipe and the ball bends:
@@ -2518,26 +2607,36 @@ function computeCurl(path){
   if(path.length < 5) return 0;
   const a=path[0], b=path[path.length-1];
   const dx=b.x-a.x, dy=b.y-a.y, len=dhyp2(dx,dy);
-  if(len < 26) return 0;
+  if(len < 20) return 0;
   const nx=-dy/len, ny=dx/len;
   let sum=0;
   for(const p of path) sum += (p.x-a.x)*nx + (p.y-a.y)*ny;
-  return clamp((sum/path.length)/(len*0.26), -1, 1);
+  return clamp((sum/path.length)/(len*0.17), -1, 1);
 }
 function move(e){
   if(!dragging) return;
   const p=pos(e);
   dragPath.push(p);
   if(dragPath.length>60) dragPath.shift();
-  power = clamp((p.y-dragA.y)/(H*0.30), 0, 1);
-  aimM  = clamp(-(p.x-dragA.x)/(W*0.30), -1, 1) * 5.4;
+  // power comes from how far back you pulled, in any direction, so a drag
+  // that runs out of screen downward still reaches full power sideways
+  const dx = p.x-dragA.x, dy = p.y-dragA.y;
+  const pull = Math.sqrt(dx*dx + dy*dy);
+  power = clamp(pull / pullBudget(), 0, 1);
+  aimM  = clamp(-dx / (W*0.34), -1, 1) * 5.4;
   curl  = computeCurl(dragPath);
   $('mfill').style.height = (power*100)+'%';
+  $('pwrNum').textContent = Math.round(power*100)+'%';
+  const cl = $('curlNum');
+  cl.textContent = Math.abs(curl)<0.12 ? 'straight'
+                 : (curl>0 ? 'curl ▶ ' : 'curl ◀ ') + Math.round(Math.abs(curl)*100)+'%';
+  cl.style.color = Math.abs(curl)<0.12 ? 'rgba(255,255,255,.45)' : '#00AAFF';
   e.preventDefault();
 }
 function up(e){
   if(!dragging) return;
   dragging=false;
+  document.body.classList.remove('dragging');
   if(power < 0.07){ $('meter').classList.remove('live'); return; }
   fire(); e.preventDefault();
 }
@@ -2888,6 +2987,9 @@ $('bQuick').onclick = startQuick;
 $('bFree').onclick  = startFreekick;
 $('bSurv').onclick  = startSurvival;
 $('bDuel').onclick  = startDuel;
+$('bOnline').onclick = startOnline;
+$('bOnlineClose').onclick = ()=>{ $('ovOnline').classList.add('hidden');
+  if(MP.poll){ clearInterval(MP.poll); MP.poll=null; } MP.match=null; };
 $('bNext').onclick  = ()=>{ ($('bNext').dataset.act==='next' ? nextRound : toMenu)(); };
 $('bKit').onclick   = openKit;
 $('bKitClose').onclick = ()=>{ $('ovKit').classList.add('hidden'); refreshProfileStrip(); };
@@ -2896,6 +2998,114 @@ $('bMute').onclick  = ()=>{
   $('bMute').textContent = muted ? '🔇' : '🔊';
   if(ambGain) ambGain.gain.value = muted ? 0 : ambBase;
 };
+
+/* ==================================================================
+   ONLINE MULTIPLAYER — client fundamentals
+   The server owns the seed and re-simulates every kick, so the client sends
+   only what the player did. Identity is an anonymous device token: play
+   first, claim an account later.
+   ================================================================== */
+const MP = {
+  /* same-origin when the game is served from the site; there is nothing to
+     talk to when it is opened from a file, and the UI says so rather than
+     hanging on a request that cannot succeed */
+  base: (location.protocol === 'http:' || location.protocol === 'https:') ? '' : null,
+  token: null, match: null, poll: null, busy: false,
+};
+function mpToken(){
+  if(MP.token) return MP.token;
+  let t = null;
+  try{ t = localStorage.getItem('crokerFlicks.device'); }catch(e){}
+  if(!t){
+    t = 'd_';
+    const buf = new Uint8Array(24);
+    if(window.crypto && crypto.getRandomValues) crypto.getRandomValues(buf);
+    else for(let i=0;i<24;i++) buf[i] = (Math.random()*256)|0;
+    for(let i=0;i<24;i++) t += (buf[i]%36).toString(36);
+    try{ localStorage.setItem('crokerFlicks.device', t); }catch(e){}
+  }
+  MP.token = t;
+  return t;
+}
+async function mpFetch(path, method, body){
+  if(MP.base === null) throw new Error('offline build — deploy the site to play online');
+  const res = await fetch(MP.base + path, {
+    method: method || 'GET',
+    headers: {'X-CF-Device': mpToken(), 'Content-Type': 'application/json'},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const json = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(json.error || ('HTTP ' + res.status));
+  return json;
+}
+/* the record is everything the server needs to reproduce this kick */
+function inputRecord(){
+  return {
+    // award() has already pushed this kick's result, so the index of the kick
+    // just taken is one behind the new length
+    kickIndex: Math.max(0, P.r.length - 1),
+    power: +power.toFixed(6),
+    aimM:  +aimM.toFixed(6),
+    curl:  +strikeCurl.toFixed(6),
+    x: spot.x, z: spot.z, wall: spot.wall|0,
+  };
+}
+function mpStatus(msg, bad){
+  const el = $('mpMsg');
+  if(el){ el.textContent = msg; el.className = 'gb' + (bad ? ' mpbad' : ''); }
+}
+async function startOnline(){
+  if(!gate('quick')) return;
+  $('ovOnline').classList.remove('hidden');
+  mpStatus('Looking for an opponent…');
+  try{
+    const m = await mpFetch('/api/mp/match', 'POST', {rounds:5, difficulty:'senior'});
+    MP.match = m;
+    matchSeed = m.seed >>> 0;
+    matchSeedFixed = true;            // the server's seed, not ours
+    if(m.state === 'waiting'){
+      mpStatus('Waiting for someone to join… you can start kicking now.');
+    } else {
+      mpStatus('Matched. Take your five.');
+    }
+    mode = 'quick'; difficulty = m.difficulty;
+    ROUNDS = m.rounds;
+    setTimeout(()=>{ $('ovOnline').classList.add('hidden'); startMatch(); }, 900);
+    mpBeginPolling();
+  }catch(err){
+    mpStatus(err.message, true);
+  }
+}
+function mpBeginPolling(){
+  if(MP.poll) clearInterval(MP.poll);
+  MP.poll = setInterval(async ()=>{
+    if(!MP.match) return;
+    try{
+      const st = await mpFetch('/api/mp/' + MP.match.matchId);
+      MP.match.state = st.state;
+      const me = st.yourRole === 'a' ? st.scores.a : st.scores.b;
+      const them = st.yourRole === 'a' ? st.scores.b : st.scores.a;
+      $('rbS').textContent = 'ONLINE ' + me + '–' + them;
+      $('rbS').style.display = '';
+      if(st.state === 'settled' || st.state === 'resolved'){
+        clearInterval(MP.poll); MP.poll = null;
+      }
+    }catch(e){ /* a dropped poll is not fatal; the next one retries */ }
+  }, 6000);
+}
+/* fire-and-forget submission: the local result already showed, and the
+   server's verdict is what counts for the match record */
+function mpSubmitTurn(){
+  if(!MP.match || MP.base === null) return;
+  const rec = inputRecord();
+  mpFetch('/api/mp/turn', 'POST', {matchId: MP.match.matchId, record: rec})
+    .then(r => { MP.lastServer = r.outcome; })
+    .catch(err => {
+      MP.lastError = err.message;
+      const el = $('rbS');
+      if(el){ el.textContent = 'SYNC FAILED'; el.style.display=''; }
+    });
+}
 
 /* ==================================================================
    DEBUG API — enabled with ?debug=1
@@ -2952,6 +3162,8 @@ if(new URLSearchParams(location.search).has('debug')){
       setWind();
       return {wind:+wind.toFixed(9), kmh:+windKmh.toFixed(9)};
     },
+    get match(){ return MP.match; },
+    get device(){ return mpToken(); },
     venues: Object.keys(VENUES),
     ranks: RANKS.map(r=>r.n),
   };

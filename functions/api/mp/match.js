@@ -18,11 +18,15 @@ export async function onRequestPost(context) {
 
   // join an open match first, so a queue of one drains before a new one opens
   if (body.join !== false) {
+    // only pair with a match somebody is plausibly still waiting on —
+    // otherwise the queue hands out long-abandoned lobbies
+    const fresh = now() - 15 * 60;
     const open = await env.DB.prepare(
       `SELECT * FROM cf_matches
         WHERE state = 'waiting' AND a_player != ? AND b_player IS NULL
-        ORDER BY created_at ASC LIMIT 1`
-    ).bind(me.id).first();
+          AND created_at > ?
+        ORDER BY created_at DESC LIMIT 1`
+    ).bind(me.id, fresh).first();
     if (open) {
       const res = await env.DB.prepare(
         `UPDATE cf_matches SET b_player = ?, state = 'in_progress', updated_at = ?
