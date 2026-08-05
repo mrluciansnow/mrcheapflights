@@ -9,7 +9,9 @@
     "test": "node tests/sim-parity.mjs && node tests/determinism.mjs",
     "test:api": "node tests/mp-api.mjs",
     "db:mp": "wrangler d1 execute mrcheapflights-prod --local --file=migrations/0006_multiplayer.sql",
-    "db:mp:remote": "wrangler d1 execute mrcheapflights-prod --remote --file=migrations/0006_multiplayer.sql"
+    "db:mp:remote": "wrangler d1 execute mrcheapflights-prod --remote --file=migrations/0006_multiplayer.sql",
+    "test:ui": "node tests/ui-smoke.mjs && node tests/layout.mjs",
+    "test:daily": "node tests/daily.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

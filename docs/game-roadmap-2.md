@@ -485,3 +485,112 @@ each other. The social hook that makes people come back for someone else's sake.
   real devices. Discovering float divergence after building matchmaking is the
   most expensive failure available here.
 - Stages 1 and 2 are independent of each other and could run in parallel.
+
+---
+
+# Upgrade pass — twenty changes
+
+Shipped alongside the roadmap stages rather than as part of one. Grouped by
+what they touch; the ones marked **fix** were defects found while measuring,
+not features.
+
+## Gameplay
+
+1. **Read the keeper.** Every kick already drew a reaction time from the
+   seeded stream; nothing showed it. His set position now encodes it — a
+   keeper on his toes sits low and shifts his weight quickly, a flat-footed
+   one stands tall — with a label above his head. Display only: it reads the
+   number that was already drawn and creates no new randomness, so server
+   re-simulation is untouched.
+2. **Daily Challenge.** The date seeds the placements, wind, weather and
+   keeper, so everyone playing on a given day faces the same five kicks. No
+   server involved — the seeded stream already guaranteed this was possible.
+   Best score for the day is kept and shown on the menu button.
+3. **Training Ground.** Every spot in the game, unlimited kicks, no money, no
+   points, no rank. Somewhere to find out what 40% power actually does.
+4. **Aim line is now optional, and turning it off pays.** Every score is worth
+   25% more points with the preview off. That is an XP-side multiplier only,
+   so it never touches the outcome path.
+
+## UX
+
+5. **Keyboard controls.** `←/→` aim, `↑/↓` power, `Q`/`E` curl, `Space`
+   strikes, `Esc` pauses, `M` mutes. The drag is a phone gesture; on a laptop
+   it was fiddly, and for anyone who cannot make a precise swipe it was a wall.
+6. **Pause.** Until now the only way out of a shootout was to finish it.
+   Resume, restart, settings, or quit, from a button or from `Esc`.
+7. **Coach marks.** Three cards on the very first kick of a new profile —
+   pull back, aim across, hook it — then never again.
+8. **Haptics** on contact, goal, save, woodwork and promotion.
+9. **Focus rings on every control**, so the keyboard path is actually visible.
+10. **Play again** on the end screen, instead of routing back through the menu.
+
+## UI
+
+11. **Settings screen**: sound, vibration, aim line, left-handed layout, and a
+    three-way graphics tier. Stored under their own key so a profile reset
+    does not take them with it.
+12. **Left-handed layout** mirrors the meter, readout, pause and mute buttons.
+13. **Opponent pip row** — **fix**. The centre block only ever read from the
+    player's own results, so half of every shootout was missing from the
+    scoreboard.
+14. **Round bar rebuilt** — **fix**. One long line pinned across the full
+    width ran underneath the DIST and WIND gauges at every phone size. It is
+    now two lines inside the channel between them, and truncates instead of
+    colliding.
+15. **Live aim readout** in metres beside the power and curl numbers.
+16. **Bet note gutter and scoreboard truncation** — **fix**. The wager
+    sentence was cut off at both stage edges; a long county name was hard-cut
+    mid-word, and in the right-hand column it lost the start of the name.
+
+## Design
+
+17. **Trophy cabinet.** Ten awards existed and were completely unviewable.
+18. **Promotion is a moment**, not a toast that slides past mid-celebration —
+    a full screen that holds the game until it is acknowledged. Building it
+    surfaced a **fix**: a rank earned *inside* `endMatch()` — from winning the
+    All-Ireland, or from a faultless shootout — was never shown there, because
+    `endMatch` does not call `advance()`. The promotion sat in `pendingRankUp`
+    and appeared at a random moment in the player's *next* match, possibly in
+    a mode that banks nothing at all. Every exit from `endMatch` now goes
+    through one reveal that celebrates it on the spot.
+19. **Kick-by-kick scorecard** on the end screen, with the umpire's flag
+    against each kick and the opponent's answer beside it.
+20. **Outcome legend** on the title screen, and shape as well as hue on every
+    pip, so colour is never the only signal.
+
+## Graphics
+
+Folded into the twenty above where they overlap, and shipped together:
+
+- **Crowd reaction** — the terracing is baked into the static backdrop, which
+  makes it cheap but also dead. A thin live layer now puts phones and flags up
+  over the stand for a couple of seconds after a score.
+- **Floodlight bloom** that breathes with the camera and lifts on the flash,
+  rather than being frozen into the backdrop.
+- **Persistent pitch scuffs** — every strike and bounce leaves a mark, so the
+  goalmouth is chewed up by the end of a round.
+- **Ball motion smear** above 13 m/s, along the direction of travel.
+- **Time of day per venue** — dusk skies and warm low light at Thurles and
+  Castlebar, flat afternoon at Killarney and Clones, floodlit night at Croke
+  Park and Páirc Uí Chaoimh.
+- **Graphics tiers** drive device pixel ratio, crowd density, turf grain, rain
+  count and bloom together, so an older phone can choose frame rate over pixels.
+
+## Verification
+
+- 57-check headless smoke suite: boot, every control wired, settings
+  round-tripping through storage, coach marks, pause, keyboard aiming, a full
+  quick match to full time, the scorecard, opponent pips, play again, daily,
+  training. All passing, no runtime errors.
+- Layout measured at 360×640, 420×860 and 540×940 for box overlap and text
+  clipping — that is how items 14 and 16 were found.
+- `npm test` still reports server/client parity 120/120 and determinism 40/40
+  identical, so none of this moved the online contract.
+- `tests/daily.mjs` runs the daily board in two independent browser contexts,
+  with different profiles, and compares all five kicks — the claim that the
+  date alone fixes the board is measured, not asserted.
+
+Run with `npm test` (physics), `npm run test:ui` (interface and layout),
+`npm run test:daily` (the shared board) and `npm run test:api` (the
+multiplayer endpoints).
