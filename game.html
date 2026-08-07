@@ -224,7 +224,7 @@ body.dragging .readout{opacity:1}
   padding:.22rem .6rem;font-size:.72rem;font-weight:900;color:var(--yellow);
   font-variant-numeric:tabular-nums;backdrop-filter:blur(6px)}
 
-.betbar{position:absolute;left:50%;top:158px;transform:translate(-50%,-8px);opacity:0;
+.betbar{position:absolute;left:50%;top:190px;transform:translate(-50%,-8px);opacity:0;
   pointer-events:none;transition:opacity .22s,transform .22s;text-align:center;width:100%}
 .betbar.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}
 /* while a shot is being pulled back nothing in the HUD may steal the touch */
@@ -237,16 +237,18 @@ body.dragging .betbar,body.dragging .prompt,body.dragging .comm{pointer-events:n
 .stake.off{opacity:.3;cursor:not-allowed}
 .betnote{margin-top:.3rem;padding:0 18px;font-size:.58rem;font-weight:800;
   letter-spacing:.05em;opacity:.55;line-height:1.4}
-.keepbar{position:absolute;left:50%;top:158px;transform:translate(-50%,-8px);
+.keepbar{position:absolute;left:50%;top:150px;transform:translate(-50%,-8px);
   opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;text-align:center}
 .keepbar.show{opacity:1;transform:translate(-50%,0)}
 .keeplbl{font-size:.56rem;font-weight:900;letter-spacing:.18em;color:var(--sky);
   text-shadow:0 2px 8px rgba(0,0,0,.8)}
+#shotbar .keeplbl{color:var(--yellow)}
+#shotbar.tight .keeplbl{color:var(--hot-pink);animation:pulse .5s ease-in-out infinite}
 .keeptrack{width:150px;height:5px;border-radius:3px;background:rgba(255,255,255,.16);
   overflow:hidden;margin:4px auto 0}
 .keeptrack span{display:block;height:100%;width:100%;border-radius:3px;
   background:linear-gradient(90deg,var(--hot-pink),var(--yellow) 60%,#7ee0a0)}
-.spotbtn{position:absolute;left:50%;top:158px;transform:translateX(-50%);
+.spotbtn{position:absolute;left:50%;top:190px;transform:translateX(-50%);
   pointer-events:auto;display:none}
 body.dragging .spotbtn{opacity:.25;pointer-events:none}
 
@@ -469,11 +471,15 @@ window.addEventListener('error', function(e){
 
   <button class="stake spotbtn" id="bSpot">NEXT SPOT ▸</button>
   <div class="award" id="award"></div>
+  <div class="keepbar" id="shotbar">
+    <div class="keeplbl" id="shotlbl">TAKE IT ON</div>
+    <div class="keeptrack"><span id="shotFill"></span></div>
+  </div>
   <div class="keepbar" id="keepbar">
     <div class="keeplbl">YOUR SAVE</div>
     <div class="keeptrack"><span id="keepFill"></span></div>
   </div>
-  <div class="prompt" id="prompt">Drag back from the ball, then release</div>
+  <div class="prompt" id="prompt">Swipe the shot you want</div>
   <div class="comm" id="comm"></div>
   <div class="res" id="res"><div class="big"></div><div class="sub"></div></div>
   <button class="pausebtn" id="bPause" aria-label="Pause">⏸</button>
@@ -2216,14 +2222,18 @@ const KEEP_WINDOW = 3.2;        // seconds to choose
 const KEEP_REACT  = 0.06;       // he goes as the ball is struck
 let keepT = 0, keepPick = null, keepDone = false, matchSaves = 0;
 const goalieOn = () => opts.goalie && isShootout() && mode !== 'duel' && !MP.match;
-/* screen point -> a spot on the goal mouth, in metres */
-function goalPointFromScreen(px, py){
-  const L = prj(-HW, 0, 0), R = prj(HW, 0, 0);
-  const B = prj(0, 0, 0),   T = prj(0, CFG.BAR_H, 0);
-  const perMx = (R.x - L.x) / (2*HW) || 1;
-  const perMy = (B.y - T.y) / CFG.BAR_H || 1;
-  return { x: clamp((px - B.x)/perMx, -HW-0.6, HW+0.6),
-           y: clamp((B.y - py)/perMy, 0.05, CFG.BAR_H+0.7) };
+/* Dive where you swipe. Straight up is a leap down the middle, across is a
+   low dive to that side, up and across is full stretch into the corner, and
+   a short swipe keeps you near your line. */
+const KEEP_REACH_PX = () => H * 0.24;
+function keepFromSwipe(path){
+  const a = path[0], b = path[path.length-1];
+  const R = KEEP_REACH_PX();
+  const nx = clamp((b.x - a.x)/R, -1.2, 1.2);
+  const ny = clamp(-(b.y - a.y)/R, -1.2, 1.2);
+  if(dhyp2(b.x-a.x, b.y-a.y) < 10) return {x:0, y:1.15};   // stood his ground
+  return { x: clamp(nx * (HW + 0.5), -HW-0.5, HW+0.5),
+           y: clamp(1.15 + ny * 1.5, 0.05, CFG.BAR_H+0.6) };
 }
 function beginKeep(){
   keepT = KEEP_WINDOW; keepPick = null; keepDone = false;
@@ -2231,7 +2241,7 @@ function beginKeep(){
   zoom = zoomTarget = 1; panX = panTarget = 0;   // identity, so the touch maps
   keeper.wx0 = 0; keeper.wx = 0;                 // no free lean for your own man
   $('prompt').style.display = '';
-  $('prompt').textContent = 'Pick your dive — ' + CO_C.n + ' steps up';
+  $('prompt').textContent = 'Swipe your dive — ' + CO_C.n + ' steps up';
   $('keepbar').classList.add('show');
   showBetBar(false);
 }
@@ -2632,9 +2642,10 @@ function newShot(who){
                             : sudden      ? 'SUDDEN DEATH — drag back & release'
                             : twoPointMode() && shotDist > TWO_PT_R
                                           ? 'Outside the arc — worth TWO'
-                            : 'Pull back anywhere, aim, release';
+                            : 'Swipe the shot — fast to drive it, long to lift it';
     $('meter').classList.remove('live');
     $('mfill').style.height = '0%';
+    startShotClock();
     if(!profile.seenCoach && who==='p') setTimeout(showCoach, 450);
   } else if(goalieOn()){
     beginKeep();
@@ -2673,6 +2684,7 @@ function cpuShoot(){
   fire();
 }
 function fire(){
+  stopShotClock();
   strikeCurl = curl; strikeElev = elev; strikeAim = aimM;
   if(shotStake>0) debit(shotStake);
   // contact is never perfect — harder strikes stray more
@@ -3430,10 +3442,11 @@ function openCabinet(){
    COACH MARKS — three cards, shown once, on the very first kick
    ================================================================== */
 const COACH = [
-  ['1 · Pull back',  'Drag anywhere on the pitch and pull away from the goal. The further you pull, the harder the strike.'],
-  ['2 · Aim across', 'Sideways in the drag is your aim. Pull to the right and the ball goes left, the same as a slingshot.'],
-  ['3 · Hook it',    'Curve the drag instead of pulling straight and the ball bends in the air. That is how you beat a keeper who has guessed right.'],
-  ['4 · Go in goal', 'When they take their kick you are the keeper. Touch the goal to pick your dive before he strikes — read where he is standing, because he has to tell you something.'],
+  ['1 · Swipe it',   'Swipe towards the goal. Not back — you are drawing the shot, and it goes where you point.'],
+  ['2 · Fast or slow','How quickly you swipe is how hard it is struck. How far you swipe is how high it goes. A quick short flick stays low and hard; a long slow sweep floats over the bar.'],
+  ['3 · Curve it',   'Bend the swipe and the ball bends with it. The zone lighting up on the goal is where it is heading, so you can correct halfway through.'],
+  ['4 · Beat the clock','You have five seconds. Run them down and he takes it on anyway, off balance and with nothing on it.'],
+  ['5 · Go in goal', 'When they kick, you are the keeper. Swipe the way you want to dive — across for a low one, up and across for full stretch — before he strikes.'],
 ];
 let coachStep = 0;
 function showCoach(){
@@ -3493,46 +3506,86 @@ function pos(e){
   const r=cv.getBoundingClientRect(), t=e.touches?e.touches[0]:e;
   return {x:t.clientX-r.left, y:t.clientY-r.top};
 }
-/* How far a pull has to travel for full power. Kept well inside the shortest
-   sensible screen so maximum power is always physically reachable. */
-const pullBudget = () => Math.max(120, Math.min(H*0.20, 190));
+/* ---- the swipe ----
+   You draw the shot. Four things come out of one gesture:
 
-/* ---- aiming ----
-   The old mapping was linear in screen pixels: a 20-pixel wobble moved the
-   ball three quarters of a metre at the goal line, which made placing a shot
-   a matter of luck. Aim is now curved — soft either side of centre, firm out
-   at the posts — and elevation has its own axis instead of being welded to
-   power, so a low driven shot is a thing you can choose.
+     direction  where you are travelling as you let go   -> the line
+     speed      how fast you moved                       -> the pace
+     length     how far the swipe travelled              -> the loft
+     curvature  how much the path bent                   -> the bend
+
+   Which means a quick curved flick is a driven curler, a long slow sweep is
+   a lob, and a short straight jab is a low drive. Aim is no longer inverted:
+   you point at where you want it.
 
    The goal is 6.5m wide, so +-4.2 lets you aim outside a post and bend it
    back, which is the whole point of having curl. */
-const AIM_MAX = 4.2;
-function aimFromDrag(dx, pull){
-  const n = clamp(-dx / (W*0.40), -1, 1);      // slingshot: pull right, go left
-  const shaped = (n < 0 ? -1 : 1) * Math.pow(Math.abs(n), 1.35);
-  return shaped * AIM_MAX;
-}
-/* Straight back and down is a lofted strike, level is mid, pulling up under
-   the ball drives it low. */
-function elevFromDrag(dy, pull){
-  if(pull < 8) return 0.5;
-  return clamp(0.5 + (dy/pull)*0.5, 0, 1);
-}
+const AIM_MAX   = 4.2;
+const AIM_SPAN  = 0.72;                 // radians off vertical for a full aim
+/* references, in screen units, so the feel is the same on any phone */
+const swipeFast = () => H * 2.4;        // px/sec that counts as a full strike
+const swipeLong = () => H * 0.52;       // px of travel that counts as full loft
+const RECENT_MS = 110;                  // the window that decides line and pace
+
 const elevLabel = e => e > 0.78 ? 'lofted' : e > 0.58 ? 'floated'
                      : e > 0.40 ? 'level'  : e > 0.22 ? 'driven' : 'low & hard';
 
+/* the tail of the swipe: everything inside the last RECENT_MS */
+function recentRun(path){
+  const last = path[path.length-1];
+  let i = path.length - 1;
+  while(i > 0 && last.t - path[i-1].t < RECENT_MS) i--;
+  return {a: path[i], b: last, n: path.length - i};
+}
+/* Read the gesture. Called on every move, so the preview follows the finger
+   and a correction halfway through lands before the ball is struck. */
+function readSwipe(path){
+  if(path.length < 2) return null;
+  const first = path[0], last = path[path.length-1];
+  let len = 0;
+  for(let i=1;i<path.length;i++) len += dhyp2(path[i].x-path[i-1].x, path[i].y-path[i-1].y);
+  if(len < 12) return null;
+
+  const run = recentRun(path);
+  const dt  = Math.max(16, run.b.t - run.a.t) / 1000;   // a floor, so a burst
+  const dRun = dhyp2(run.b.x-run.a.x, run.b.y-run.a.y); // of events is not
+  const speed = dRun / dt;                              // read as infinite pace
+
+  // the line: where the finger is heading, measured over the tail of the
+  // swipe if there is one, and over the whole thing if it was a short flick
+  let dx = run.b.x - run.a.x, dy = run.b.y - run.a.y;
+  if(dhyp2(dx,dy) < 14){ dx = last.x - first.x; dy = last.y - first.y; }
+  const up = -dy;                                       // toward the goal
+  const ang = Math.atan2(dx, Math.max(1, up));          // 0 = straight at goal
+
+  return {
+    len: len,
+    speed: speed,
+    toward: up > 0 || (last.y - first.y) < 0,           // is this a shot at all
+    power: clamp(speed / swipeFast(), 0, 1),
+    aimM:  clamp(ang / AIM_SPAN, -1, 1) * AIM_MAX,
+    elev:  clamp(len / swipeLong(), 0, 1),
+    curl:  computeCurl(path),
+  };
+}
+
+const stamp = () => (window.performance && performance.now) ? performance.now() : Date.now();
+function samp(e){ const q = pos(e); q.t = stamp(); return q; }
+
 function down(e){
   if(state===ST.KEEP){
-    keepPick = goalPointFromScreen(pos(e).x, pos(e).y);
-    dragging = true;
+    dragging = true; dragA = samp(e); dragPath = [dragA];
+    // show him on his line straight away, so the preview answers the touch
+    keepPick = {x:0, y:1.15};
+    document.body.classList.add('dragging');
     e.preventDefault();
     return;
   }
   if(state!==ST.AIM) return;
-  const p = pos(e);
   // anywhere on the pitch starts a shot — a fingertip should not have to find
   // a 40px ball on a phone
-  dragging=true; dragA=p; dragPath=[p]; curl=0; power=0; aimM=0;
+  dragA = samp(e);
+  dragging=true; dragPath=[dragA]; curl=0; power=0; aimM=0; swipeOk=false;
   document.body.classList.add('dragging');
   $('meter').classList.add('live');
   try{ if(e.pointerId!==undefined && cv.setPointerCapture) cv.setPointerCapture(e.pointerId); }catch(err){}
@@ -3585,22 +3638,20 @@ function refreshAimUI(){
 function move(e){
   if(!dragging) return;
   if(state===ST.KEEP){
-    keepPick = goalPointFromScreen(pos(e).x, pos(e).y);
+    dragPath.push(samp(e));
+    if(dragPath.length>70) dragPath.shift();
+    keepPick = keepFromSwipe(dragPath);
     e.preventDefault();
     return;
   }
-  const p=pos(e);
-  dragPath.push(p);
-  if(dragPath.length>60) dragPath.shift();
-  // power comes from how far back you pulled, in any direction, so a drag
-  // that runs out of screen downward still reaches full power sideways
-  const dx = p.x-dragA.x, dy = p.y-dragA.y;
-  const pull = Math.sqrt(dx*dx + dy*dy);
-  power = clamp(pull / pullBudget(), 0, 1);
-  aimM  = aimFromDrag(dx, pull);
-  elev  = elevFromDrag(dy, pull);
-  curl  = computeCurl(dragPath);
-  refreshAimUI();
+  dragPath.push(samp(e));
+  if(dragPath.length>70) dragPath.shift();
+  const sw = readSwipe(dragPath);
+  if(sw){
+    power = sw.power; aimM = sw.aimM; elev = sw.elev; curl = sw.curl;
+    swipeOk = sw.toward;
+    refreshAimUI();
+  }
   e.preventDefault();
 }
 function up(e){
@@ -3608,12 +3659,19 @@ function up(e){
   dragging=false;
   if(state===ST.KEEP){
     document.body.classList.remove('dragging');
-    if(keepPick) commitKeep();
+    const a = dragPath[0], b = dragPath[dragPath.length-1];
+    // a tap is not a dive; leave it uncommitted and let him read it longer
+    if(keepPick && dhyp2(b.x-a.x, b.y-a.y) >= 14) commitKeep();
     e.preventDefault();
     return;
   }
   document.body.classList.remove('dragging');
-  if(power < 0.07){ $('meter').classList.remove('live'); return; }
+  // a tap, a flick that went nowhere, or a swipe away from the goal is not a
+  // shot — it costs you the time, not the kick
+  if(power < 0.07 || !swipeOk){
+    power = 0; $('meter').classList.remove('live'); refreshAimUI();
+    e.preventDefault(); return;
+  }
   fire(); e.preventDefault();
 }
 
@@ -3621,7 +3679,7 @@ function up(e){
    The drag is a phone gesture. On a laptop it is fiddly and for anyone who
    cannot make a precise swipe it is a wall, so the same three values are
    also reachable from the keys, with the aim shown as a number. */
-let kbAim = false;
+let kbAim = false, swipeOk = false;
 const aiming = () => dragging || kbAim;
 function kbEnter(){
   if(kbAim) return;
@@ -3720,6 +3778,43 @@ function strokePath(pts, style, dash, wd){
   ctx.stroke(); ctx.restore();
 }
 
+/* ==================================================================
+   THE TARGET AREA
+   The crosshair says exactly where; the lit zone says roughly where, which
+   is the part you can actually read at a glance while your thumb is moving.
+   Six panels inside the frame, and the band over the bar that is worth a
+   point.
+   ================================================================== */
+const ZONE_X = [[-HW, -HW/3], [-HW/3, HW/3], [HW/3, HW]];
+const ZONE_Y = [[0, CFG.BAR_H*0.52], [CFG.BAR_H*0.52, CFG.BAR_H]];
+function zoneOf(x, y){
+  if(Math.abs(x) > HW) return null;                       // wide of everything
+  if(y > CFG.BAR_H)
+    return {x0:-HW, x1:HW, y0:CFG.BAR_H, y1:CFG.BAR_H+1.5, over:true};
+  const cx = ZONE_X.find(c => x >= c[0] && x <= c[1]) || ZONE_X[1];
+  const ry = ZONE_Y.find(r => y >= r[0] && y <= r[1]) || ZONE_Y[0];
+  return {x0:cx[0], x1:cx[1], y0:ry[0], y1:ry[1], over:false};
+}
+function fillZone(z, style, stroke){
+  const a = prj(z.x0, z.y1, 0), b = prj(z.x1, z.y0, 0);
+  ctx.fillStyle = style;
+  ctx.fillRect(a.x, a.y, b.x-a.x, b.y-a.y);
+  if(stroke){
+    ctx.strokeStyle = stroke; ctx.lineWidth = 2;
+    ctx.strokeRect(a.x, a.y, b.x-a.x, b.y-a.y);
+  }
+}
+/* the whole grid, faint, so the lit one reads as one of a set */
+function drawZoneGrid(){
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,.10)'; ctx.lineWidth = 1;
+  for(const cx of ZONE_X) for(const ry of ZONE_Y){
+    const a = prj(cx[0], ry[1], 0), b = prj(cx[1], ry[0], 0);
+    ctx.strokeRect(a.x, a.y, b.x-a.x, b.y-a.y);
+  }
+  ctx.restore();
+}
+
 /* The reticle is your intent, drawn on the goal itself: where the ball would
    cross with no wind, no curl and a perfect strike. It is always on. The
    dashed line that predicts the real flight is the optional crutch. */
@@ -3730,6 +3825,28 @@ function drawAimReticle(){
   const q = prj(last.x, last.y, last.z);
   const over = last.y > CFG.BAR_H, inP = Math.abs(last.x) < HW;
   const col = inP ? (over ? '#7ee0a0' : '#FFD200') : '#FF2D6B';
+
+  // the area lights up as the swipe moves, so a glance is enough
+  drawZoneGrid();
+  const z = zoneOf(last.x, last.y);
+  if(z){
+    const pulse = 0.13 + 0.05*Math.sin(now*0.008);
+    fillZone(z, (z.over ? 'rgba(126,224,160,' : 'rgba(255,210,0,') + pulse + ')',
+                 z.over ? 'rgba(126,224,160,.75)' : 'rgba(255,210,0,.75)');
+  } else {
+    // outside the frame entirely: flash the post you are missing, because an
+    // unlit goal reads the same as a preview that is not working
+    const side = last.x > 0 ? 1 : -1;
+    const a2 = prj(side*HW, CFG.BAR_H+0.4, 0), b2 = prj(side*(HW+1.4), 0, 0);
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,45,107,' + (0.10 + 0.06*Math.sin(now*0.012)) + ')';
+    ctx.fillRect(Math.min(a2.x,b2.x), a2.y, Math.abs(b2.x-a2.x), b2.y-a2.y);
+    ctx.fillStyle = '#FF2D6B';
+    ctx.font = '900 10px Nunito, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('WIDE', (a2.x+b2.x)/2, (a2.y+b2.y)/2);
+    ctx.restore();
+  }
 
   // how far contact can throw it off at this power, drawn to scale
   const spread = 0.17 * (0.30 + power*0.85);
@@ -3790,7 +3907,11 @@ function drawKeepPick(){
   ctx.setLineDash([6,6]);
   ctx.strokeRect(L.x, T.y, R.x-L.x, B.y-T.y);
   ctx.setLineDash([]);
+  drawZoneGrid();
   if(keepPick){
+    const z = zoneOf(clamp(keepPick.x, -HW+0.01, HW-0.01), Math.min(keepPick.y, CFG.BAR_H-0.01));
+    if(z) fillZone(z, 'rgba(0,170,255,' + (0.13 + 0.05*Math.sin(now*0.008)) + ')',
+                      'rgba(0,170,255,.75)');
     const q = prj(keepPick.x, keepPick.y, 0);
     const reach = keeper ? keeper.reach : 0.48;
     const qr = prj(keepPick.x + reach, keepPick.y, 0);
@@ -3811,37 +3932,75 @@ function drawKeepPick(){
   ctx.restore();
 }
 
-/* The gesture, drawn where the finger actually is. A hooked pull used to be
-   invisible — you had to trust a number. Now the bow away from the chord is
-   the thing on screen, which is the thing the physics reads. */
+/* The swipe, drawn where the finger actually is: the stroke thickens and
+   brightens with pace, bends with the path, and carries an arrowhead on the
+   leading end so the direction you are about to commit to is never in doubt.
+   A gesture you cannot see is a gesture you cannot correct. */
 function drawDragGesture(){
   if(!dragging || dragPath.length < 2) return;
-  const a = dragPath[0], b = dragPath[dragPath.length-1];
+  const bend = Math.abs(curl) > 0.12;
+  const hue  = state === ST.KEEP ? '0,170,255' : (bend ? '0,170,255' : '255,210,0');
+  const pace = state === ST.KEEP ? 0.6 : power;
   ctx.save();
-  // the chord: what a straight pull would have been
-  ctx.setLineDash([3,5]); ctx.lineWidth = 1.5;
-  ctx.strokeStyle = 'rgba(255,255,255,.22)';
-  ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-  ctx.setLineDash([]);
-  // the path your finger took
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   for(let i=1;i<dragPath.length;i++){
-    const f = i/dragPath.length;
-    ctx.strokeStyle = Math.abs(curl) > 0.12
-      ? 'rgba(0,170,255,' + (0.15 + f*0.6) + ')'
-      : 'rgba(255,255,255,' + (0.10 + f*0.4) + ')';
-    ctx.lineWidth = 1.5 + f*3.5;
+    const f = i/(dragPath.length-1);
+    ctx.strokeStyle = 'rgba(' + hue + ',' + (0.08 + f*0.62) + ')';
+    ctx.lineWidth = 1.5 + f*(2 + pace*5);
     ctx.beginPath();
     ctx.moveTo(dragPath[i-1].x, dragPath[i-1].y);
     ctx.lineTo(dragPath[i].x, dragPath[i].y);
     ctx.stroke();
   }
-  // anchor and fingertip
-  ctx.fillStyle = 'rgba(255,255,255,.5)';
-  ctx.beginPath(); ctx.arc(a.x, a.y, 4, 0, 6.283); ctx.fill();
-  ctx.fillStyle = Math.abs(curl) > 0.12 ? '#00AAFF' : '#FFD200';
-  ctx.beginPath(); ctx.arc(b.x, b.y, 6, 0, 6.283); ctx.fill();
+  const b = dragPath[dragPath.length-1];
+  const run = recentRun(dragPath);
+  let dx = b.x - run.a.x, dy = b.y - run.a.y;
+  const L = dhyp2(dx, dy);
+  if(L > 6){
+    // arrowhead on the heading, which is the line the ball will take
+    ctx.translate(b.x, b.y);
+    ctx.rotate(Math.atan2(dy, dx));
+    const h = 8 + pace*8;
+    ctx.fillStyle = 'rgba(' + hue + ',.95)';
+    ctx.beginPath();
+    ctx.moveTo(h, 0); ctx.lineTo(-h*0.55, -h*0.55); ctx.lineTo(-h*0.2, 0);
+    ctx.lineTo(-h*0.55, h*0.55);
+    ctx.closePath(); ctx.fill();
+  } else {
+    ctx.fillStyle = 'rgba(' + hue + ',.9)';
+    ctx.beginPath(); ctx.arc(b.x, b.y, 6, 0, 6.283); ctx.fill();
+  }
   ctx.restore();
+}
+
+/* ==================================================================
+   THE SHOT CLOCK
+   A penalty is not a puzzle you get to solve. You have a few seconds to
+   look at the keeper, pick your spot and hit it — dithering costs you the
+   strike rather than sharpening it. Training has no clock, because that is
+   where you are meant to dither.
+   ================================================================== */
+const SHOT_CLOCK = 5.0;
+let shotT = 0;
+const clockRuns = () => state === ST.AIM && !paused && mode !== 'training' && !holding();
+function startShotClock(){
+  shotT = SHOT_CLOCK;
+  const bar = $('shotbar');
+  if(mode === 'training'){ bar.classList.remove('show'); return; }
+  bar.classList.remove('tight');
+  $('shotFill').style.width = '100%';
+  bar.classList.add('show');
+}
+function stopShotClock(){ $('shotbar').classList.remove('show', 'tight'); }
+/* Time up: he takes it on anyway, off balance and with no pace. The kick is
+   still yours — the clock takes the strike, not the turn. */
+function rushShot(){
+  stopShotClock();
+  power = 0.22; elev = 0.5;
+  if(dragging){ dragging = false; document.body.classList.remove('dragging'); }
+  kbAim = false;
+  $('prompt').textContent = 'Rushed it!';
+  fire();
 }
 
 /* ==================================================================
@@ -3898,6 +4057,13 @@ function update(dt){
   stepParts(dt);
   stepCrowdFx(dt);
 
+  if(clockRuns()){
+    shotT -= dt;
+    const f = clamp(shotT/SHOT_CLOCK, 0, 1);
+    $('shotFill').style.width = f*100 + '%';
+    $('shotbar').classList.toggle('tight', f < 0.34);
+    if(shotT <= 0) rushShot();
+  }
   if(state===ST.KEEP){
     keepT -= dt;
     $('keepFill').style.width = clamp(keepT/KEEP_WINDOW, 0, 1)*100 + '%';
@@ -4437,6 +4603,7 @@ if(new URLSearchParams(location.search).has('debug')){
     get paused(){ return paused; },
     get canAim(){ return state === ST.AIM && !paused; },
     get canKeep(){ return state === ST.KEEP && !paused; },
+    get goalieOn(){ return goalieOn(); },
     get stateName(){
       return Object.keys(ST).find(k => ST[k] === state) || String(state);
     },
@@ -4449,6 +4616,16 @@ if(new URLSearchParams(location.search).has('debug')){
       return true;
     },
     get aimState(){ return {power:power, aimM:aimM, elev:elev, curl:curl}; },
+    get shotClock(){ return +shotT.toFixed(3); },
+    /* which panel of the goal is currently lit, so the preview can be
+       asserted on rather than eyeballed in a screenshot */
+    get litZone(){
+      const pts = simPath(false), last = pts[pts.length-1];
+      if(!last) return null;
+      const z = zoneOf(last.x, last.y);
+      return z ? {lit:true, over:!!z.over, col:Math.round((z.x0+z.x1)/2*100)/100,
+                  row:Math.round((z.y0+z.y1)/2*100)/100} : {lit:false};
+    },
     get kickLabel(){ return document.getElementById('rnd').textContent; },
     get match(){ return MP.match; },
     get device(){ return mpToken(); },

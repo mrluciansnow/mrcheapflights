@@ -100,8 +100,8 @@ log('\n— coach marks on the very first kick —');
 await page.click('#bQuick');
 await page.waitForTimeout(900);
 ok(!(await page.locator('#ovCoach').getAttribute('class')).includes('hidden'), 'coach marks appear');
-ok(await page.evaluate(()=>document.querySelectorAll('#coachDots span').length) === 4, 'four coaching cards');
-for(let i=0;i<4;i++) await page.click('#bCoach');
+ok(await page.evaluate(()=>document.querySelectorAll('#coachDots span').length) === 5, 'five coaching cards');
+for(let i=0;i<5;i++) await page.click('#bCoach');
 ok((await page.locator('#ovCoach').getAttribute('class')).includes('hidden'), 'coach marks dismiss');
 ok(await page.evaluate(()=>JSON.parse(localStorage.getItem('crokerFlicks.v2')).seenCoach),
    'coach marks are remembered');
@@ -165,19 +165,30 @@ async function waitTurn(budget){
   }
   return {timeout:true};
 }
-/* Vary the kick. One fixed drag missed almost every time, so the scores stayed
-   level and the match kept going to sudden death — which has no cap, and turned
-   a 45-second test into a three-minute one at random. */
-const KICKS = [[-60,48], [55,77], [-30,80], [20,154], [70,52], [-45,95]];
-function takeKick(i){
-  return page.evaluate(k=>{
-    const cv = document.getElementById('c');
-    const r = cv.getBoundingClientRect();
-    const x0 = r.left + r.width*0.5, y0 = r.top + r.height*0.72;
-    cv.dispatchEvent(new MouseEvent('mousedown', {clientX:x0, clientY:y0, bubbles:true}));
-    window.dispatchEvent(new MouseEvent('mousemove', {clientX:x0+k[0], clientY:y0+k[1], bubbles:true}));
-    window.dispatchEvent(new MouseEvent('mouseup',   {clientX:x0+k[0], clientY:y0+k[1], bubbles:true}));
-  }, KICKS[i % KICKS.length]);
+/* Vary the kick. One fixed gesture missed almost every time, so the scores
+   stayed level and the match kept going to sudden death — which has no cap,
+   and turned a 45-second test into a three-minute one at random. Swipes are
+   dispatched with real delays because the model reads pace off the clock. */
+const KICKS = [
+  [[ 18,-40],[ 40,-80],[ 62,-120]],
+  [[-18,-40],[-40,-80],[-62,-120]],
+  [[  0,-70],[  0,-150],[  0,-230],[0,-300]],
+  [[ 30,-30],[ 60,-60],[ 90,-88]],
+  [[  0,-40],[ 16,-78],[ 44,-104]],
+  [[-30,-50],[-58,-96],[-82,-138]],
+];
+async function takeKick(i){
+  const pts = KICKS[i % KICKS.length];
+  const at = (type, dx, dy) => page.evaluate(a => {
+    const cv = document.getElementById('c'), r = cv.getBoundingClientRect();
+    const ev = new MouseEvent(a[0], {clientX:r.left+r.width*0.5+a[1],
+                                     clientY:r.top+r.height*0.78+a[2], bubbles:true});
+    (a[0] === 'mousedown' ? cv : window).dispatchEvent(ev);
+  }, [type, dx, dy]);
+  await at('mousedown', 0, 0);
+  for(const d of pts){ await at('mousemove', d[0], d[1]); await page.waitForTimeout(18); }
+  const last = pts[pts.length-1];
+  await at('mouseup', last[0], last[1]);
 }
 let turn = await waitTurn(), kicks = 0;
 for(; kicks<30 && !turn.end && !turn.timeout; kicks++){
@@ -262,64 +273,121 @@ const tell = await page.evaluate(()=>{
 });
 ok(tell.sim === 40, 'the seeded core still replays with the tell in place');
 
-log('\n— aiming: reticle, elevation and the accuracy cone —');
+log('\n— the swipe reads the shot —');
+/* Probed on the training ground: no clock, no opponent, and the next kick is
+   handed straight back, so each gesture is measured in isolation instead of
+   racing a shootout. */
+await quitToMenu();
+await page.click('#bTrain');
+await page.waitForTimeout(900);
+
+async function waitAim(){
+  for(let i=0;i<60;i++){
+    if(await page.evaluate(()=>window.CF.canAim)) return true;
+    if(await page.evaluate(()=>window.CF.canKeep))
+      await page.evaluate(()=>window.CF.keepAt(0, 1.2));
+    await page.waitForTimeout(200);
+  }
+  return false;
+}
+/* Dispatch a real swipe: points go out with genuine delays, because the model
+   reads pace off the clock and a burst of same-tick events is not a gesture. */
+async function swipe(points, stepMs){
+  const ready = await waitAim();
+  if(!ready) return {failed:true};
+  const at = (type, dx, dy) => page.evaluate(a => {
+    const cv = document.getElementById('c'), r = cv.getBoundingClientRect();
+    const ev = new MouseEvent(a[0], {clientX:r.left+r.width*0.5+a[1],
+                                     clientY:r.top+r.height*0.78+a[2], bubbles:true});
+    (a[0] === 'mousedown' ? cv : window).dispatchEvent(ev);
+  }, [type, dx, dy]);
+  await at('mousedown', 0, 0);
+  for(const d of points){ await at('mousemove', d[0], d[1]); await page.waitForTimeout(stepMs); }
+  const read = await page.evaluate(()=>({
+    aim: window.CF.aimState,
+    zone: window.CF.litZone,
+    elevTxt: document.getElementById('elevNum').textContent,
+    dial: document.getElementById('curlNeedle').style.width,
+  }));
+  const last = points[points.length-1];
+  await at('mouseup', last[0], last[1]);
+  await page.waitForTimeout(150);
+  return read;
+}
+
+const quick = await swipe([[0,-30],[0,-60],[0,-90],[0,-120]], 12);
+const slow  = await swipe([[0,-30],[0,-60],[0,-90],[0,-120]], 95);
+ok(!quick.failed && !slow.failed, 'the probes landed on a live kick');
+ok(quick.aim.power > slow.aim.power + 0.2,
+   'swiping faster strikes it harder', JSON.stringify([quick.aim.power, slow.aim.power]));
+ok(Math.abs(quick.aim.elev - slow.aim.elev) < 0.08,
+   'pace does not drag the loft with it', JSON.stringify([quick.aim.elev, slow.aim.elev]));
+
+const long  = await swipe([[0,-60],[0,-130],[0,-200],[0,-270],[0,-330]], 25);
+const short = await swipe([[0,-25],[0,-50],[0,-70]], 25);
+ok(long.aim.elev > short.aim.elev + 0.25,
+   'swiping further lifts it', JSON.stringify([long.aim.elev, short.aim.elev]));
+ok(/lofted|floated/.test(long.elevTxt) && /low|driven/.test(short.elevTxt),
+   'and the readout names both', long.elevTxt + ' vs ' + short.elevTxt);
+
+const right = await swipe([[12,-40],[26,-80],[42,-120]], 20);
+const left  = await swipe([[-12,-40],[-26,-80],[-42,-120]], 20);
+ok(right.aim.aimM > 0.8, 'swiping right aims right', JSON.stringify(right.aim));
+ok(left.aim.aimM < -0.8, 'swiping left aims left', JSON.stringify(left.aim));
+const wide = await swipe([[46,-38],[96,-72],[150,-104]], 20);
+ok(Math.abs(wide.aim.aimM) > 3.3 && wide.zone && !wide.zone.lit,
+   'swiping hard across sends it outside the posts, and nothing lights',
+   JSON.stringify([wide.aim.aimM, wide.zone]));
+
+log('\n— the target area lights up as you swipe —');
+ok(quick.zone && quick.zone.lit, 'a zone is lit while swiping', JSON.stringify(quick.zone));
+ok(right.zone && left.zone && right.zone.col > left.zone.col,
+   'aiming to the other side lights the other side',
+   JSON.stringify([right.zone, left.zone]));
+ok(long.zone && long.zone.over, 'a long sweep lights the band over the bar',
+   JSON.stringify(long.zone));
+
+log('\n— curl follows the finger —');
+const straight = await swipe([[0,-30],[0,-60],[0,-90],[0,-120],[0,-150]], 18);
+const hooked   = await swipe([[0,-30],[0,-60],[14,-92],[42,-116],[76,-132]], 18);
+const mirror   = await swipe([[0,-30],[0,-60],[-14,-92],[-42,-116],[-76,-132]], 18);
+const curls = {straight:straight.aim.curl, hooked:hooked.aim.curl, mirror:mirror.aim.curl};
+ok(Math.abs(curls.straight) < 0.12, 'a straight swipe has no bend', JSON.stringify(curls));
+ok(Math.abs(curls.hooked) > 0.3, 'bending the swipe bends the ball', JSON.stringify(curls));
+ok(Math.sign(curls.hooked) === -Math.sign(curls.mirror),
+   'mirroring the bend mirrors it', JSON.stringify(curls));
+ok(hooked.dial !== '' && hooked.dial !== '0%', 'the curl dial moves with it',
+   'straight=' + straight.dial + ' hooked=' + hooked.dial);
+
+log('\n— no clock on the training ground —');
+const tclock = await page.evaluate(()=>({
+  bar: document.getElementById('shotbar').className, n: window.CF.stateName,
+}));
+ok(!tclock.bar.includes('show'), 'training is untimed', JSON.stringify(tclock));
+await waitAim();
+await page.waitForTimeout(1600);
+ok(await page.evaluate(()=>window.CF.canAim),
+   'and it stays your kick for as long as you like',
+   await page.evaluate(()=>window.CF.stateName));
+
+log('\n— the shot clock —');
 await quitToMenu();
 await page.click('#bQuick');
 await page.waitForTimeout(900);
-
-/* Run a drag and read what the game made of it, then back the finger out to
-   the anchor so the shot is NOT taken — otherwise every probe costs a kick
-   and the match is over before the next assertion. */
-async function gesture(points){
-  for(let i=0;i<40;i++){
-    if(await page.evaluate(()=>window.CF.canAim)) break;
-    await page.waitForTimeout(200);
-  }
-  return page.evaluate(pts => {
-    const cv = document.getElementById('c'), r = cv.getBoundingClientRect();
-    const x0 = r.left + r.width*0.5, y0 = r.top + r.height*0.55;
-    cv.dispatchEvent(new MouseEvent('mousedown', {clientX:x0, clientY:y0, bubbles:true}));
-    for(const [dx,dy] of pts)
-      window.dispatchEvent(new MouseEvent('mousemove', {clientX:x0+dx, clientY:y0+dy, bubbles:true}));
-    const read = window.CF.aimState;
-    const elevTxt = document.getElementById('elevNum').textContent;
-    const dial = document.getElementById('curlNeedle').style.width;
-    // cancel: back to the anchor drops the power under the firing threshold
-    window.dispatchEvent(new MouseEvent('mousemove', {clientX:x0, clientY:y0, bubbles:true}));
-    window.dispatchEvent(new MouseEvent('mouseup',   {clientX:x0, clientY:y0, bubbles:true}));
-    return {read, elevTxt, dial};
-  }, points);
-}
-
-const down = await gesture([[0,30],[0,60],[0,90],[0,120]]);
-ok(Math.abs(down.read.aimM) < 0.2, 'a straight-down pull aims down the middle', JSON.stringify(down.read));
-ok(down.read.elev > 0.9, 'a straight-down pull is lofted', JSON.stringify(down.read));
-ok(down.read.power > 0.5, 'pull length still sets the power', JSON.stringify(down.read));
-
-const flat = await gesture([[40,-12],[80,-25],[120,-38]]);
-ok(flat.read.aimM < -1.5, 'pulling right aims left, slingshot style', JSON.stringify(flat.read));
-ok(flat.read.elev < 0.4, 'pulling up under the ball drives it low', JSON.stringify(flat.read));
-ok(/low|driven|level|floated|lofted/.test(flat.elevTxt), 'the elevation is named on screen', flat.elevTxt);
-
-// power and elevation are genuinely independent now
-const softHigh = await gesture([[0,20],[0,40]]);
-const hardHigh = await gesture([[0,60],[0,120],[0,180]]);
-ok(Math.abs(softHigh.read.elev - hardHigh.read.elev) < 0.05 &&
-   hardHigh.read.power - softHigh.read.power > 0.3,
-   'power moves without dragging elevation with it',
-   JSON.stringify([softHigh.read, hardHigh.read]));
-
-log('\n— curl follows the finger —');
-const straight = await gesture([[0,20],[0,40],[0,60],[0,80],[0,100],[0,120]]);
-const hooked   = await gesture([[0,20],[0,40],[0,60],[16,80],[38,96],[64,108]]);
-const mirror   = await gesture([[0,20],[0,40],[0,60],[-16,80],[-38,96],[-64,108]]);
-const curls = {straight:straight.read.curl, hooked:hooked.read.curl, mirror:mirror.read.curl};
-ok(Math.abs(curls.straight) < 0.1, 'a straight pull has no bend', JSON.stringify(curls));
-ok(Math.abs(curls.hooked) > 0.35, 'hooking the pull bends it', JSON.stringify(curls));
-ok(Math.sign(curls.hooked) === -Math.sign(curls.mirror),
-   'mirroring the hook mirrors the bend', JSON.stringify(curls));
-ok(hooked.dial !== '' && hooked.dial !== '0%', 'the curl dial moves with it',
-   'straight=' + straight.dial + ' hooked=' + hooked.dial);
+const clock0 = await page.evaluate(()=>({
+  shown: document.getElementById('shotbar').className, left: window.CF.shotClock,
+}));
+ok(clock0.shown.includes('show'), 'the clock is showing on a kick', clock0.shown);
+ok(clock0.left > 0 && clock0.left <= 5.01, 'it starts at five seconds', String(clock0.left));
+await page.waitForTimeout(1500);
+const clock1 = await page.evaluate(()=>window.CF.shotClock);
+ok(clock1 < clock0.left - 1, 'it runs down', clock0.left + ' -> ' + clock1);
+await page.waitForTimeout(4200);
+const after = await page.evaluate(()=>({
+  n: window.CF.stateName, bar: document.getElementById('shotbar').className,
+}));
+ok(after.n !== 'AIM', 'running it down takes the kick anyway', JSON.stringify(after));
+ok(!after.bar.includes('show'), 'and stops the clock', after.bar);
 
 log('\n— wind is spelled out —');
 const windUI = await page.evaluate(()=>({
@@ -337,19 +405,27 @@ log('\n— you play in goal —');
 await quitToMenu();
 await page.click('#bQuick');
 await page.waitForTimeout(900);
-let sawKeep = false, keepState = null;
-for(let i=0;i<40 && !sawKeep;i++){
+/* Budget by the clock, not by iterations, and keep a trace: when this fails
+   the useful question is which states it actually saw, not that it gave up. */
+let sawKeep = false, keepState = null, seen = [], kicks2 = 0;
+const deadline = Date.now() + 45000;
+while(!sawKeep && Date.now() < deadline){
   const st = await page.evaluate(()=>({
     n: window.CF.stateName, keep: window.CF.canKeep, aim: window.CF.canAim,
+    goalie: window.CF.goalieOn,
     end: !document.getElementById('ovEnd').classList.contains('hidden'),
+    rank: !document.getElementById('ovRank').classList.contains('hidden'),
     bar: document.getElementById('keepbar').className,
   }));
+  if(seen[seen.length-1] !== st.n) seen.push(st.n);
   if(st.keep){ sawKeep = true; keepState = st; break; }
+  if(st.rank){ await page.click('#bRankOn'); continue; }
   if(st.end){ await page.click('#bAgain'); await page.waitForTimeout(900); continue; }
-  if(st.aim) await takeKick(i);
-  await page.waitForTimeout(350);
+  if(st.aim){ await takeKick(kicks2++); }
+  await page.waitForTimeout(160);
 }
-ok(sawKeep, "the opponent's kick hands you the gloves", JSON.stringify(keepState));
+ok(sawKeep, "the opponent's kick hands you the gloves",
+   'states seen: ' + seen.join('>') + ' after ' + kicks2 + ' kicks');
 if(sawKeep){
   ok(keepState.bar.includes('show'), 'the save clock is showing', keepState.bar);
   const before = await page.evaluate(()=>window.CF.stateName);

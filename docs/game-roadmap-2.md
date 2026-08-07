@@ -718,3 +718,85 @@ are what the online record contains, so server re-simulation is untouched.
   browser contexts.
 - A balance sweep over elevation × aim × power × tier, which is how the dead
   band and the flag placement were both caught.
+
+---
+
+# Third pass — the aiming system, rebuilt
+
+The pull-back is gone. You no longer wind up a slingshot behind the ball; you
+draw the shot you want and it goes where you drew it.
+
+## One gesture, four numbers
+
+    direction   where the finger is heading as you release   -> the line
+    speed       how fast you moved                           -> the pace
+    length      how far the swipe travelled                  -> the loft
+    curvature   how much the path bent                       -> the bend
+
+So a quick short flick is a low drive, a long slow sweep is a lob over the
+bar, and a fast curved swipe is a driven curler. Nothing is inverted any
+more — the old model asked you to pull right to send it left, which needed a
+coaching card to explain and never stopped feeling backwards.
+
+The four values the physics reads (`power`, `aimM`, `elev`, `curl`) are
+exactly the same four as before, only derived differently, so the input
+record, `functions/_lib/sim.js` and every parity guarantee are untouched.
+
+Implementation notes worth knowing:
+
+- Samples carry timestamps, and pace is measured over a **110ms window** with
+  a floor on the interval, because a burst of same-tick pointer events is not
+  a gesture and would otherwise read as infinite speed.
+- The line comes from the **tail** of the swipe, not the whole thing, which is
+  what makes correcting halfway through actually work.
+- A swipe going away from the goal, or one too short to read, is not a shot.
+  It costs the clock, not the kick.
+
+## The shot clock
+
+Five seconds. The bar sits under the rank strip and turns pink under a third.
+Run it down and he takes it on anyway — 22% power, level, wherever you were
+pointing — because a penalty is not a puzzle you get to solve at leisure.
+Training has no clock, since that is where you are meant to dither. The clock
+stops for a pause, a promotion screen and the coaching cards.
+
+## The target area
+
+Six panels inside the frame plus the band over the bar. The one your shot is
+heading for **lights up and pulses** as you swipe, with the precise crosshair
+and the accuracy cone still on top of it — the zone is what you can read at a
+glance while your thumb is moving, the crosshair is for the last adjustment.
+
+Heading outside the posts used to light nothing at all, which reads exactly
+like a preview that has stopped working. The post you are missing now flashes
+with **WIDE** written across it.
+
+## The keeper, the same way
+
+Picking a pixel on the goal was a different verb from taking a shot. Diving is
+a swipe too now: across for a low dive to that side, up and across for full
+stretch into the corner, straight up for a leap down the middle, and a short
+swipe keeps you near your line. The area you would cover lights up in the same
+six panels, with your glove radius drawn on it, and the save clock is
+unchanged at 3.2 seconds.
+
+## What this cost, and what it caught
+
+- The gesture probes had to move to the **training ground**. Run against a
+  shootout they were racing the shot clock and the keeper's turn, and half of
+  them were reading stale values from the previous probe — which is exactly
+  the kind of green-looking nonsense that hides a real regression.
+- The layout probe found the **shot clock sitting directly on top of the stake
+  chips** — both pinned at 158px. The clock took the slot, the wagering moved
+  down, and the probe now watches those pairs.
+- It also had to learn two things: that an element with `text-overflow:
+  ellipsis` is *allowed* to truncate, and that an element at zero opacity
+  cannot collide with anything. Both were producing failures that were about
+  the probe rather than the page.
+
+## Verification
+
+`npm test` (parity 120/120, determinism 40/40), `npm run test:ui` (smoke and
+layout), `npm run test:daily`, `npm run test:balance`. The smoke suite gained
+sections for pace-versus-loft independence, direction, the lit zone, going
+wide, the curl sign, and the clock running down to a rushed strike.
