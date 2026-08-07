@@ -13,7 +13,9 @@ const PW = process.env.PLAYWRIGHT_PATH || '/opt/node22/lib/node_modules/playwrig
 const GAME = process.env.GAME_URL || 'file://' + new URL('../game.html', import.meta.url).pathname;
 
 /* a spread of records: every tier, both wall states, spots from 11m to 47m,
-   curl in both directions, powers from a dink to a rocket */
+   curl in both directions, powers from a dink to a rocket, and elevation
+   across its whole range — including left undefined, which must still
+   reproduce the old power-coupled flight exactly */
 function records(n){
   const out = [];
   const spots = [[0,11],[12,45],[-24,38],[33,34],[-6,32],[30,20],[-36,26],[2,16]];
@@ -26,6 +28,8 @@ function records(n){
       power: 0.18 + ((i*17) % 78) / 100,
       aimM:  -3.2 + ((i*23) % 65) / 10,
       curl:  -0.9 + ((i*13) % 19) / 10,
+      // every seventh record omits elevation, exercising the fallback
+      elev:  (i % 7 === 0) ? undefined : ((i*29) % 101) / 100,
       x: s[0], z: s[1],
       wall: [0,0,3,4,2][i % 5],
       weather: i % 4,
@@ -43,6 +47,7 @@ for(const bad of [
   {kickIndex:0, power:1.6, aimM:0}, {kickIndex:0, power:0.5, aimM:99},
   {kickIndex:-1, power:0.5, aimM:0}, {kickIndex:0, power:0.5, aimM:0, curl:4},
   {kickIndex:0, power:0.5, aimM:0, difficulty:'godmode'},
+  {kickIndex:0, power:0.5, aimM:0, elev:1.4},
 ]) if(validateRecord(bad)) badRejected++;
 
 const serverOut = RECS.map(serverSim);
@@ -70,13 +75,13 @@ serverOut.forEach(r => spread[r.outcome] = (spread[r.outcome]||0) + 1);
 
 console.log('records            : ' + RECS.length);
 console.log('outcome spread     : ' + JSON.stringify(spread));
-console.log('bad records rejected: ' + badRejected + '/5');
+console.log('bad records rejected: ' + badRejected + '/6');
 console.log('server == client   : ' + (RECS.length - mismatches) + '/' + RECS.length);
 for(const m of firstFew){
   console.log('  MISMATCH #' + m.i);
   console.log('    server ' + JSON.stringify(m.server));
   console.log('    client ' + JSON.stringify(m.client));
 }
-const pass = mismatches === 0 && badRejected === 5;
+const pass = mismatches === 0 && badRejected === 6;
 console.log(pass ? '\nSIM PARITY: PASS' : '\nSIM PARITY: FAIL');
 process.exit(pass ? 0 : 1);

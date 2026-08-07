@@ -13,7 +13,8 @@
  *      through the browser build and fails on any divergence.
  *
  * The draw order from the seeded stream is part of the contract:
- *   wind (2) -> keeper reaction (1) -> contact slip (1) -> keeper read (2)
+ *   wind (2) -> keeper reaction (1) -> keeper lean (1) -> contact slip (1)
+ *   -> keeper read (2)
  */
 
 export const CFG = {
@@ -21,11 +22,13 @@ export const CFG = {
   BALL_R: 0.28, BALL_PHYS: 0.11, G: 9.81, DRAG: 0.010,
   CURL: 14, WALL_GAP: 13,
 };
+/* how far off centre a full pre-kick lean puts the keeper, in metres */
+const KEEPER_LEAN = 0.75;
 export const TWO_PT_R = 40;
 const HW = CFG.GOAL_W / 2;
 
 export const DIFF = {
-  junior:       {rMin:.25, rMax:.35, dur:.52, reach:.42, range:1.70, err:.95},
+  junior:       {rMin:.25, rMax:.35, dur:.52, reach:.42, range:1.90, err:.95},
   intermediate: {rMin:.22, rMax:.31, dur:.47, reach:.45, range:2.05, err:.68},
   senior:       {rMin:.19, rMax:.27, dur:.43, reach:.48, range:2.32, err:.46},
   allireland:   {rMin:.15, rMax:.22, dur:.38, reach:.52, range:2.28, err:.30},
@@ -88,20 +91,24 @@ export function simulate(rec){
   const windKmh = Math.abs(wind) * gRand(3,24);
   const windAcc = wind * (windKmh/24) * 5.2;
 
+  const react = gRand(diff.rMin, diff.rMax);
+  const lean  = gRand(-1, 1);
   const keeper = {
-    wx:0, wy:0, tx:0, ty:1.35, side:1, dive:0, committed:false,
-    react: gRand(diff.rMin, diff.rMax),
+    wx: lean * KEEPER_LEAN * 0.56, wy:0, tx:0, ty:1.35, side:1, dive:0, committed:false,
+    lean: lean, wx0: lean * KEEPER_LEAN,
+    react: react,
     dur: diff.dur, reach: diff.reach, range: diff.range, err: diff.err,
   };
 
   const power = clamp(rec.power, 0, 1);
   const curl  = clamp(rec.curl || 0, -1, 1);
-  const slip  = gRand(-0.17, 0.17) * (0.55 + power);
+  const elev  = rec.elev === undefined ? power : clamp(rec.elev, 0, 1);
+  const slip  = gRand(-0.17, 0.17) * (0.30 + power*0.85);
   const aimM  = (rec.aimM || 0) + slip;
 
   // launch
   const tR = clamp((shotDist-CFG.PEN_Z)/34, 0, 1);
-  const th = lerp(lerp(9,24,tR), lerp(20,40,tR), power) * D_PI/180;
+  const th = lerp(lerp(8,22,tR), lerp(26,44,tR), elev) * D_PI/180;
   const S  = lerp(lerp(13,20,tR), lerp(27,28,tR), power) * (1 - weather.wet*0.07);
   const hyp = dhyp2(aimM, shotDist);
   const ch  = S*dcos(th);
@@ -115,7 +122,8 @@ export function simulate(rec){
 
   function keeperHand(){
     const e = ease(keeper.dive);
-    return {x: lerp(keeper.side*0.42, keeper.tx, e), y: lerp(1.42, keeper.ty, e)};
+    return {x: lerp(keeper.wx0 + keeper.side*0.42, keeper.tx, e),
+            y: lerp(1.42, keeper.ty, e)};
   }
   function keeperUpdate(t){
     if(!keeper.committed){
@@ -133,7 +141,7 @@ export function simulate(rec){
     const dt = Math.max(0, t - keeper.react);
     keeper.dive = clamp(dt / keeper.dur, 0, 1);
     const e = ease(keeper.dive);
-    keeper.wx = lerp(0, keeper.tx*0.56, e);
+    keeper.wx = lerp(keeper.wx0*0.56, keeper.tx*0.56, e);
     keeper.wy = lerp(0, Math.max(0, keeper.ty*0.52 - 0.14), e);
   }
   function evaluateAtPlane(bx, by){
@@ -220,6 +228,7 @@ export function validateRecord(rec){
   if(typeof rec.power !== 'number' || rec.power < 0 || rec.power > 1) return 'power';
   if(typeof rec.aimM !== 'number' || Math.abs(rec.aimM) > 6) return 'aimM';
   if(rec.curl !== undefined && (typeof rec.curl !== 'number' || Math.abs(rec.curl) > 1)) return 'curl';
+  if(rec.elev !== undefined && (typeof rec.elev !== 'number' || rec.elev < 0 || rec.elev > 1)) return 'elev';
   if(rec.difficulty && !DIFF[rec.difficulty]) return 'difficulty';
   if(rec.wall !== undefined && (!Number.isInteger(rec.wall) || rec.wall < 0 || rec.wall > 5)) return 'wall';
   if(rec.weather !== undefined && (!Number.isInteger(rec.weather) || rec.weather < 0 || rec.weather > 3)) return 'weather';

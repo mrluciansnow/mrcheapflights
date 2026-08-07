@@ -594,3 +594,127 @@ Folded into the twenty above where they overlap, and shipped together:
 Run with `npm test` (physics), `npm run test:ui` (interface and layout),
 `npm run test:daily` (the shared board) and `npm run test:api` (the
 multiplayer endpoints).
+
+---
+
+# Second upgrade pass — the six fixes, and twenty changes
+
+Six things were named directly; the twenty below are how they were delivered
+plus what came with them. Anything touching the flight had to land identically
+in `game.html` and `functions/_lib/sim.js` or online play desynchronises, so
+the physics went first and everything else was built on a green parity run.
+
+## The seeded draw order changed
+
+The contract is now:
+
+    wind (2) -> keeper reaction (1) -> keeper lean (1) -> contact slip (1)
+    -> keeper read (2)
+
+`elev` is a new optional field on the input record. Left undefined it falls
+back to `power`, which reproduces the old power-coupled flight exactly, so
+records written before this replay unchanged — `tests/sim-parity.mjs` covers
+both the supplied and the omitted case.
+
+## Aiming
+
+1. **Elevation is its own axis.** `power` used to decide how hard *and* how
+   high, which meant a low driven shot did not exist: every hard strike was
+   also a high one. The drag now reads three things — length is power, the
+   sideways component is aim, the vertical component is elevation — and
+   `shotParams(power, elev)` keeps them apart.
+2. **The aim response is curved**, not linear in screen pixels. A 20-pixel
+   wobble used to move the ball three quarters of a metre at the goal line.
+   It is soft either side of centre and firm out at the posts, and reaches
+   ±4.2m so you can aim outside a post and bend it back.
+3. **Contact scatter re-tuned** to `0.30 + power*0.85` — a placed shot is
+   placeable, a rocket still strays — and **drawn as an accuracy cone** at the
+   reticle, so the risk of a harder strike is visible rather than felt.
+4. **An aim reticle on the goal itself**, always on. It shows intent: where
+   the ball crosses with no wind, no curl and a perfect strike. The dashed
+   flight prediction stays optional, and still pays 25% more points when off.
+5. **Elevation is named on screen** — low & hard / driven / level / floated /
+   lofted.
+
+Measured after the change (220 seeds a cell, penalty spot): elevation ≤0.55 is
+goal territory, ≥0.70 clears for a point, and the seam between them is the top
+corner. Best available corner by tier: Junior 100%, Intermediate 97%, Senior
+76%, All-Ireland 34%. An earlier cut had a dead band at elevation 0.75–0.95
+that returned nothing at all at any aim; widening the launch angle from 9–20°
+to 8–26° at close range fixed it.
+
+## Wind
+
+6. **A strength bar and plain English** in the gauge — CALM / LIGHT / FRESH /
+   STRONG, and L→R or R→L — instead of a bare number and an arrow that told
+   you the wind existed but not what it would do.
+7. **Endline flags** either side of the goal that stream with the wind and
+   snap harder the stronger it blows, so the wind is readable in the same
+   frame as the shot. They were first placed at ±9.5m, which is off the side
+   of a phone; measuring the projection moved them to ±5.0m.
+8. **A drift arrow** from the intent reticle to the predicted crossing point.
+   The gap between the two *is* the wind plus your curl, drawn.
+
+## Curl
+
+9. **The measure now follows the finger.** It used to average the bow of the
+   whole drag away from its chord, so the first half of a long straight pull
+   diluted a late hook to almost nothing — you could turn hard and watch the
+   number barely move. It measures the turn between the first and second half
+   of the swipe instead, so correcting mid-drag does what it looks like it
+   should.
+10. **The gesture is drawn**: your finger's path, the straight chord it would
+    have taken, and the trail turning blue once the bend is real.
+11. **A curl dial** filling out from centre in the direction the ball will bend.
+
+## Reading the players
+
+12. **The keeper leans before the kick.** A seeded weight shift of up to 0.75m,
+    and his dive starts from there. Measured: shooting *with* his lean scores
+    15%, *against* it 25%, at the same corner — so reading him and going the
+    other way is worth something and going with him is punished.
+13. **The kicker opens his stance toward the target** as you aim, and his
+    swing comes across the body when the shot is aimed away from his standing
+    foot. There is now something to read on both sides of the ball.
+14. **The kicker wears the shooting county's colours** — *fix*. He always wore
+    yours, even when he was the opposition. Nobody noticed while you never
+    looked at him; standing in goal you look at nothing else.
+
+## Playing in goal
+
+15. **The opponent's kick is now yours to save.** A new `ST.KEEP` state hands
+    you the gloves for 3.2 seconds: touch the goal to place your dive, or use
+    the arrow keys and space. Committing before he strikes is the whole cost —
+    the keeper cannot wait and see and neither can you.
+16. **Your glove radius is drawn** at the dive you have chosen, so a near miss
+    is not a mystery.
+17. **Saves are recorded** — a save percentage on the menu and in the
+    end-of-match stats, and a *Shot Stopper* award for three saves in a match.
+    Off by default? No: on, and switchable in Settings.
+
+Only the opponent's kicks are affected, and only local ones — your own kicks
+are what the online record contains, so server re-simulation is untouched.
+
+## The shop
+
+18. **Shelved by county.** Your county's shelf first (the pattern kits, which
+    render in whatever county you have picked), then that county's own
+    heritage kit pulled out and marked, then everyone else's, with an
+    owned/total count per shelf.
+19. **Goalkeeper jerseys** — six of them, worn by your own keeper. His shirt
+    was a hard-coded hi-vis yellow, which meant the one player you stare at
+    while defending had nothing to buy.
+20. **Match balls** — six finishes including one panelled in your county
+    colours. Cosmetic only: every ball flies the same, and the shop says so.
+
+## Verification
+
+- `npm test` — server/client parity 120/120 with elevation covered in both the
+  supplied and omitted form, 6/6 malformed records rejected, determinism 40/40.
+- `npm run test:ui` — the smoke suite grew sections for the aim axes, the curl
+  measure (straight / hooked / mirrored), the wind readout, the whole keeper
+  flow, and the shop shelves. Layout still clean at three screen sizes.
+- `npm run test:daily` — the shared daily board still identical across two
+  browser contexts.
+- A balance sweep over elevation × aim × power × tier, which is how the dead
+  band and the flag placement were both caught.

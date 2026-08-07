@@ -11,7 +11,8 @@
     "db:mp": "wrangler d1 execute mrcheapflights-prod --local --file=migrations/0006_multiplayer.sql",
     "db:mp:remote": "wrangler d1 execute mrcheapflights-prod --remote --file=migrations/0006_multiplayer.sql",
     "test:ui": "node tests/ui-smoke.mjs && node tests/layout.mjs",
-    "test:daily": "node tests/daily.mjs"
+    "test:daily": "node tests/daily.mjs",
+    "test:balance": "node tests/balance.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

@@ -54,7 +54,15 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 .rec{position:absolute;top:.5rem;right:.7rem;text-align:right;font-weight:900}
 .rec .l{font-size:.52rem;letter-spacing:.14em;opacity:.45}
 .rec .v{font-family:'Bebas Neue',sans-serif;font-size:1.75rem;line-height:1;color:var(--sky)}
-.warrow{font-size:1.05rem;line-height:1;color:var(--sky);display:block;margin:1px 0}
+.warrow{font-size:1.05rem;line-height:1;color:var(--sky);display:block;margin:1px 0;
+  transition:transform .3s}
+.wbar{width:38px;height:4px;border-radius:3px;background:rgba(255,255,255,.14);
+  overflow:hidden;margin:3px auto 0}
+.wbar span{display:block;height:100%;width:0%;border-radius:3px;
+  background:linear-gradient(90deg,#7ee0a0,var(--yellow) 55%,var(--hot-pink));
+  transition:width .35s}
+.wdesc{font-size:.44rem;font-weight:900;letter-spacing:.08em;opacity:.55;margin-top:2px;
+  white-space:nowrap}
 
 /* shot-height meter */
 .meter{position:absolute;left:11px;bottom:74px;width:13px;height:210px;border-radius:9px;
@@ -73,6 +81,12 @@ body.dragging .readout{opacity:1}
   text-shadow:0 2px 10px rgba(0,0,0,.7);font-variant-numeric:tabular-nums}
 .readout .crl{font-size:.62rem;font-weight:900;letter-spacing:.06em;color:rgba(255,255,255,.45);
   text-shadow:0 2px 8px rgba(0,0,0,.8)}
+.curldial{position:relative;display:block;width:74px;height:5px;border-radius:3px;
+  background:rgba(255,255,255,.14);margin-top:3px}
+.curldial::before{content:'';position:absolute;left:50%;top:-2px;width:1px;height:9px;
+  background:rgba(255,255,255,.35)}
+.curldial i{position:absolute;top:0;bottom:0;width:0%;left:50%;border-radius:3px;
+  background:var(--sky);box-shadow:0 0 8px rgba(0,170,255,.7);transition:none}
 
 .prompt{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);white-space:nowrap;pointer-events:none;
   background:rgba(4,13,22,.78);border:1px solid rgba(255,210,0,.28);border-radius:40px;
@@ -223,6 +237,15 @@ body.dragging .betbar,body.dragging .prompt,body.dragging .comm{pointer-events:n
 .stake.off{opacity:.3;cursor:not-allowed}
 .betnote{margin-top:.3rem;padding:0 18px;font-size:.58rem;font-weight:800;
   letter-spacing:.05em;opacity:.55;line-height:1.4}
+.keepbar{position:absolute;left:50%;top:158px;transform:translate(-50%,-8px);
+  opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;text-align:center}
+.keepbar.show{opacity:1;transform:translate(-50%,0)}
+.keeplbl{font-size:.56rem;font-weight:900;letter-spacing:.18em;color:var(--sky);
+  text-shadow:0 2px 8px rgba(0,0,0,.8)}
+.keeptrack{width:150px;height:5px;border-radius:3px;background:rgba(255,255,255,.16);
+  overflow:hidden;margin:4px auto 0}
+.keeptrack span{display:block;height:100%;width:100%;border-radius:3px;
+  background:linear-gradient(90deg,var(--hot-pink),var(--yellow) 60%,#7ee0a0)}
 .spotbtn{position:absolute;left:50%;top:158px;transform:translateX(-50%);
   pointer-events:auto;display:none}
 body.dragging .spotbtn{opacity:.25;pointer-events:none}
@@ -247,6 +270,14 @@ body.dragging .spotbtn{opacity:.25;pointer-events:none}
 .kit.shake{animation:shk .4s}
 @keyframes shk{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
 .kitsw{width:26px;height:32px;border-radius:5px;flex:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,.3)}
+.shophead{display:flex;align-items:baseline;gap:.45rem;padding:.7rem .3rem .25rem;
+  border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:.15rem}
+.shophead b{font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:.06em;
+  color:var(--yellow)}
+.shophead i{flex:1;font-style:normal;font-size:.53rem;font-weight:800;opacity:.4;
+  line-height:1.3;text-align:left}
+.shophead span{font-size:.56rem;font-weight:900;opacity:.5;font-variant-numeric:tabular-nums}
+.kitlist{scroll-behavior:smooth}
 .kitinfo{flex:1;min-width:0}
 .kitinfo b{display:block;font-size:.76rem;font-weight:900}
 .kitinfo i{display:block;font-size:.58rem;font-style:normal;opacity:.5;line-height:1.35}
@@ -404,12 +435,20 @@ window.addEventListener('error', function(e){
 
   <div class="gauge" id="gDist"><div class="l">DIST</div><div class="v" id="distV">11m</div></div>
   <div class="rec" id="rec" style="display:none"><div class="l">YOUR BEST</div><div class="v" id="recV">0</div></div>
-  <div class="gauge" id="gWind"><div class="l">WIND</div><span class="warrow" id="wArr">→</span><div class="v" id="wVal">0.0</div></div>
+  <div class="gauge" id="gWind">
+    <div class="l">WIND</div>
+    <span class="warrow" id="wArr">→</span>
+    <div class="v" id="wVal">0.0</div>
+    <div class="wbar"><span id="wFill"></span></div>
+    <div class="wdesc" id="wDesc">calm</div>
+  </div>
 
   <div class="readout" id="readout">
     <span class="pwr" id="pwrNum">0%</span>
-    <span class="crl" id="curlNum">straight</span>
     <span class="crl" id="aimNum">down the middle</span>
+    <span class="crl" id="elevNum">level</span>
+    <span class="crl" id="curlNum">straight</span>
+    <span class="curldial"><i id="curlNeedle"></i></span>
   </div>
   <div class="mlbl">SHOT HEIGHT</div>
   <div class="meter" id="meter"><div class="mfill" id="mfill"></div><div class="mbar" id="mbar" style="bottom:78%"></div></div>
@@ -430,6 +469,10 @@ window.addEventListener('error', function(e){
 
   <button class="stake spotbtn" id="bSpot">NEXT SPOT ▸</button>
   <div class="award" id="award"></div>
+  <div class="keepbar" id="keepbar">
+    <div class="keeplbl">YOUR SAVE</div>
+    <div class="keeptrack"><span id="keepFill"></span></div>
+  </div>
   <div class="prompt" id="prompt">Drag back from the ball, then release</div>
   <div class="comm" id="comm"></div>
   <div class="res" id="res"><div class="big"></div><div class="sub"></div></div>
@@ -496,7 +539,7 @@ window.addEventListener('error', function(e){
 <div class="ov hidden" id="ovKit">
   <div class="sub">The Kitbag</div>
   <div class="ttl" style="font-size:2.2rem">₡<span id="kitMoney">0</span></div>
-  <div class="gb" style="margin-bottom:.4rem">Tap to wear. Tap a locked kit to buy it.</div>
+  <div class="gb" style="margin-bottom:.4rem">Tap to wear. Tap a locked item to buy it. The county shelf follows whichever county you line out for.</div>
   <div class="kitlist" id="kitList"></div>
   <button class="btn" id="bKitClose">DONE</button>
 </div>
@@ -626,7 +669,7 @@ const TWO_PT_R = 40;
 /* Keeper skill tiers. reach/range decide how much of the goal he can cover;
    err is how badly he mis-reads the flight. */
 const DIFF = {
-  junior      : {n:'Junior',       rMin:.25, rMax:.35, dur:.52, reach:.42, range:1.70, err:.95},
+  junior      : {n:'Junior',       rMin:.25, rMax:.35, dur:.52, reach:.42, range:1.90, err:.95},
   intermediate: {n:'Intermediate', rMin:.22, rMax:.31, dur:.47, reach:.45, range:2.05, err:.68},
   senior      : {n:'Senior',       rMin:.19, rMax:.27, dur:.43, reach:.48, range:2.32, err:.46},
   allireland  : {n:'All-Ireland',  rMin:.15, rMax:.22, dur:.38, reach:.52, range:2.28, err:.30},
@@ -737,7 +780,8 @@ if(typeof CanvasRenderingContext2D !== 'undefined' &&
    reset, and read by the renderer rather than baked into it.
    ------------------------------------------------------------------ */
 const OPT_KEY = 'crokerFlicks.opts';
-let opts = {sound:true, haptics:true, preview:true, gfx:'high', lefty:false};
+let opts = {sound:true, haptics:true, preview:true, gfx:'high', lefty:false,
+            goalie:true};
 function loadOpts(){
   try{ const r = localStorage.getItem(OPT_KEY); if(r) opts = Object.assign(opts, JSON.parse(r)); }
   catch(e){ /* blocked storage: play with the defaults */ }
@@ -1322,6 +1366,46 @@ function drawGoalFrame(){
 }
 
 /* ==================================================================
+   ENDLINE FLAGS — a windsock the game already needed. The gauge says how
+   hard it is blowing; these say it in the same frame as the goal, so you
+   can read the wind without taking your eye off the shot.
+   ================================================================== */
+function drawWindFlags(){
+  const strength = clamp(windKmh/24, 0, 1);
+  const dir = wind >= 0 ? 1 : -1;
+  // just outside the posts: any further out and they fall off the sides of a
+  // phone, which is where they were until this was measured
+  for(const fx of [-5.0, 5.0]){
+    if(depthOf(fx, 0.2) < DMIN) continue;
+    const base = prj(fx, 0, 0.2), top = prj(fx, 2.05, 0.2);
+    if(base.x < -40 || base.x > W+40) continue;
+    // pole
+    ctx.strokeStyle = 'rgba(226,234,242,.85)';
+    ctx.lineWidth = Math.max(1, 0.045*top.s);
+    ctx.beginPath(); ctx.moveTo(base.x, base.y); ctx.lineTo(top.x, top.y); ctx.stroke();
+    // pennant: streams with the wind, and snaps harder the stronger it blows
+    const flutter = Math.sin(now*0.006 + fx) * (0.10 + strength*0.30);
+    const reach = (0.22 + strength*0.95) * top.s * dir;
+    const drop  = (0.30 - strength*0.22) * top.s;
+    ctx.fillStyle = CO_P === CO_C ? '#ffffff' : (dir > 0 ? '#ffffff' : '#ffffff');
+    ctx.beginPath();
+    ctx.moveTo(top.x, top.y);
+    ctx.quadraticCurveTo(top.x + reach*0.55, top.y + drop*0.30 + flutter*top.s*0.25,
+                         top.x + reach,      top.y + drop*0.55 + flutter*top.s*0.5);
+    ctx.lineTo(top.x + reach*0.92, top.y + drop*1.05 + flutter*top.s*0.4);
+    ctx.quadraticCurveTo(top.x + reach*0.45, top.y + drop*0.92,
+                         top.x,              top.y + drop*0.72);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,.18)';
+    ctx.beginPath();
+    ctx.moveTo(top.x, top.y + drop*0.72);
+    ctx.lineTo(top.x + reach*0.92, top.y + drop*1.05 + flutter*top.s*0.4);
+    ctx.lineTo(top.x + reach*0.45, top.y + drop*0.92);
+    ctx.closePath(); ctx.fill();
+  }
+}
+
+/* ==================================================================
    UMPIRES — white coats behind the endline; green flag = goal,
    white flag = point (as they'd do it at HQ)
    ================================================================== */
@@ -1383,16 +1467,25 @@ let keeper = null;
    steady Senior at every tier, so picking Junior makes the match easier
    overall instead of turning it into a free-for-all at both ends. */
 const OWN_KEEPER_TIER = 'senior';
+/* how far off centre a full lean puts him, in metres */
+const KEEPER_LEAN = 0.75;
 function newKeeper(defendingCounty, tier){
   const d = DIFF[tier || difficulty];
   /* Exactly one draw from the seeded stream, in the same place it always
      was — the tell is read off this number, it does not create a new one. */
   const react = gRand(d.rMin, d.rMax);
   const span  = (d.rMax - d.rMin) || 1;
+  /* A keeper does not stand dead centre waiting. He commits a little weight
+     to one side before the ball is struck, and that is where his dive starts
+     from — so reading the lean and going the other way is worth something,
+     and going with it is punished. */
+  const lean = gRand(-1, 1);
   return {
     co: defendingCounty,
-    wz: 0.42, wx: 0, wy: 0,
+    wz: 0.42, wx: lean * KEEPER_LEAN * 0.56, wy: 0,
     tx: 0, ty: 1.35, side: 1,
+    lean: lean,
+    wx0: lean * KEEPER_LEAN,
     react: react,
     /* 1 = as quick off the mark as this tier gets, 0 = flat-footed. Purely
        for what you can see before you strike; nothing reads it back. */
@@ -1449,12 +1542,13 @@ function keeperUpdate(k, t, b){
   const dt = Math.max(0, t - k.react);
   k.dive = clamp(dt / k.dur, 0, 1);
   const e = ease(k.dive);
-  k.wx = lerp(0, k.tx*0.56, e);
+  // the dive starts from wherever he had his weight, not from centre
+  k.wx = lerp(k.wx0*0.56, k.tx*0.56, e);
   k.wy = lerp(0, Math.max(0, k.ty*0.52 - 0.14), e);
 }
 function keeperHand(k){
   const e = ease(k.dive);
-  return { x: lerp(k.side*0.42, k.tx, e), y: lerp(1.42, k.ty, e) };
+  return { x: lerp(k.wx0 + k.side*0.42, k.tx, e), y: lerp(1.42, k.ty, e) };
 }
 function drawKeeper(k){
   if(!k) return;
@@ -1473,8 +1567,12 @@ function drawKeeper(k){
   const s = prj(k.wx, 1, k.wz).s;
   const LW = v => Math.max(1.5, v*s);
 
-  const kit  = '#cfe83c';                       // hi-vis keeper jersey
-  const trim = k.co.a;                          // county trim band
+  // your own keeper wears whatever you bought him; theirs stays a colour
+  // you will not confuse with your own
+  const gkKit = gkById(profile.gk);
+  const mine  = k.co === CO_P;
+  const kit   = mine ? gkKit.a : '#cfe83c';
+  const trim  = mine ? (gkKit.b || k.co.a) : k.co.a;
 
   // crouched "set" position that unfolds into the dive: the sharper he is
   // this kick, the lower he sits and the faster he shifts his weight
@@ -1670,14 +1768,16 @@ function drawWall(){
    THE KICKER — seen from behind, in your kit. Without him the whole
    wardrobe would be invisible, since the camera sits at his shoulder.
    ================================================================== */
-let kicker = {t:0, striking:false};
+let kicker = {t:0, striking:false, face:0};
+let strikeAim = 0;
 function kickerStrike(){ kicker.t = 0; kicker.striking = true; }
 function kickerUpdate(dt){
   if(kicker.striking){ kicker.t += dt; if(kicker.t > 1.5) kicker.striking = false; }
 }
 function drawKicker(){
   if(state===ST.TITLE || state===ST.REPLAY) return;
-  const kit = activeKit();
+  const kit = shooter==='p' ? activeKit()
+            : {pat:null, a:CO_C.a, b:CO_C.b, n:CO_C.n};
   // he stands just behind and to the side of the ball, filling the foreground
   const back = 0.35, side = 1.05;
   const wx = spot.x + shotU.x*(-back) + shotR.x*(-side);
@@ -1693,7 +1793,12 @@ function drawKicker(){
   const feet = prj(gx, 0, gz), headP = prj(gx, 1.82, gz);
   const s = feet.s, h = feet.y - headP.y;
   if(h < 20) return;
-  const cx = feet.x;
+  /* Open the stance toward wherever the shot is pointed. Held between kicks
+     too, so the last shot's shape stays readable for a beat. */
+  const shownAim = (state === ST.AIM && aiming()) ? aimM : (kicker.striking ? strikeAim : 0);
+  kicker.face += (clamp(shownAim / AIM_MAX, -1, 1) - kicker.face) * 0.18;
+  const face = kicker.face;
+  const cx = feet.x + face * h * 0.07;
 
   ctx.save();
   ctx.lineCap='round'; ctx.lineJoin='round';
@@ -1701,15 +1806,19 @@ function drawKicker(){
   ctx.fillStyle='rgba(0,0,0,.34)';
   ctx.beginPath(); ctx.ellipse(cx, feet.y, 0.44*s, 0.16*s, 0,0,6.283); ctx.fill();
 
-  // legs — the kicking leg swings through on the strike
+  // legs — the kicking leg swings through on the strike, and across the
+  // body when the shot is aimed away from the standing foot
   const swing = kicker.striking ? dsin(clamp(t*5.5,0,D_PI))*0.55 : stride;
+  const across = face * 0.55;
   const dk3='rgba(0,0,0,.22)';
   limb(ctx, cx-h*.05, feet.y-h*.46, cx-h*.09, feet.y-h*.20, h*.075, h*.055, '#2b3240', dk3);
   limb(ctx, cx-h*.09, feet.y-h*.20, cx-h*.10, feet.y,       h*.055, h*.042, '#20262f', dk3);
-  limb(ctx, cx+h*.05, feet.y-h*.46, cx+h*.10+h*swing*.45, feet.y-h*.22-h*swing*.30,
+  limb(ctx, cx+h*.05, feet.y-h*.46,
+       cx+h*.10+h*swing*.45+h*across*.10, feet.y-h*.22-h*swing*.30,
        h*.075, h*.055, '#2b3240', dk3);
-  limb(ctx, cx+h*.10+h*swing*.45, feet.y-h*.22-h*swing*.30,
-       cx+h*.12+h*swing*.85, feet.y-h*.02-h*swing*.55, h*.055, h*.042, '#20262f', dk3);
+  limb(ctx, cx+h*.10+h*swing*.45+h*across*.10, feet.y-h*.22-h*swing*.30,
+       cx+h*.12+h*swing*.85+h*across*.22, feet.y-h*.02-h*swing*.55,
+       h*.055, h*.042, '#20262f', dk3);
   // boots
   ctx.fillStyle='#f4f7fa';
   ctx.beginPath(); ctx.ellipse(cx-h*.12, feet.y+1, h*.07, h*.038, 0,0,6.283); ctx.fill();
@@ -1779,14 +1888,19 @@ function newBall(){
 }
 /* Power maps to speed AND elevation, and both scale with range: a 45m free
    needs a much higher, longer strike than an 11m penalty. */
-function shotParams(power){
+/* Power decides how hard, elevation decides how high. They used to be the
+   same number, which meant a low driven shot was simply not available: every
+   hard strike was also a high one. Passing elevation as undefined reproduces
+   the old coupling exactly, so records written before this still replay. */
+function shotParams(power, elev){
   const t  = clamp((shotDist-CFG.PEN_Z)/34, 0, 1);
-  const th = lerp(lerp(9,24,t), lerp(20,40,t), power) * Math.PI/180;
+  const el = elev === undefined ? power : clamp(elev, 0, 1);
+  const th = lerp(lerp(8,22,t), lerp(26,44,t), el) * Math.PI/180;
   const S  = lerp(lerp(13,20,t), lerp(27,28,t), power) * (1 - weather.wet*0.07);
   return {S, th};
 }
-function launchBall(power, aimM){
-  const {S, th} = shotParams(power);
+function launchBall(power, aimM, elev){
+  const {S, th} = shotParams(power, elev);
   // cos/sin of the aim angle come straight from the triangle, so atan2 and a
   // second trig pair drop out of the hot path entirely
   const hyp = dhyp2(aimM, shotDist);
@@ -1857,8 +1971,9 @@ function drawBall(){
   const r = CFG.BALL_R*p.s;
   ctx.save(); ctx.translate(p.x,p.y);
   // body
+  const skin = ballSkin();
   const gr = ctx.createRadialGradient(-r*0.34,-r*0.40,r*0.08, 0,0,r*1.05);
-  gr.addColorStop(0,'#ffffff'); gr.addColorStop(.62,'#f2f5f8'); gr.addColorStop(1,'#a9b6c2');
+  gr.addColorStop(0, skin.lo); gr.addColorStop(.62, skin.lo); gr.addColorStop(1, skin.hi);
   ctx.fillStyle=gr;
   ctx.beginPath(); ctx.arc(0,0,r,0,6.283); ctx.fill();
   // O'Neills panel seams, spinning
@@ -1866,7 +1981,7 @@ function drawBall(){
   ctx.beginPath(); ctx.arc(0,0,r,0,6.283); ctx.clip();
   ctx.rotate(b.spin*0.12);
   // O'Neills-style: a band of stitched panels around the middle
-  ctx.strokeStyle='rgba(104,118,132,.5)'; ctx.lineWidth=Math.max(.9,r*0.07);
+  ctx.strokeStyle=skin.seam; ctx.lineWidth=Math.max(.9,r*0.07);
   ctx.beginPath(); ctx.ellipse(0,0, r*0.99, r*0.34, 0, 0, 6.283); ctx.stroke();
   ctx.beginPath(); ctx.ellipse(0,0, r*0.99, r*0.34, Math.PI/2, 0, 6.283); ctx.stroke();
   ctx.strokeStyle='rgba(126,140,154,.34)'; ctx.lineWidth=Math.max(.7,r*0.05);
@@ -2072,14 +2187,17 @@ const SFX = {
 /* ==================================================================
    GAME STATE
    ================================================================== */
-const ST = {TITLE:0, AIM:1, FLIGHT:2, RESULT:3, CPU_WAIT:4, OVER:5, REPLAY:6};
+const ST = {TITLE:0, AIM:1, FLIGHT:2, RESULT:3, CPU_WAIT:4, OVER:5, REPLAY:6,
+            KEEP:7};
 let state = ST.TITLE;
 let now = 0, lastT = 0;
 let round = 1, ROUNDS = 5, sudden = false;
 let shooter = 'p';
 let P = {g:0,t:0,p:0,r:[]}, C = {g:0,t:0,p:0,r:[]};
 let wind = 0, windKmh = 0, windAcc = 0;
-let power = 0, aimM = 0, curl = 0, dragging = false, dragA = null, dragPath = [];
+let power = 0, aimM = 0, curl = 0, elev = 0.5,
+    dragging = false, dragA = null, dragPath = [];
+let strikeElev = 0.5;
 let flightT = 0, resultT = 0, cpuT = 0, shake = 0, flash = 0;
 let outcome = null, crossed = false;
 let streak = 0;
@@ -2088,6 +2206,52 @@ let lastPurse = 0, lastMatchBet = 0;
 let mode = 'championship';   // championship | quick | freekick | survival | duel
 let career = {round:0};
 let kickNo = 0, survivalLevel = 0, duelTurn = 'a', duel = null;
+
+/* ---- playing in goal ----
+   Half of a shootout is standing in the net, and the game used to watch that
+   half for you. Now the opponent's kick is yours to save: pick the spot
+   before he strikes, and live with it. Committing early is the whole cost —
+   the keeper cannot wait and see, and neither can you. */
+const KEEP_WINDOW = 3.2;        // seconds to choose
+const KEEP_REACT  = 0.06;       // he goes as the ball is struck
+let keepT = 0, keepPick = null, keepDone = false, matchSaves = 0;
+const goalieOn = () => opts.goalie && isShootout() && mode !== 'duel' && !MP.match;
+/* screen point -> a spot on the goal mouth, in metres */
+function goalPointFromScreen(px, py){
+  const L = prj(-HW, 0, 0), R = prj(HW, 0, 0);
+  const B = prj(0, 0, 0),   T = prj(0, CFG.BAR_H, 0);
+  const perMx = (R.x - L.x) / (2*HW) || 1;
+  const perMy = (B.y - T.y) / CFG.BAR_H || 1;
+  return { x: clamp((px - B.x)/perMx, -HW-0.6, HW+0.6),
+           y: clamp((B.y - py)/perMy, 0.05, CFG.BAR_H+0.7) };
+}
+function beginKeep(){
+  keepT = KEEP_WINDOW; keepPick = null; keepDone = false;
+  state = ST.KEEP;
+  zoom = zoomTarget = 1; panX = panTarget = 0;   // identity, so the touch maps
+  keeper.wx0 = 0; keeper.wx = 0;                 // no free lean for your own man
+  $('prompt').style.display = '';
+  $('prompt').textContent = 'Pick your dive — ' + CO_C.n + ' steps up';
+  $('keepbar').classList.add('show');
+  showBetBar(false);
+}
+function commitKeep(){
+  if(keepDone) return;
+  keepDone = true;
+  $('keepbar').classList.remove('show');
+  if(keepPick){
+    keeper.tx = clamp(keepPick.x, -keeper.range, keeper.range);
+    keeper.ty = clamp(keepPick.y, 0.20, 2.25);
+  } else {
+    keeper.tx = 0; keeper.ty = 1.35;             // stood still, stayed central
+  }
+  keeper.side = Math.sign(keeper.tx) || 1;
+  keeper.committed = true;                        // your read, not his
+  keeper.react = KEEP_REACT;
+  keeper.player = true;
+  state = ST.CPU_WAIT; cpuT = 0.42;
+  $('prompt').textContent = CO_C.n + ' steps up…';
+}
 /* ---- local multiplayer: 2-4 on one device ----
    Every player in a round kicks at the same kick index, so the seeded
    stream hands them identical wind, weather and keeper behaviour. The
@@ -2228,6 +2392,8 @@ const AWARDS = [
   {id:'title',    n:'Sam Maguire',         d:'Win the All-Ireland',              xp:1000},
   {id:'perfect',  n:'Faultless',           d:'Win a shootout without a miss',    xp:700},
   {id:'punter',   n:'Nerves of Steel',     d:'Win an evens bet of 250',          xp:400},
+  {id:'shotstop', n:'Shot Stopper',        d:'Save three kicks in one match',    xp:450},
+  {id:'lowdrive', n:'Along the Ground',    d:'Goal from a low driven strike',    xp:300},
 ];
 
 /* ---------- heritage kits: the real designs, minus the badges ---------- */
@@ -2268,6 +2434,52 @@ const KITS = [
    co:'Galway',  a:'#7d1236', b:'#ffffff',
    d:'Maroon and white, ending a 32-year famine in the west.'},
 ];
+/* Which shelf a kit sits on. The pattern kits render in whatever county you
+   have picked, so they belong to that county; the historic ones are their own
+   thing and are pulled to the front when they are yours. */
+for(const k of KITS) k.cat = k.rar === 'heritage' ? 'heritage' : 'county';
+
+/* ---------- goalkeeper jerseys ----------
+   His shirt was a hard-coded hi-vis yellow, which meant the one player on the
+   pitch you stare at while defending had nothing to buy and nothing to say. */
+const KEEPER_KITS = [
+  {id:'gk-std',    n:'Hi-Vis Yellow',  a:'#cfe83c', cost:0,
+   d:'The standard issue. Seen from the far 45.'},
+  {id:'gk-black',  n:'All Black',      a:'#23262d', cost:400,
+   d:'Nothing for a forward to pick out against the crowd.'},
+  {id:'gk-orange', n:'Fluoro Orange',  a:'#ff7a1a', cost:400,
+   d:'Loud enough for a floodlit night.'},
+  {id:'gk-teal',   n:'Teal',           a:'#1aa3a3', cost:650,
+   d:'The colour no county wears, which is rather the point.'},
+  {id:'gk-plum',   n:'Plum',           a:'#7a2d5c', cost:650,
+   d:'Quietly unusual. Hard to read against a dark stand.'},
+  {id:'gk-retro',  n:'Retro Green & Gold', a:'#0d8a3e', b:'#ffd200', cost:1400,
+   d:'The old two-tone keeper jersey, back when the goalie dressed loudest.'},
+];
+const gkById = id => KEEPER_KITS.find(k=>k.id===id) || KEEPER_KITS[0];
+
+/* ---------- match balls ---------- */
+const BALLS = [
+  {id:'ball-std',   n:'Match White',    lo:'#ffffff', hi:'#a9b6c2', seam:'rgba(104,118,132,.5)', cost:0,
+   d:'The one you grew up kicking off a gable wall.'},
+  {id:'ball-hivis', n:'Hi-Vis Yellow',  lo:'#fff27a', hi:'#c9a01c', seam:'rgba(120,96,20,.5)',  cost:350,
+   d:'For a grey afternoon in February.'},
+  {id:'ball-night', n:'Floodlight Orange', lo:'#ffb066', hi:'#c2621a', seam:'rgba(120,60,16,.5)', cost:350,
+   d:'Cuts through a night game under the lights.'},
+  {id:'ball-tan',   n:'Tan Leather',    lo:'#d9a566', hi:'#8a5f2c', seam:'rgba(70,44,18,.6)',   cost:900,
+   d:'Heavy in the wet, the way it used to be.'},
+  {id:'ball-mono',  n:'Blackout',       lo:'#5b636e', hi:'#1c2128', seam:'rgba(0,0,0,.55)',     cost:1200,
+   d:'All business.'},
+  {id:'ball-county',n:'County Colours', county:true, cost:1600,
+   d:'Panelled in whatever county you are lining out for.'},
+];
+const ballById = id => BALLS.find(b=>b.id===id) || BALLS[0];
+function ballSkin(){
+  const b = ballById(profile.ball);
+  if(!b.county) return b;
+  return {lo: CO_P.a, hi: CO_P.b, seam: 'rgba(0,0,0,.45)'};
+}
+
 const kitById = id => KITS.find(k=>k.id===id) || KITS[0];
 /* the colours actually worn: a heritage kit overrides the county palette */
 function activeKit(){
@@ -2285,6 +2497,8 @@ const freshProfile = () => ({
   unlocked: COUNTIES.slice(0,STARTER).map(c=>c.n),
   xp:0, money:500, kit:'std', kits:['std'], awards:[], bestWin:0,
   seenCoach:false, daily:null, bestTrain:0,
+  gk:'gk-std', gks:['gk-std'], ball:'ball-std', balls:['ball-std'],
+  saves:0, faced:0,
 });
 let profile = freshProfile();
 function loadProfile(){
@@ -2399,7 +2613,7 @@ function newShot(who){
   ball = newBall();
   trail.length = 0; replay = [];
   setWind();
-  power = 0.62; aimM = 0; curl = 0; dragging = false; dragPath = [];
+  power = 0.62; aimM = 0; curl = 0; elev = 0.5; dragging = false; dragPath = [];
   kbAim = false; document.body.classList.remove('dragging');
   crossed = false; outcome = null; flightT = 0;
   ripple.t = 0;
@@ -2408,7 +2622,7 @@ function newShot(who){
   keeper = newKeeper(defender,
       who==='p' ? difficulty : (mode==='duel' ? difficulty : OWN_KEEPER_TIER));
   zoomTarget = 1; panTarget = 0;
-  shotStake = 0; strikeCurl = 0;
+  shotStake = 0; strikeCurl = 0; strikeElev = 0.5;
   showBetBar(who==='p' && mode!=='duel' && mode!=='training');
   $('bSpot').style.display = mode==='training' ? 'block' : 'none';
   if(who==='p' || mode==='duel'){
@@ -2422,6 +2636,8 @@ function newShot(who){
     $('meter').classList.remove('live');
     $('mfill').style.height = '0%';
     if(!profile.seenCoach && who==='p') setTimeout(showCoach, 450);
+  } else if(goalieOn()){
+    beginKeep();
   } else {
     state = ST.CPU_WAIT;
     cpuT = 0.75;
@@ -2437,28 +2653,32 @@ function cpuShoot(){
   const roll = gRng();
   let target;                                        // where it wants the ball to cross
   if(roll < 0.26){                                   // safe point over the bar
-    power = gRand(0.83, 0.97); target = gRand(-1.5, 1.5); curl = gRand(-.25,.25);
+    power = gRand(0.83, 0.97); elev = gRand(0.80, 0.97);
+    target = gRand(-1.5, 1.5); curl = gRand(-.25,.25);
   } else if(roll < 0.93){                            // go for the corner
     const side = gRng()<.5 ? -1 : 1;
-    power = gRand(0.36, 0.62);
+    power = gRand(0.52, 0.80);
+    elev  = gRand(0.10, 0.34);                        // low and hard at the corner
     target = side * lerp(gRand(1.4,2.3), gRand(2.62,2.95), sharp);
     curl   = side * gRand(0, 0.8) * sharp;            // bend it away from the keeper
   } else {                                           // over-ambitious
-    power = gRand(0.25, 1.0); target = gRand(-4, 4); curl = gRand(-1,1);
+    power = gRand(0.25, 1.0); elev = gRand(0, 1);
+    target = gRand(-4, 4); curl = gRand(-1,1);
   }
   // aim off the curl, the way a player does by reading the preview arc
-  const sp = shotParams(power);
+  const sp = shotParams(power, elev);
   const tf = shotDist/(sp.S*dcos(sp.th));
   aimM = target - 0.5*(curl*CFG.CURL*(sp.S/20))*tf*tf;
-  keeper = newKeeper(CO_P, OWN_KEEPER_TIER);
+  if(!keeper || !keeper.player) keeper = newKeeper(CO_P, OWN_KEEPER_TIER);
   fire();
 }
 function fire(){
-  strikeCurl = curl;
+  strikeCurl = curl; strikeElev = elev; strikeAim = aimM;
   if(shotStake>0) debit(shotStake);
   // contact is never perfect — harder strikes stray more
-  const slip = gRand(-0.17, 0.17) * (0.55 + power);
-  launchBall(power, aimM + slip);
+  // a placed shot should be placeable; a rocket should not be
+  const slip = gRand(-0.17, 0.17) * (0.30 + power*0.85);
+  launchBall(power, aimM + slip, elev);
   state = ST.FLIGHT; flightT = 0;
   zoomTarget = 1.07;
   $('prompt').style.display='none';
@@ -2578,6 +2798,23 @@ function award(kind){
   else if(kind==='post' || kind==='bar'){ SFX.post(); shake=9; crowdSwell(.7,1.2); buzz([0,18,40,18]); }
   else { SFX.roar(false); crowdSwell(.2,.8); }
 
+  // when you were the one in goal, the scoreline reads the other way round
+  if(shooter === 'c' && keeper && keeper.player){
+    const saved = kind==='save' || kind==='tip' || kind==='post'
+               || kind==='bar'  || kind==='wide' || kind==='short' || kind==='blocked';
+    profile.faced = (profile.faced||0) + 1;
+    if(saved) profile.saves = (profile.saves||0) + 1;
+    saveProfile();
+    const sub = r.querySelector('.sub');
+    sub.textContent = saved
+      ? (kind==='save' || kind==='tip' ? 'You got a hand to it' : 'He could not beat you')
+      : 'You went the wrong way';
+    if(saved){
+      crowdReact(0.85); buzz([0,30,50,60]);
+      matchSaves++;
+      if(matchSaves >= 3){ const a = grantAward('shotstop'); if(a) showAward(a); }
+    }
+  }
   sayCommentary(kind);
   if(shooter==='p' && MP.match) mpSubmitTurn();
   refreshHUD();
@@ -2597,6 +2834,7 @@ function checkAwards(kind, scored){
     if(difficulty==='allireland') push('cleanAI');
   }
   if(scored && Math.abs(strikeCurl) >= 0.55) push('curler');
+  if(kind==='goal' && strikeElev <= 0.22) push('lowdrive');
   if(got.length) showAward(got[0]);
 }
 function showAward(a){
@@ -2917,6 +3155,8 @@ function matchStatsHTML(){
     ['Balance', '₡'+profile.money],
     ['Career conversion', conv+'%'],
   ];
+  if(profile.faced)
+    rows.push(['Saves made', (profile.saves||0)+'/'+profile.faced]);
   return rows.map(r=>'<div class="st"><span>'+r[0]+'</span><b>'+r[1]+'</b></div>').join('');
 }
 
@@ -2961,9 +3201,18 @@ function refreshHUD(){
   // the player's own results, so half the shootout was missing from the board
   $('pipsC').style.display = solo ? 'none' : '';
   if(!solo) pipRow($('pipsC'), C.r, n);
+  /* The wind used to be a bare number and an arrow, which told you it
+     existed but not what it would do. Strength is now a bar, and the
+     direction is spelled out the way a commentator would say it. */
   $('wVal').textContent = windKmh.toFixed(1);
-  const a=$('wArr'); a.textContent = wind>=0?'→':'←';
+  const a=$('wArr');
+  a.textContent = wind>=0 ? '→' : '←';
   a.style.opacity = 0.35 + Math.abs(wind)*0.65;
+  $('wFill').style.width = clamp(windKmh/24, 0, 1)*100 + '%';
+  const strength = windKmh < 2.5 ? 'CALM' : windKmh < 8 ? 'LIGHT'
+                 : windKmh < 15 ? 'FRESH' : 'STRONG';
+  $('wDesc').textContent = windKmh < 2.5 ? 'CALM'
+                         : strength + (wind >= 0 ? ' L→R' : ' R→L');
   updateRoundBar();
   refreshProgressHUD();
 }
@@ -3023,28 +3272,78 @@ function buildStakes(){
 
 /* ---------- the kitbag ---------- */
 function openKit(){ buildKit(); $('ovKit').classList.remove('hidden'); }
+/* One row, whatever shelf it is on. Owning, wearing and buying are the same
+   three states for a jersey, a keeper's shirt or a ball, so they share a
+   renderer rather than three that drift apart. */
+function shopRow(o){
+  const row = document.createElement('div');
+  row.className = 'kit' + (o.worn?' worn':'') + (o.owned?'':' locked');
+  row.innerHTML =
+    '<span class="kitsw" style="background:'+o.swatch+'"></span>'+
+    '<div class="kitinfo"><b>'+o.n+'</b><i>'+o.d+'</i></div>'+
+    '<span class="kittag '+(o.tag||'standard')+'">'+
+      (o.worn ? 'WORN' : o.owned ? 'OWNED' : '₡'+o.cost)+'</span>';
+  row.onclick = ()=>{
+    if(o.owned){ o.wear(); saveProfile(); buildKit(); refreshHUD(); }
+    else if(profile.money >= o.cost){
+      debit(o.cost); o.buy(); o.wear(); saveProfile(); buildKit(); refreshHUD();
+    } else {
+      row.classList.add('shake');
+      setTimeout(()=>row.classList.remove('shake'), 400);
+    }
+  };
+  return row;
+}
+function shopSection(w, title, note, rows){
+  const owned = rows.filter(r=>r.owned).length;
+  const h = document.createElement('div');
+  h.className = 'shophead';
+  h.innerHTML = '<b>'+title+'</b><i>'+note+'</i><span>'+owned+'/'+rows.length+'</span>';
+  w.appendChild(h);
+  for(const r of rows) w.appendChild(shopRow(r));
+}
 function buildKit(){
   const w=$('kitList'); w.innerHTML='';
-  $('kitMoney').textContent = profile.money;
-  for(const k of KITS){
-    const owned = profile.kits.indexOf(k.id)!==-1;
-    const worn  = profile.kit===k.id;
-    const a = k.a || CO_P.a, b = k.b || CO_P.b;
-    const row=document.createElement('div');
-    row.className='kit'+(worn?' worn':'')+(owned?'':' locked');
-    row.innerHTML =
-      '<span class="kitsw" style="background:'+swatchCss(k.pat, a, b)+'"></span>'+
-      '<div class="kitinfo"><b>'+k.n+'</b><i>'+k.d+'</i></div>'+
-      '<span class="kittag '+k.rar+'">'+(worn?'WORN':owned?'OWNED':k.cost)+'</span>';
-    row.onclick=()=>{
-      if(owned){ profile.kit=k.id; saveProfile(); buildKit(); refreshHUD(); }
-      else if(profile.money >= k.cost){
-        debit(k.cost); profile.kits.push(k.id); profile.kit=k.id;
-        saveProfile(); buildKit(); refreshHUD();
-      } else { row.classList.add('shake'); setTimeout(()=>row.classList.remove('shake'),400); }
-    };
-    w.appendChild(row);
-  }
+  $('kitMoney').textContent = profile.money.toLocaleString();
+
+  const own  = id => profile.kits.indexOf(id)!==-1;
+  const mk = k => ({
+    n:k.n, d:k.d, cost:k.cost, tag:k.rar,
+    owned:own(k.id), worn:profile.kit===k.id,
+    swatch:swatchCss(k.pat, k.a||CO_P.a, k.b||CO_P.b),
+    buy:()=>profile.kits.push(k.id), wear:()=>{ profile.kit=k.id; },
+  });
+
+  /* ---- your county's own shelf ---- */
+  shopSection(w, CO_P.n.toUpperCase(), 'Cut in your county colours — change county and these change with it',
+              KITS.filter(k=>k.cat==='county').map(mk));
+
+  /* ---- heritage, yours first ---- */
+  const her = KITS.filter(k=>k.cat==='heritage');
+  const mine = her.filter(k=>k.co===CO_P.n), rest = her.filter(k=>k.co!==CO_P.n);
+  if(mine.length)
+    shopSection(w, CO_P.n.toUpperCase()+' \u00b7 HERITAGE', 'The real thing, in your own colours', mine.map(mk));
+  shopSection(w, 'HERITAGE', 'Famous sides, in the colours they actually wore', rest.map(mk));
+
+  /* ---- the keeper's shelf ---- */
+  shopSection(w, 'GOALKEEPER', 'What your own man wears between the posts',
+    KEEPER_KITS.map(k=>({
+      n:k.n, d:k.d, cost:k.cost, tag:k.cost>=1000?'heritage':k.cost?'rare':'standard',
+      owned:profile.gks.indexOf(k.id)!==-1, worn:profile.gk===k.id,
+      swatch: k.b ? 'repeating-linear-gradient(180deg,'+k.a+' 0 5px,'+k.b+' 5px 10px)' : k.a,
+      buy:()=>profile.gks.push(k.id), wear:()=>{ profile.gk=k.id; },
+    })));
+
+  /* ---- and the ball ---- */
+  shopSection(w, 'MATCH BALL', 'Cosmetic only — every ball flies the same',
+    BALLS.map(b=>({
+      n:b.n, d:b.d, cost:b.cost, tag:b.cost>=1000?'heritage':b.cost?'rare':'standard',
+      owned:profile.balls.indexOf(b.id)!==-1, worn:profile.ball===b.id,
+      swatch: b.county
+        ? 'linear-gradient(135deg,'+CO_P.a+' 0 50%,'+CO_P.b+' 50%)'
+        : 'radial-gradient(circle at 34% 30%,'+b.lo+','+b.hi+')',
+      buy:()=>profile.balls.push(b.id), wear:()=>{ profile.ball=b.id; },
+    })));
 }
 function swatchCss(pat,a,b){
   if(pat==='hoop') return 'repeating-linear-gradient(180deg,'+a+' 0 5px,'+b+' 5px 10px)';
@@ -3073,6 +3372,8 @@ const OPT_ROWS = [
    get:()=>opts.haptics, flip:()=>{ opts.haptics=!opts.haptics; buzz(20); }},
   {n:'Aim line',    d:'Shows where the ball is heading. Turn it off and every score pays 25% more points.',
    get:()=>opts.preview, flip:()=>{ opts.preview=!opts.preview; }},
+  {n:'Play in goal', d:'Take the saves as well as the kicks. Pick your dive before the opponent strikes.',
+   get:()=>opts.goalie,  flip:()=>{ opts.goalie=!opts.goalie; }},
   {n:'Left-handed', d:'Moves the meter and the buttons to the other side',
    get:()=>opts.lefty,   flip:()=>{ opts.lefty=!opts.lefty; }},
 ];
@@ -3132,6 +3433,7 @@ const COACH = [
   ['1 · Pull back',  'Drag anywhere on the pitch and pull away from the goal. The further you pull, the harder the strike.'],
   ['2 · Aim across', 'Sideways in the drag is your aim. Pull to the right and the ball goes left, the same as a slingshot.'],
   ['3 · Hook it',    'Curve the drag instead of pulling straight and the ball bends in the air. That is how you beat a keeper who has guessed right.'],
+  ['4 · Go in goal', 'When they take their kick you are the keeper. Touch the goal to pick your dive before he strikes — read where he is standing, because he has to tell you something.'],
 ];
 let coachStep = 0;
 function showCoach(){
@@ -3176,6 +3478,8 @@ function refreshProfileStrip(){
     '<div class="st"><span>Points</span><b>'+profile.xp.toLocaleString()+'</b></div>'+
     '<div class="st"><span>Balance</span><b>₡'+profile.money.toLocaleString()+'</b></div>'+
     '<div class="st"><span>Conversion</span><b>'+conv+'%</b></div>'+
+    (profile.faced ? '<div class="st"><span>Saves</span><b>'+
+        Math.round((profile.saves||0)/profile.faced*100)+'%</b></div>' : '')+
     '<div class="st"><span>Awards</span><b>'+profile.awards.length+'/'+AWARDS.length+'</b></div>';
   // grey out modes the player has not reached yet
   for(const [id,m] of [['bFree','freekick'],['bSurv','survival'],['bDuel','duel']])
@@ -3193,7 +3497,37 @@ function pos(e){
    sensible screen so maximum power is always physically reachable. */
 const pullBudget = () => Math.max(120, Math.min(H*0.20, 190));
 
+/* ---- aiming ----
+   The old mapping was linear in screen pixels: a 20-pixel wobble moved the
+   ball three quarters of a metre at the goal line, which made placing a shot
+   a matter of luck. Aim is now curved — soft either side of centre, firm out
+   at the posts — and elevation has its own axis instead of being welded to
+   power, so a low driven shot is a thing you can choose.
+
+   The goal is 6.5m wide, so +-4.2 lets you aim outside a post and bend it
+   back, which is the whole point of having curl. */
+const AIM_MAX = 4.2;
+function aimFromDrag(dx, pull){
+  const n = clamp(-dx / (W*0.40), -1, 1);      // slingshot: pull right, go left
+  const shaped = (n < 0 ? -1 : 1) * Math.pow(Math.abs(n), 1.35);
+  return shaped * AIM_MAX;
+}
+/* Straight back and down is a lofted strike, level is mid, pulling up under
+   the ball drives it low. */
+function elevFromDrag(dy, pull){
+  if(pull < 8) return 0.5;
+  return clamp(0.5 + (dy/pull)*0.5, 0, 1);
+}
+const elevLabel = e => e > 0.78 ? 'lofted' : e > 0.58 ? 'floated'
+                     : e > 0.40 ? 'level'  : e > 0.22 ? 'driven' : 'low & hard';
+
 function down(e){
+  if(state===ST.KEEP){
+    keepPick = goalPointFromScreen(pos(e).x, pos(e).y);
+    dragging = true;
+    e.preventDefault();
+    return;
+  }
   if(state!==ST.AIM) return;
   const p = pos(e);
   // anywhere on the pitch starts a shot — a fingertip should not have to find
@@ -3205,18 +3539,27 @@ function down(e){
   const a=ac(); if(a&&a.state==='suspended') a.resume();
   e.preventDefault();
 }
-/* A straight swipe goes straight. Hook the swipe and the ball bends:
-   curl is the average sideways bow of the drag away from its own chord. */
+/* A straight swipe goes straight. Hook the swipe and the ball bends.
+   This used to average the bow of the whole path away from its chord, which
+   meant the first half of a long straight pull diluted a late hook to almost
+   nothing — you could turn your finger hard and watch the number barely
+   move. It now measures the turn between the first half of the pull and the
+   second, so the reading follows the finger immediately and correcting
+   mid-drag does what it looks like it should. */
 function computeCurl(path){
-  if(path.length < 5) return 0;
-  const a=path[0], b=path[path.length-1];
-  const dx=b.x-a.x, dy=b.y-a.y, len=dhyp2(dx,dy);
-  if(len < 20) return 0;
-  const nx=-dy/len, ny=dx/len;
-  let sum=0;
-  for(const p of path) sum += (p.x-a.x)*nx + (p.y-a.y)*ny;
-  return clamp((sum/path.length)/(len*0.17), -1, 1);
+  const n = path.length;
+  if(n < 6) return 0;
+  const mid = n >> 1;
+  const v1x = path[mid].x - path[0].x,     v1y = path[mid].y - path[0].y;
+  const v2x = path[n-1].x - path[mid].x,   v2y = path[n-1].y - path[mid].y;
+  const l1 = dhyp2(v1x, v1y), l2 = dhyp2(v2x, v2y);
+  if(l1 < 6 || l2 < 6) return 0;
+  // signed sine of the angle between the two halves of the swipe
+  const turn = (v1x*v2y - v1y*v2x) / (l1*l2);
+  return clamp(turn * CURL_GAIN, -1, 1);
 }
+/* a 30-degree hook should be close to full bend */
+const CURL_GAIN = 1.9;
 /* the pull and the keyboard both land here, so the readout can never
    disagree with the shot that is actually queued up */
 function refreshAimUI(){
@@ -3229,9 +3572,23 @@ function refreshAimUI(){
   const am = $('aimNum');
   if(am) am.textContent = Math.abs(aimM)<0.15 ? 'down the middle'
         : (aimM>0 ? 'aim ▶ ' : 'aim ◀ ') + Math.abs(aimM).toFixed(1)+'m';
+  const ev = $('elevNum');
+  if(ev) ev.textContent = elevLabel(elev);
+  // the dial fills out from the centre in the direction the ball will bend
+  const nd = $('curlNeedle');
+  if(nd){
+    const w = Math.abs(curl)*50;
+    nd.style.width = w + '%';
+    nd.style.left  = curl >= 0 ? '50%' : (50 - w) + '%';
+  }
 }
 function move(e){
   if(!dragging) return;
+  if(state===ST.KEEP){
+    keepPick = goalPointFromScreen(pos(e).x, pos(e).y);
+    e.preventDefault();
+    return;
+  }
   const p=pos(e);
   dragPath.push(p);
   if(dragPath.length>60) dragPath.shift();
@@ -3240,7 +3597,8 @@ function move(e){
   const dx = p.x-dragA.x, dy = p.y-dragA.y;
   const pull = Math.sqrt(dx*dx + dy*dy);
   power = clamp(pull / pullBudget(), 0, 1);
-  aimM  = clamp(-dx / (W*0.34), -1, 1) * 5.4;
+  aimM  = aimFromDrag(dx, pull);
+  elev  = elevFromDrag(dy, pull);
   curl  = computeCurl(dragPath);
   refreshAimUI();
   e.preventDefault();
@@ -3248,6 +3606,12 @@ function move(e){
 function up(e){
   if(!dragging) return;
   dragging=false;
+  if(state===ST.KEEP){
+    document.body.classList.remove('dragging');
+    if(keepPick) commitKeep();
+    e.preventDefault();
+    return;
+  }
   document.body.classList.remove('dragging');
   if(power < 0.07){ $('meter').classList.remove('live'); return; }
   fire(); e.preventDefault();
@@ -3280,18 +3644,34 @@ addEventListener('keydown', e => {
     togglePause(); return;
   }
   if(e.key === 'm' || e.key === 'M'){ toggleSound(); return; }
+  if(state === ST.KEEP && !paused){
+    const P0 = keepPick || {x:0, y:1.2};
+    let used = true;
+    switch(e.key){
+      case 'ArrowLeft':  P0.x = clamp(P0.x - 0.45, -HW-0.6, HW+0.6); break;
+      case 'ArrowRight': P0.x = clamp(P0.x + 0.45, -HW-0.6, HW+0.6); break;
+      case 'ArrowUp':    P0.y = clamp(P0.y + 0.30, 0.05, CFG.BAR_H+0.7); break;
+      case 'ArrowDown':  P0.y = clamp(P0.y - 0.30, 0.05, CFG.BAR_H+0.7); break;
+      case ' ': case 'Enter': keepPick = P0; commitKeep(); return;
+      default: used = false;
+    }
+    if(used){ keepPick = P0; e.preventDefault(); }
+    return;
+  }
   if(state !== ST.AIM || paused) return;
   // one press has to be visible, so the curl step clears the 'straight'
   // threshold the readout uses
-  const STEP_A = 0.32, STEP_P = 0.05, STEP_C = 0.15;
+  const STEP_A = 0.26, STEP_P = 0.05, STEP_C = 0.15;
   let used = true, strike = false;
   switch(e.key){
-    case 'ArrowLeft':  aimM  = clamp(aimM - STEP_A, -5.4, 5.4); break;
-    case 'ArrowRight': aimM  = clamp(aimM + STEP_A, -5.4, 5.4); break;
+    case 'ArrowLeft':  aimM  = clamp(aimM - STEP_A, -AIM_MAX, AIM_MAX); break;
+    case 'ArrowRight': aimM  = clamp(aimM + STEP_A, -AIM_MAX, AIM_MAX); break;
     case 'ArrowUp':    power = clamp(power + STEP_P, 0, 1); break;
     case 'ArrowDown':  power = clamp(power - STEP_P, 0, 1); break;
     case 'q': case 'Q': curl = clamp(curl - STEP_C, -1, 1); break;
     case 'e': case 'E': curl = clamp(curl + STEP_C, -1, 1); break;
+    case 'w': case 'W': elev = clamp(elev + 0.08, 0, 1); break;
+    case 's': case 'S': elev = clamp(elev - 0.08, 0, 1); break;
     case ' ': case 'Enter': strike = true; break;
     default: used = false;
   }
@@ -3307,39 +3687,160 @@ cv.addEventListener('touchstart',down,{passive:false});
 cv.addEventListener('touchmove',move,{passive:false});
 cv.addEventListener('touchend',up,{passive:false});
 
-/* aim preview: integrate the same physics forward, dashed */
-function drawAimPreview(){
-  const {S, th} = shotParams(power);
-  const hyp=dhyp2(aimM,shotDist), ch=S*dcos(th);
-  const fwd=ch*(shotDist/hyp), lat=ch*(aimM/hyp);
+/* ==================================================================
+   FLIGHT PREDICTION
+   Integrate the shot forward. With drift on, this is what will actually
+   happen; with it off, it is the line you aimed down. Drawing both and
+   letting the player see the gap is what finally makes the wind readable.
+   ================================================================== */
+function simPath(withDrift, aimOverride){
+  const {S, th} = shotParams(power, elev);
+  const am = aimOverride === undefined ? aimM : aimOverride;
+  const hyp = dhyp2(am, shotDist), ch = S*dcos(th);
+  const fwd = ch*(shotDist/hyp), lat = ch*(am/hyp);
   let x=spot.x, y=CFG.BALL_R, z=spot.z;
   let vx=shotU.x*fwd+shotR.x*lat, vy=S*dsin(th), vz=shotU.z*fwd+shotR.z*lat;
-  const dt=1/90; const pts=[];
+  const dt=1/90, pts=[];
   for(let i=0;i<260 && z>-0.2;i++){
     const sp=dhyp3(vx,vy,vz), k=CFG.DRAG*(1+weather.wet*0.28)*sp;
-    const side=(curl*CFG.CURL*(sp/20)+windAcc)*dt;
+    const side = withDrift ? (curl*CFG.CURL*(sp/20)+windAcc)*dt : 0;
     vx+=(-k*vx)*dt+shotR.x*side; vz+=(-k*vz)*dt+shotR.z*side; vy+=(-CFG.G-k*vy)*dt;
     x+=vx*dt; y+=vy*dt; z+=vz*dt;
     if(y<CFG.BALL_R){ y=CFG.BALL_R; vy=-vy*0.48; vx*=0.78; vz*=0.82; }
     pts.push({x,y,z});
   }
-  ctx.save(); ctx.setLineDash([4,7]); ctx.lineWidth=2;
-  ctx.strokeStyle='rgba(255,210,0,.55)';
+  return pts;
+}
+function strokePath(pts, style, dash, wd){
+  ctx.save();
+  if(dash) ctx.setLineDash(dash);
+  ctx.lineWidth = wd || 2; ctx.strokeStyle = style;
   ctx.beginPath();
   pts.forEach((p,i)=>{ const q=prj(p.x,p.y,p.z); i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y); });
-  ctx.stroke(); ctx.setLineDash([]);
-  const last=pts[pts.length-1];
-  if(last){
-    const q=prj(last.x,last.y,last.z);
-    const over = last.y>CFG.BAR_H, inP=Math.abs(last.x)<HW;
-    ctx.strokeStyle = inP ? (over?'#7ee0a0':'#FFD200') : '#FF2D6B';
-    ctx.lineWidth=2.5;
-    ctx.beginPath(); ctx.arc(q.x,q.y,8,0,6.283); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(q.x-12,q.y); ctx.lineTo(q.x-5,q.y);
-    ctx.moveTo(q.x+5,q.y); ctx.lineTo(q.x+12,q.y); ctx.stroke();
-    // shot-height readout on the meter
-    $('mbar').style.bottom = clamp(last.y/4.2,0,1)*100+'%';
+  ctx.stroke(); ctx.restore();
+}
+
+/* The reticle is your intent, drawn on the goal itself: where the ball would
+   cross with no wind, no curl and a perfect strike. It is always on. The
+   dashed line that predicts the real flight is the optional crutch. */
+function drawAimReticle(){
+  const clean = simPath(false);
+  const last = clean[clean.length-1];
+  if(!last) return;
+  const q = prj(last.x, last.y, last.z);
+  const over = last.y > CFG.BAR_H, inP = Math.abs(last.x) < HW;
+  const col = inP ? (over ? '#7ee0a0' : '#FFD200') : '#FF2D6B';
+
+  // how far contact can throw it off at this power, drawn to scale
+  const spread = 0.17 * (0.30 + power*0.85);
+  const qL = prj(last.x - spread, last.y, last.z);
+  const qR = prj(last.x + spread, last.y, last.z);
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,.30)'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(qL.x, qL.y - 7); ctx.lineTo(qL.x, qL.y + 7);
+  ctx.moveTo(qL.x, qL.y);     ctx.lineTo(qR.x, qR.y);
+  ctx.moveTo(qR.x, qR.y - 7); ctx.lineTo(qR.x, qR.y + 7);
+  ctx.stroke();
+
+  // the crosshair itself
+  ctx.strokeStyle = col; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(q.x, q.y, 9, 0, 6.283); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(q.x-15, q.y); ctx.lineTo(q.x-6, q.y);
+  ctx.moveTo(q.x+6, q.y);  ctx.lineTo(q.x+15, q.y);
+  ctx.moveTo(q.x, q.y-15); ctx.lineTo(q.x, q.y-6);
+  ctx.moveTo(q.x, q.y+6);  ctx.lineTo(q.x, q.y+15);
+  ctx.stroke();
+  ctx.fillStyle = col;
+  ctx.beginPath(); ctx.arc(q.x, q.y, 2.4, 0, 6.283); ctx.fill();
+  ctx.restore();
+
+  $('mbar').style.bottom = clamp(last.y/4.2,0,1)*100+'%';
+  return {clean:q, world:last};
+}
+
+/* the optional dashed prediction, plus a drift arrow from intent to reality */
+function drawAimPreview(){
+  const drift = simPath(true);
+  strokePath(drift, 'rgba(255,210,0,.55)', [4,7], 2);
+  const a = simPath(false), la = a[a.length-1], lb = drift[drift.length-1];
+  if(!la || !lb) return;
+  const qa = prj(la.x, la.y, la.z), qb = prj(lb.x, lb.y, lb.z);
+  const dx = qb.x-qa.x, dy = qb.y-qa.y;
+  if(Math.sqrt(dx*dx+dy*dy) < 9) return;         // nothing worth pointing at
+  ctx.save();
+  ctx.strokeStyle = 'rgba(0,170,255,.85)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(qa.x, qa.y); ctx.lineTo(qb.x, qb.y); ctx.stroke();
+  const ang = Math.atan2(dy, dx);
+  ctx.translate(qb.x, qb.y); ctx.rotate(ang);
+  ctx.fillStyle = 'rgba(0,170,255,.9)';
+  ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-8,-4); ctx.lineTo(-8,4);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+/* Where you have chosen to go, drawn on the goal you are defending. */
+function drawKeepPick(){
+  if(state !== ST.KEEP) return;
+  const L = prj(-HW, 0, 0), R = prj(HW, 0, 0), T = prj(0, CFG.BAR_H, 0), B = prj(0, 0, 0);
+  ctx.save();
+  // the mouth you are covering
+  ctx.strokeStyle = 'rgba(0,170,255,.55)'; ctx.lineWidth = 2.5;
+  ctx.setLineDash([6,6]);
+  ctx.strokeRect(L.x, T.y, R.x-L.x, B.y-T.y);
+  ctx.setLineDash([]);
+  if(keepPick){
+    const q = prj(keepPick.x, keepPick.y, 0);
+    const reach = keeper ? keeper.reach : 0.48;
+    const qr = prj(keepPick.x + reach, keepPick.y, 0);
+    const rad = Math.abs(qr.x - q.x);
+    // the gloves cover a real radius: show it, so a near miss is not a mystery
+    ctx.fillStyle = 'rgba(0,170,255,.16)';
+    ctx.beginPath(); ctx.arc(q.x, q.y, rad, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = '#00AAFF'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(q.x, q.y, rad, 0, 6.283); ctx.stroke();
+    ctx.fillStyle = '#00AAFF';
+    ctx.beginPath(); ctx.arc(q.x, q.y, 4, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(q.x-rad-7, q.y); ctx.lineTo(q.x-rad+2, q.y);
+    ctx.moveTo(q.x+rad-2, q.y); ctx.lineTo(q.x+rad+7, q.y);
+    ctx.stroke();
   }
+  ctx.restore();
+}
+
+/* The gesture, drawn where the finger actually is. A hooked pull used to be
+   invisible — you had to trust a number. Now the bow away from the chord is
+   the thing on screen, which is the thing the physics reads. */
+function drawDragGesture(){
+  if(!dragging || dragPath.length < 2) return;
+  const a = dragPath[0], b = dragPath[dragPath.length-1];
+  ctx.save();
+  // the chord: what a straight pull would have been
+  ctx.setLineDash([3,5]); ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'rgba(255,255,255,.22)';
+  ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  ctx.setLineDash([]);
+  // the path your finger took
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for(let i=1;i<dragPath.length;i++){
+    const f = i/dragPath.length;
+    ctx.strokeStyle = Math.abs(curl) > 0.12
+      ? 'rgba(0,170,255,' + (0.15 + f*0.6) + ')'
+      : 'rgba(255,255,255,' + (0.10 + f*0.4) + ')';
+    ctx.lineWidth = 1.5 + f*3.5;
+    ctx.beginPath();
+    ctx.moveTo(dragPath[i-1].x, dragPath[i-1].y);
+    ctx.lineTo(dragPath[i].x, dragPath[i].y);
+    ctx.stroke();
+  }
+  // anchor and fingertip
+  ctx.fillStyle = 'rgba(255,255,255,.5)';
+  ctx.beginPath(); ctx.arc(a.x, a.y, 4, 0, 6.283); ctx.fill();
+  ctx.fillStyle = Math.abs(curl) > 0.12 ? '#00AAFF' : '#FFD200';
+  ctx.beginPath(); ctx.arc(b.x, b.y, 6, 0, 6.283); ctx.fill();
   ctx.restore();
 }
 
@@ -3349,7 +3850,7 @@ function drawAimPreview(){
    ================================================================== */
 let paused = false;
 const inPlay = () => state===ST.AIM || state===ST.FLIGHT || state===ST.RESULT
-              || state===ST.CPU_WAIT || state===ST.REPLAY;
+              || state===ST.CPU_WAIT || state===ST.REPLAY || state===ST.KEEP;
 function pauseSummary(){
   if(mode==='training') return 'Training ground · ' + spot.label;
   if(mode==='freekick' || mode==='daily' || mode==='survival')
@@ -3397,7 +3898,12 @@ function update(dt){
   stepParts(dt);
   stepCrowdFx(dt);
 
-  if(state===ST.CPU_WAIT){
+  if(state===ST.KEEP){
+    keepT -= dt;
+    $('keepFill').style.width = clamp(keepT/KEEP_WINDOW, 0, 1)*100 + '%';
+    if(keepT <= 0) commitKeep();
+  }
+  else if(state===ST.CPU_WAIT){
     cpuT -= dt; if(cpuT<=0) cpuShoot();
   }
   else if(state===ST.FLIGHT){
@@ -3463,6 +3969,7 @@ function render(){
   ctx.drawImage(bg, 0, 0, W, H);
   drawCrowdFx();
   drawBloom();
+  drawWindFlags();
   drawUmpires();
   drawNet();
   drawGoalFrame();
@@ -3471,11 +3978,16 @@ function render(){
   drawWall();
   drawScuffs();
   drawParts();
-  if(state===ST.AIM && aiming() && opts.preview) drawAimPreview();
+  if(state===ST.AIM && aiming()){
+    if(opts.preview) drawAimPreview();
+    drawAimReticle();                 // intent is never a crutch
+  }
   drawBall();
   drawKicker();
   ctx.restore();
 
+  drawKeepPick();
+  drawDragGesture();
   drawRain();
   if(flash>0){ ctx.fillStyle='rgba(255,255,240,'+(flash*0.4)+')'; ctx.fillRect(0,0,W,H); }
   if(state===ST.REPLAY) drawReplayFurniture();
@@ -3625,7 +4137,7 @@ function startMatch(){
   kickNo=0; survivalLevel=0; duelTurn='a';
   if(mode==='duel') setupDuel();
   P={g:0,t:0,p:0,r:[]}; C={g:0,t:0,p:0,r:[]}; confetti=[]; parts=[];
-  scuffs=[]; crowdFx=[]; crowdT=0;
+  scuffs=[]; crowdFx=[]; crowdT=0; matchSaves=0;
   if(!matchSeedFixed) matchSeed = newSeed();
   matchSeedFixed = false;
   seedFrom(matchSeed);                       // opponent, ground and weather
@@ -3793,6 +4305,7 @@ function inputRecord(){
     power: +power.toFixed(6),
     aimM:  +aimM.toFixed(6),
     curl:  +strikeCurl.toFixed(6),
+    elev:  +strikeElev.toFixed(6),
     x: spot.x, z: spot.z, wall: spot.wall|0,
   };
 }
@@ -3878,8 +4391,8 @@ if(new URLSearchParams(location.search).has('debug')){
       keeper = newKeeper(CO_C, difficulty);
       curl = rec.curl||0;
       ball = newBall();
-      const slip = gRand(-0.17,0.17)*(0.55+rec.power);
-      launchBall(rec.power, (rec.aimM||0) + slip);
+      const slip = gRand(-0.17,0.17)*(0.30+rec.power*0.85);
+      launchBall(rec.power, (rec.aimM||0) + slip, rec.elev);
       let t=0, pz, px, py, pa, res='short';
       for(let i=0;i<900;i++){
         pz=ball.wz; px=ball.wx; py=ball.wy; pa=wall?alongShot(ball):0;
@@ -3917,6 +4430,19 @@ if(new URLSearchParams(location.search).has('debug')){
     },
     get paused(){ return paused; },
     get canAim(){ return state === ST.AIM && !paused; },
+    get canKeep(){ return state === ST.KEEP && !paused; },
+    get stateName(){
+      return Object.keys(ST).find(k => ST[k] === state) || String(state);
+    },
+    /* pick a dive from outside, so the keeper half can be driven in a test
+       without synthesising touch coordinates against a projection */
+    keepAt(x, y){
+      if(state !== ST.KEEP) return false;
+      keepPick = {x: x, y: y};
+      commitKeep();
+      return true;
+    },
+    get aimState(){ return {power:power, aimM:aimM, elev:elev, curl:curl}; },
     get kickLabel(){ return document.getElementById('rnd').textContent; },
     get match(){ return MP.match; },
     get device(){ return mpToken(); },

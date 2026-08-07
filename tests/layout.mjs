@@ -43,7 +43,7 @@ for(const vp of [{width:360,height:640,n:'small phone'},
     if(hit(boxes[a], boxes[b])){ problems++; console.log('  OVERLAP: ' + a + ' x ' + b); }
   // measure the text, not the centred block it sits in
   const clipped = await page.evaluate(()=>{
-    const ids = ['betNote','rbL','rbV','nmP','nmC'];
+    const ids = ['betNote','rbL','rbV','nmP','nmC','aimNum','elevNum','curlNum','wDesc'];
     return ids.filter(i => { const e = document.getElementById(i);
       return e && e.scrollWidth > e.clientWidth + 1; });
   });
