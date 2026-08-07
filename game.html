@@ -4213,7 +4213,7 @@ function toMenu(){
   state=ST.TITLE; buildCounties(); refreshProfileStrip();
 }
 const bm = $('bootmsg');
-if(bm){ bm.className = 'bootmsg ok'; bm.textContent = 'Build 2026-08-03 \u00b7 ready'; }
+if(bm){ bm.className = 'bootmsg ok'; bm.textContent = 'Build 2026-08-07 \u00b7 ready'; }
 window.__cfBoot = 'wired';
 $('bChamp').onclick = startChampionship;
 $('bQuick').onclick = startQuick;
@@ -4292,6 +4292,12 @@ async function mpFetch(path, method, body){
     headers: {'X-CF-Device': mpToken(), 'Content-Type': 'application/json'},
     body: body ? JSON.stringify(body) : undefined,
   });
+  /* Served from somewhere that is not the site — a preview host, an embed —
+     the request lands on someone else's 404 page. Say that, rather than
+     showing a raw status code and leaving the player to guess. */
+  const type = res.headers.get('content-type') || '';
+  if(!type.includes('json'))
+    throw new Error('this copy is not connected to the server — play online from the site itself');
   const json = await res.json().catch(()=>({}));
   if(!res.ok) throw new Error(json.error || ('HTTP ' + res.status));
   return json;
