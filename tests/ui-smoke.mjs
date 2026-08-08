@@ -100,8 +100,8 @@ log('\n— coach marks on the very first kick —');
 await page.click('#bQuick');
 await page.waitForTimeout(900);
 ok(!(await page.locator('#ovCoach').getAttribute('class')).includes('hidden'), 'coach marks appear');
-ok(await page.evaluate(()=>document.querySelectorAll('#coachDots span').length) === 5, 'five coaching cards');
-for(let i=0;i<5;i++) await page.click('#bCoach');
+ok(await page.evaluate(()=>document.querySelectorAll('#coachDots span').length) === 6, 'six coaching cards');
+for(let i=0;i<6;i++) await page.click('#bCoach');
 ok((await page.locator('#ovCoach').getAttribute('class')).includes('hidden'), 'coach marks dismiss');
 ok(await page.evaluate(()=>JSON.parse(localStorage.getItem('crokerFlicks.v2')).seenCoach),
    'coach marks are remembered');
@@ -442,6 +442,48 @@ if(sawKeep){
   });
   ok(rec.faced > 0, 'the kick you faced is recorded', JSON.stringify(rec));
 }
+
+log('\n— the keeper is told what is coming —');
+await quitToMenu();
+await page.click('#bQuick');
+await page.waitForTimeout(900);
+let tel = null, swerves = 0, looked = 0;
+const tdead = Date.now() + 60000;
+while(looked < 4 && Date.now() < tdead){
+  const st = await page.evaluate(()=>({
+    keep: window.CF.canKeep, aim: window.CF.canAim,
+    end: !document.getElementById('ovEnd').classList.contains('hidden'),
+    rank: !document.getElementById('ovRank').classList.contains('hidden'),
+  }));
+  if(st.rank){ await page.click('#bRankOn'); continue; }
+  if(st.end){ await page.click('#bAgain'); await page.waitForTimeout(800); continue; }
+  if(st.keep){
+    const g = await page.evaluate(()=>window.CF.telegraph);
+    if(g){
+      looked++;
+      if(!tel) tel = g;
+      if(g.swerve >= 0.30) swerves++;
+    }
+    await page.evaluate(()=>{ const g=window.CF.telegraph;
+      window.CF.keepAt(g ? g.shown.x : 0, g ? g.shown.y : 1.2); });
+    await page.waitForTimeout(2600);
+    continue;
+  }
+  if(st.aim) await takeKick(looked);
+  await page.waitForTimeout(200);
+}
+ok(tel !== null, 'the shot exists before the window closes', JSON.stringify(tel));
+if(tel){
+  ok(typeof tel.shown.x === 'number' && typeof tel.shown.y === 'number',
+     'there is a line to read', JSON.stringify(tel.shown));
+  ok(tel.shown.x !== tel.clean.x,
+     'and it is offset by your read error, not handed to you',
+     JSON.stringify([tel.shown.x, tel.clean.x]));
+  ok(looked >= 2, 'more than one kick was faced', 'looked=' + looked);
+}
+ok(await page.evaluate(()=>window.CF.keepWindow) > 3,
+   'the window is long enough to read it',
+   String(await page.evaluate(()=>window.CF.keepWindow)));
 
 log('\n— the shop is shelved by county —');
 await quitToMenu();

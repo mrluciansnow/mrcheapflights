@@ -111,6 +111,9 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 .readout{position:absolute;left:32px;bottom:128px;display:flex;flex-direction:column;gap:3px;
   opacity:0;transition:opacity .18s}
 body.dragging .readout{opacity:1}
+/* the globals hold the opposition's shot while you are in goal — never show
+   them to the person trying to guess it */
+body.keeping .readout{opacity:0 !important}
 .readout .pwr{font-family:'Bebas Neue',sans-serif;font-size:1.9rem;line-height:.9;color:var(--yellow);
   text-shadow:0 2px 10px rgba(0,0,0,.7);font-variant-numeric:tabular-nums}
 .readout .crl{font-size:.62rem;font-weight:900;letter-spacing:.06em;color:rgba(255,255,255,.45);
@@ -276,6 +279,7 @@ body.dragging .betbar,body.dragging .prompt,body.dragging .comm{pointer-events:n
 .keepbar.show{opacity:1;transform:translate(-50%,0)}
 .keeplbl{font-size:.56rem;font-weight:900;letter-spacing:.18em;color:var(--sky);
   text-shadow:0 2px 8px rgba(0,0,0,.8)}
+.keeplbl b{color:#fff;opacity:.75;letter-spacing:.06em}
 #shotbar .keeplbl{color:var(--yellow)}
 #shotbar.tight .keeplbl{color:var(--hot-pink);animation:pulse .5s ease-in-out infinite}
 .keeptrack{width:150px;height:5px;border-radius:3px;background:rgba(255,255,255,.16);
@@ -509,7 +513,7 @@ window.addEventListener('error', function(e){
     <div class="keeptrack"><span id="shotFill"></span></div>
   </div>
   <div class="keepbar" id="keepbar">
-    <div class="keeplbl">YOUR SAVE</div>
+    <div class="keeplbl">YOUR SAVE <b id="keepTally"></b></div>
     <div class="keeptrack"><span id="keepFill"></span></div>
   </div>
   <div class="prompt" id="prompt">Swipe the shot you want</div>
@@ -850,6 +854,9 @@ let W=0, H=0, DPR=1, F=800, HZ=0;
 const CAM_BACK = 6.2, CAM_H = 2.8;
 const CAM = {x:0, y:CAM_H, z:17.2, fx:0, fz:-1, rx:-1, rz:0};
 let zoom = 1, zoomTarget = 1, panX = 0, panTarget = 0;
+/* Slow motion, applied only after the outcome is already settled, so it is
+   pure presentation and can never change a result. */
+let timeScale = 1, timeHold = 0;
 const reduceMotion = window.matchMedia &&
   window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -1335,8 +1342,13 @@ function netPoint(panel, u, v){
   // impact ripple
   if(ripple.t>0 && panel==='back'){
     const d = Math.hypot(wx-ripple.x, wy-ripple.y);
-    const amp = Math.exp(-d*d/1.1) * Math.exp(-ripple.t*3.2) * Math.sin(ripple.t*22) * 0.55;
-    wz -= amp; wy += amp*0.25;
+    /* a pocket that punches in and settles, plus a shiver running out of it —
+       the ball goes INTO the net rather than bouncing off a drumskin */
+    const decay  = Math.exp(-ripple.t*1.5);
+    const pocket = Math.exp(-d*d/0.85) * decay * (0.62 - 0.20*Math.exp(-ripple.t*9));
+    const shiver = Math.exp(-d*d/2.4) * Math.exp(-ripple.t*4.2) * Math.sin(ripple.t*20 - d*3) * 0.16;
+    const amp = pocket + shiver;
+    wz -= amp; wy += amp*0.30;
   }
   return prj(wx,wy,wz);
 }
@@ -1531,6 +1543,7 @@ function newKeeper(defendingCounty, tier){
     sharp: clamp((d.rMax - react)/span, 0, 1),
     dur: d.dur, reach: d.reach, range: d.range, err: d.err,
     dive: 0, committed: false,
+    recover: 0, held: null,
   };
 }
 /* The keeper's set position is honest information: this kick's reaction
@@ -1573,6 +1586,12 @@ function keeperCommit(k, b){
   k.side = Math.sign(k.tx) || 1;
   k.committed = true;
 }
+/* he is up again about half a second after the ball is dead */
+function keeperRecover(dt){
+  if(!keeper) return;
+  const done = state===ST.RESULT || state===ST.OVER;
+  keeper.recover = clamp(keeper.recover + (done ? dt*1.7 : -dt*4), 0, 1);
+}
 function keeperUpdate(k, t, b){
   if(!k.committed){
     if(t >= k.react) keeperCommit(k, b);
@@ -1591,8 +1610,14 @@ function keeperHand(k){
 }
 function drawKeeper(k){
   if(!k) return;
-  const e = ease(k.dive);
-  const ang = k.side * e * 1.12;
+  /* Once the ball is dead he gets back to his feet rather than lying there
+     in the shape he landed in. Purely cosmetic — the dive value the
+     simulation reads is untouched. */
+  const rec = k.recover;
+  const e = ease(k.dive) * (1 - rec*0.86);
+  /* a committed dive to the corner leans further than a routine one */
+  const commitment = clamp(Math.abs(k.tx) / 2.4, 0, 1);
+  const ang = k.side * e * (1.05 + commitment*0.42);
   const ux = Math.sin(ang), uy = Math.cos(ang);      // body "up" axis
   const rx = Math.cos(ang), ry = -Math.sin(ang);     // body "right" axis
   // joints are built in the keeper's (height, lateral) plane, then rotated
@@ -1617,6 +1642,9 @@ function drawKeeper(k){
   // this kick, the lower he sits and the faster he shifts his weight
   const sh = k.sharp === undefined ? 0.5 : k.sharp;
   const cr = (1-e)*(0.05 + sh*0.13);
+  /* the trailing leg straightens as he stretches, which is most of what
+     makes a dive look like a dive rather than a fold */
+  const stretch = e * commitment;
   ctx.save();
   if(e < 0.02 && !reduceMotion)
     ctx.translate(Math.sin(now*0.0042*(0.6 + sh*1.4)) * (0.9 + sh*2.6), 0);
@@ -1627,6 +1655,20 @@ function drawKeeper(k){
   const offElb=J(1.14-cr, -k.side*0.40-(1-e)*0.06), offHand=J(0.96-cr+(1-e)*0.22, -k.side*0.62-(1-e)*0.10);
 
   // ground shadow (fades as he leaves the turf)
+  /* a short trail behind a committed dive: three ghosts along the path he
+     has already covered, fading out */
+  if(e > 0.06 && e < 0.99 && !reduceMotion && k.dive > 0){
+    for(let g=1; g<=3; g++){
+      const back = ease(Math.max(0, k.dive - g*0.13));
+      const gx2 = lerp(k.wx0*0.56, k.tx*0.56, back);
+      const gy2 = lerp(0, Math.max(0, k.ty*0.52 - 0.14), back);
+      const gq = prj(gx2, gy2 + 0.95, k.wz);
+      ctx.fillStyle = 'rgba(207,232,60,' + (0.13 - g*0.035) + ')';
+      ctx.beginPath();
+      ctx.ellipse(gq.x, gq.y, 0.30*gq.s, 0.52*gq.s, k.side*back*0.9, 0, 6.283);
+      ctx.fill();
+    }
+  }
   const gp = prj(k.wx, 0, k.wz);
   ctx.fillStyle='rgba(0,0,0,'+(0.34*(1-e*0.55))+')';
   ctx.beginPath(); ctx.ellipse(gp.x, gp.y, (0.42+e*0.5)*gp.s, 0.15*gp.s, 0,0,6.283); ctx.fill();
@@ -1637,6 +1679,14 @@ function drawKeeper(k){
   limb(ctx, kneeL.x,kneeL.y, footL.x,footL.y, LW(.10), LW(.065), '#1b2029', dk);
   limb(ctx, pelvis.x,pelvis.y, kneeR.x,kneeR.y, LW(.15), LW(.10), '#252b36', dk);
   limb(ctx, kneeR.x,kneeR.y, footR.x,footR.y, LW(.10), LW(.065), '#1b2029', dk);
+  if(stretch > 0.12){
+    // the toe of the trailing boot, pointed
+    ctx.fillStyle = '#e8edf2';
+    ctx.beginPath();
+    ctx.ellipse(footR.x + ux*stretch*10, footR.y - uy*stretch*4,
+                LW(.10), LW(.05), ang, 0, 6.283);
+    ctx.fill();
+  }
   // boots
   ctx.fillStyle='#f4f7fa';
   ctx.beginPath(); ctx.ellipse(footL.x+ux*3, footL.y+2, LW(.11), LW(.06), ang, 0, 6.283); ctx.fill();
@@ -1807,11 +1857,16 @@ function drawWall(){
    THE KICKER — seen from behind, in your kit. Without him the whole
    wardrobe would be invisible, since the camera sits at his shoulder.
    ================================================================== */
-let kicker = {t:0, striking:false, face:0};
+let kicker = {t:0, striking:false, face:0, planted:0};
 let strikeAim = 0;
 function kickerStrike(){ kicker.t = 0; kicker.striking = true; }
 function kickerUpdate(dt){
-  if(kicker.striking){ kicker.t += dt; if(kicker.t > 1.5) kicker.striking = false; }
+  if(kicker.striking){
+    kicker.t += dt;
+    // the standing foot goes down just before contact and stays weighted
+    kicker.planted = clamp(kicker.t/0.10, 0, 1);
+    if(kicker.t > 1.5){ kicker.striking = false; kicker.planted = 0; }
+  }
 }
 function drawKicker(){
   if(state===ST.TITLE || state===ST.REPLAY) return;
@@ -1827,9 +1882,11 @@ function drawKicker(){
   const t = kicker.striking ? kicker.t : 0;
   const stride = kicker.striking ? Math.max(0, 1 - t*3.2) : (0.5+0.5*Math.sin(now*0.0016))*0.10;
   const lunge  = kicker.striking ? clamp(t*4.5, 0, 1) * Math.exp(-t*2.2) : 0;
+  /* he drops into the strike and comes back up out of it */
+  const dip    = kicker.striking ? Math.sin(clamp(t*6.5, 0, D_PI)) * 0.09 : 0;
   const gx = wx + shotU.x*lunge*0.45, gz = wz + shotU.z*lunge*0.45;
 
-  const feet = prj(gx, 0, gz), headP = prj(gx, 1.82, gz);
+  const feet = prj(gx, 0, gz), headP = prj(gx, 1.82 - dip, gz);
   const s = feet.s, h = feet.y - headP.y;
   if(h < 20) return;
   /* Open the stance toward wherever the shot is pointed. Held between kicks
@@ -1998,13 +2055,22 @@ function drawBall(){
     ctx.fillStyle = 'rgba(255,255,255,'+(0.16*f)+')';
     ctx.beginPath(); ctx.arc(p.x,p.y, CFG.BALL_R*p.s*(0.35+0.45*f), 0, 6.283); ctx.fill();
   }
-  // ground shadow
+  // ground shadow: tight and dark on the deck, wide and faint up high
   const sh = prj(b.wx, 0, b.wz);
   const lift = clamp(b.wy/3.2, 0, 1);
-  ctx.fillStyle = 'rgba(0,0,0,'+(0.36*(1-lift*0.7))+')';
-  ctx.beginPath();
-  ctx.ellipse(sh.x, sh.y, CFG.BALL_R*sh.s*(1+lift*0.5), CFG.BALL_R*sh.s*0.34*(1+lift*0.4), 0,0,6.283);
-  ctx.fill();
+  const rx = CFG.BALL_R*sh.s*(0.86 + lift*1.5);
+  const ry = rx*0.34;
+  // penumbra
+  const pg = ctx.createRadialGradient(sh.x, sh.y, 0, sh.x, sh.y, Math.max(2, rx));
+  pg.addColorStop(0, 'rgba(0,0,0,'+(0.46*(1-lift*0.72))+')');
+  pg.addColorStop(0.62,'rgba(0,0,0,'+(0.22*(1-lift*0.72))+')');
+  pg.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.save();
+  ctx.translate(sh.x, sh.y); ctx.scale(1, 0.34); ctx.translate(-sh.x, -sh.y);
+  ctx.fillStyle = pg;
+  ctx.beginPath(); ctx.arc(sh.x, sh.y, Math.max(2, rx), 0, 6.283); ctx.fill();
+  ctx.restore();
+  void ry;
 
   const p = prj(b.wx, b.wy, b.wz);
   const r = CFG.BALL_R*p.s;
@@ -2018,7 +2084,9 @@ function drawBall(){
   // O'Neills panel seams, spinning
   ctx.save();
   ctx.beginPath(); ctx.arc(0,0,r,0,6.283); ctx.clip();
-  ctx.rotate(b.spin*0.12);
+  /* the seams turn about an axis tilted by the sidespin, so a ball that is
+     going to bend looks like it is going to bend */
+  ctx.rotate(b.spin*0.12 + strikeCurl*0.55);
   // O'Neills-style: a band of stitched panels around the middle
   ctx.strokeStyle=skin.seam; ctx.lineWidth=Math.max(.9,r*0.07);
   ctx.beginPath(); ctx.ellipse(0,0, r*0.99, r*0.34, 0, 0, 6.283); ctx.stroke();
@@ -2034,6 +2102,15 @@ function drawBall(){
   ctx.fillStyle=sd; ctx.beginPath(); ctx.arc(0,0,r,0,6.283); ctx.fill();
   ctx.fillStyle='rgba(255,255,255,.75)';
   ctx.beginPath(); ctx.ellipse(-r*0.34,-r*0.40, r*0.24, r*0.15, -0.6, 0, 6.283); ctx.fill();
+  // a second, harder highlight from the floodlights when there are any
+  if(venue.night && floodPts.length){
+    let nx = 0;
+    for(const f of floodPts) nx += f.x;
+    nx = nx/floodPts.length - p.x;
+    const hx = clamp(nx/W, -1, 1) * r*0.45;
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
+    ctx.beginPath(); ctx.ellipse(hx, -r*0.55, r*0.13, r*0.08, 0, 0, 6.283); ctx.fill();
+  }
   ctx.restore();
 }
 
@@ -2221,6 +2298,9 @@ const SFX = {
   save(){ noise(.2,.11,300,1.2); tone(190,.16,'sawtooth',.05); },
   roar(g){ noise(1.5,g?.15:.07, 700, .35); crowdSwell(g?1:0.45, g?2.0:1.1); },
   whistle(){ tone(2100,.09,'square',.035); setTimeout(()=>tone(2500,.13,'square',.035),80); },
+  /* the swerve declaring itself: two rising blips, distinct from anything
+     else in the mix so it cannot be mistaken for a crowd noise */
+  tell(){ tone(1180,.07,'square',.030); setTimeout(()=>tone(1560,.10,'square',.030),90); },
 };
 
 /* ==================================================================
@@ -2251,9 +2331,15 @@ let kickNo = 0, survivalLevel = 0, duelTurn = 'a', duel = null;
    half for you. Now the opponent's kick is yours to save: pick the spot
    before he strikes, and live with it. Committing early is the whole cost —
    the keeper cannot wait and see, and neither can you. */
-const KEEP_WINDOW = 3.2;        // seconds to choose
+/* Long enough to look, see a swerve declare itself, and get a hand up. The
+   easier tiers give you more of it. */
+const KEEP_BASE = 3.6;
+const KEEP_TIER = {junior:1.15, intermediate:1.05, senior:1.0, allireland:0.88};
+const keepWindow = () => KEEP_BASE * (KEEP_TIER[difficulty] || 1);
+let KEEP_WINDOW = KEEP_BASE;   // the window actually in use, set per kick
 const KEEP_REACT  = 0.06;       // he goes as the ball is struck
 let keepT = 0, keepPick = null, keepDone = false, matchSaves = 0;
+let keepFaced = 0, keepSides = [];       // which way you went, most recent last
 const goalieOn = () => opts.goalie && isShootout() && mode !== 'duel' && !MP.match;
 /* Dive where you swipe. Straight up is a leap down the middle, across is a
    low dive to that side, up and across is full stretch into the corner, and
@@ -2269,18 +2355,22 @@ function keepFromSwipe(path){
            y: clamp(1.15 + ny * 1.5, 0.05, CFG.BAR_H+0.6) };
 }
 function beginKeep(){
+  KEEP_WINDOW = keepWindow();
   keepT = KEEP_WINDOW; keepPick = null; keepDone = false;
   state = ST.KEEP;
+  document.body.classList.add('keeping');
   zoom = zoomTarget = 1; panX = panTarget = 0;   // identity, so the touch maps
   keeper.wx0 = 0; keeper.wx = 0;                 // no free lean for your own man
   $('prompt').style.display = '';
-  $('prompt').textContent = 'Swipe your dive — ' + CO_C.n + ' steps up';
+  $('prompt').textContent = 'Read the ring — watch for a swerve';
+  $('keepTally').textContent = keepFaced ? '· ' + matchSaves + '/' + keepFaced : '';
   $('keepbar').classList.add('show');
   showBetBar(false);
 }
 function commitKeep(){
   if(keepDone) return;
   keepDone = true;
+  document.body.classList.remove('keeping');
   $('keepbar').classList.remove('show');
   if(keepPick){
     keeper.tx = clamp(keepPick.x, -keeper.range, keeper.range);
@@ -2289,6 +2379,8 @@ function commitKeep(){
     keeper.tx = 0; keeper.ty = 1.35;             // stood still, stayed central
   }
   keeper.side = Math.sign(keeper.tx) || 1;
+  keepSides.push(Math.abs(keeper.tx) < 0.6 ? 0 : Math.sign(keeper.tx));
+  if(keepSides.length > 6) keepSides.shift();
   keeper.committed = true;                        // your read, not his
   keeper.react = KEEP_REACT;
   keeper.player = true;
@@ -2681,6 +2773,7 @@ function newShot(who){
     startShotClock();
     if(!profile.seenCoach && who==='p') setTimeout(showCoach, 450);
   } else if(goalieOn()){
+    cpuPlan();
     beginKeep();
   } else {
     state = ST.CPU_WAIT;
@@ -2692,7 +2785,14 @@ function newShot(who){
 }
 
 /* ---- CPU shot selection: sharper opponents pick better corners ---- */
-function cpuShoot(){
+/* How well the striker hides it. A junior telegraphs everything; an
+   All-Ireland forward shows you almost nothing until the ball has gone. */
+const DISGUISE = {junior:0.16, intermediate:0.28, senior:0.44, allireland:0.62};
+let cpuShot = null;
+
+/* Choose the shot. Same draws, in the same order, as the old cpuShoot — this
+   just happens earlier, before the keeper's window rather than after it. */
+function cpuPlan(){
   const sharp = {junior:.45, intermediate:.62, senior:.76, allireland:.92}[difficulty];
   const roll = gRng();
   let target;                                        // where it wants the ball to cross
@@ -2713,6 +2813,46 @@ function cpuShoot(){
   const sp = shotParams(power, elev);
   const tf = shotDist/(sp.S*dcos(sp.th));
   aimM = target - 0.5*(curl*CFG.CURL*(sp.S/20))*tf*tf;
+
+  /* Where it crosses the line with the bend, and where it would have crossed
+     without it. The gap between the two is what the swerve flash is for. */
+  const endOf = pts => { const l = pts[pts.length-1];
+                         return l ? {x:l.x, y:l.y} : {x:0, y:1.2}; };
+  const clean = endOf(simPath(false));
+  const real  = endOf(simPath(true));
+
+  /* Your read is imperfect, and how imperfect is the striker's business. Drawn
+     from its own stream keyed off the match seed, so it is fair and repeatable
+     without disturbing the draw order the simulation contract depends on. */
+  const d  = DISGUISE[difficulty] || 0.4;
+  const jr = mulberry32(hash2((matchSeed ^ 0x5EED5EED) >>> 0, kickIndex*7 + 3));
+  const jx = (jr()*2 - 1) * d, jy = (jr()*2 - 1) * d * 0.55;
+
+  /* If you have gone the same way twice running he backs himself to put it
+     the other side. A nudge rather than a teleport, so it is a tendency you
+     can feel and play against rather than a rule you can farm. */
+  const n = keepSides.length;
+  if(n >= 2 && keepSides[n-1] !== 0 && keepSides[n-1] === keepSides[n-2]){
+    const away = -keepSides[n-1];
+    if(Math.sign(aimM) !== away) aimM = aimM*0.35 + away*Math.abs(aimM || 1.6)*0.9;
+    else aimM += away*0.32;
+    aimM = clamp(aimM, -4.4, 4.4);
+  }
+
+  cpuShot = {
+    power: power, aimM: aimM, elev: elev, curl: curl,
+    clean: clean, real: real,
+    swerve: dhyp2(real.x - clean.x, real.y - clean.y),
+    shown: {x: clean.x + jx, y: clean.y + jy},
+    shownEnd: {x: real.x + jx*0.5, y: real.y + jy*0.5},
+    flashed: false,
+  };
+}
+function cpuShoot(){
+  if(cpuShot){                       // play the shot that was already chosen
+    power = cpuShot.power; aimM = cpuShot.aimM;
+    elev  = cpuShot.elev;  curl = cpuShot.curl;
+  }
   if(!keeper || !keeper.player) keeper = newKeeper(CO_P, OWN_KEEPER_TIER);
   fire();
 }
@@ -2726,11 +2866,15 @@ function fire(){
   launchBall(power, aimM + slip, elev);
   state = ST.FLIGHT; flightT = 0;
   zoomTarget = 1.07;
+  // the camera flinches along the line of the strike, then settles
+  panX = clamp(-aimM * 9, -26, 26);
   $('prompt').style.display='none';
   showBetBar(false);
   $('meter').classList.remove('live');
   $('mfill').style.height = '0%';
   kickerStrike(); buzz(12);
+  // the plant foot bites: a divot beside the ball, not under it
+  puff(spot.x - shotR.x*0.55, spot.z - shotR.z*0.55);
   SFX.kick(); puff(spot.x, spot.z); shake = 3; crowdSwell(.30,.9);
 }
 
@@ -2833,14 +2977,20 @@ function award(kind){
     SFX.net(); SFX.roar(true); raiseFlags(2); burstConfetti(); buzz([0,26,50,70]);
     crowdReact(1);
     shake=13; flash=.5; zoomTarget=1.13;
-    ripple = {t:0.001, x:ball.wx, y:Math.max(0.3,ball.wy)};
+    ripple = {t:0.001, x:clamp(ball.wx,-HW+0.2,HW-0.2), y:Math.max(0.3,ball.wy)};
   } else if(kind==='point'){
     SFX.point(); SFX.roar(false); raiseFlags(1); shake=4; crowdReact(0.45);
   } else if(kind==='twopoint'){
     SFX.point(); setTimeout(()=>SFX.point(),150); SFX.roar(true);
     raiseFlags(3); shake=7; flash=.28; crowdReact(0.8);
-  } else if(kind==='save' || kind==='tip'){ SFX.save(); shake=7; crowdSwell(.5,1.0); buzz(34); crowdReact(0.5); }
-  else if(kind==='post' || kind==='bar'){ SFX.post(); shake=9; crowdSwell(.7,1.2); buzz([0,18,40,18]); }
+  } else if(kind==='save' || kind==='tip'){
+    SFX.save(); shake=7; crowdSwell(.5,1.0); buzz(34); crowdReact(0.5);
+    slowMo(0.32, 0.75);                       // a beat to see the hand on it
+  }
+  else if(kind==='post' || kind==='bar'){
+    SFX.post(); shake=9; crowdSwell(.7,1.2); buzz([0,18,40,18]);
+    slowMo(0.30, 0.85);                       // and one for the woodwork
+  }
   else { SFX.roar(false); crowdSwell(.2,.8); }
 
   // when you were the one in goal, the scoreline reads the other way round
@@ -2848,6 +2998,7 @@ function award(kind){
     const saved = kind==='save' || kind==='tip' || kind==='post'
                || kind==='bar'  || kind==='wide' || kind==='short' || kind==='blocked';
     profile.faced = (profile.faced||0) + 1;
+    keepFaced++;
     if(saved) profile.saves = (profile.saves||0) + 1;
     saveProfile();
     const sub = r.querySelector('.sub');
@@ -2865,6 +3016,14 @@ function award(kind){
   refreshHUD();
   // the moments worth seeing again
   if(kind==='goal' || kind==='twopoint') startReplay(kind);
+}
+
+/* A held beat on the moments that deserve one. Only ever called from award(),
+   which runs after the outcome is decided, so the physics it slows is the
+   ball rolling away rather than the ball arriving. */
+function slowMo(scale, secs){
+  if(reduceMotion) return;
+  timeScale = scale; timeHold = secs;
 }
 
 /* ---------- awards ---------- */
@@ -3480,6 +3639,7 @@ const COACH = [
   ['3 · Curve it',   'Bend the swipe and the ball bends with it. The zone lighting up on the goal is where it is heading, so you can correct halfway through.'],
   ['4 · Beat the clock','You have five seconds. Run them down and he takes it on anyway, off balance and with nothing on it.'],
   ['5 · Go in goal', 'When they kick, you are the keeper. Swipe the way you want to dive — across for a low one, up and across for full stretch — before he strikes.'],
+  ['6 · Read the shot','In goal you get two tells. A ring shows where he is lining it up. If he wraps his foot around it, a second marker flashes SWERVE where it will really finish — that is the one to dive at. The better the forward, the less honest the first ring is.'],
 ];
 let coachStep = 0;
 function showCoach(){
@@ -3930,6 +4090,99 @@ function drawAimPreview(){
   ctx.restore();
 }
 
+/* --- the telegraph --------------------------------------------------- */
+/* progress through the window, 0 at the whistle to 1 at the strike */
+const keepProg = () => clamp(1 - keepT/KEEP_WINDOW, 0, 1);
+/* the swerve declares itself in the middle third, and only if there is one */
+const SWERVE_MIN = 0.30;
+function swerveWindow(){
+  if(!cpuShot || cpuShot.swerve < SWERVE_MIN) return 0;
+  const t = keepProg();
+  if(t < 0.40 || t > 0.72) return 0;
+  return Math.sin((t - 0.40)/0.32 * D_PI);            // fades in and back out
+}
+function drawTelegraph(){
+  if(state !== ST.KEEP || !cpuShot) return;
+  const t = keepProg();
+  const fade = t > 0.86 ? clamp((1 - t)/0.14, 0, 1) : 1;   // gone by the strike
+  const col = '#FFD200';                       // aimed here
+  const end = '#FF2D6B';                       // finishes here
+
+  /* where he is lining it up */
+  const a = prj(cpuShot.shown.x, cpuShot.shown.y, 0);
+  const pulse = 0.55 + 0.45*Math.sin(now*0.010);
+  const r0 = 13 + pulse*5;
+  ctx.save();
+  // a dark rim under everything, so it reads against a white net or a crowd
+  ctx.globalAlpha = fade * 0.55;
+  ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.lineWidth = 5.5;
+  ctx.beginPath(); ctx.arc(a.x, a.y, r0, 0, 6.283); ctx.stroke();
+  ctx.globalAlpha = fade * (0.55 + pulse*0.45);
+  ctx.strokeStyle = col; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(a.x, a.y, r0, 0, 6.283); ctx.stroke();
+  ctx.globalAlpha = fade * 0.9;
+  ctx.beginPath(); ctx.arc(a.x, a.y, 4, 0, 6.283);
+  ctx.fillStyle = col; ctx.fill();
+  // four ticks, so it reads as a sight rather than a bubble
+  ctx.lineWidth = 2;
+  for(const d of [[-1,0],[1,0],[0,-1],[0,1]]){
+    ctx.beginPath();
+    ctx.moveTo(a.x + d[0]*(r0+4), a.y + d[1]*(r0+4));
+    ctx.lineTo(a.x + d[0]*(r0+10), a.y + d[1]*(r0+10));
+    ctx.stroke();
+  }
+  ctx.fillStyle = col;
+  ctx.font = '900 9px Nunito, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.lineWidth = 3;
+  ctx.strokeText('AIMED', a.x, a.y - r0 - 15);
+  ctx.fillText('AIMED', a.x, a.y - r0 - 15);
+  ctx.restore();
+
+  /* and the bend, when it shows itself */
+  const sw = swerveWindow();
+  if(sw > 0.02){
+    const b = prj(cpuShot.shownEnd.x, cpuShot.shownEnd.y, 0);
+    const strobe = 0.35 + 0.65*Math.abs(Math.sin(now*0.028));   // a hard flash
+    ctx.save();
+    ctx.globalAlpha = fade * sw * strobe;
+    // the arc it will take to get there
+    ctx.setLineDash([7,5]);
+    ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.quadraticCurveTo((a.x+b.x)/2, Math.min(a.y,b.y) - 26, b.x, b.y);
+    ctx.stroke();
+    ctx.strokeStyle = end; ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.quadraticCurveTo((a.x+b.x)/2, Math.min(a.y,b.y) - 26, b.x, b.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // and the finishing point, hard to miss
+    ctx.globalAlpha = fade * sw;
+    ctx.fillStyle = 'rgba(255,45,107,' + (0.20*strobe) + ')';
+    ctx.beginPath(); ctx.arc(b.x, b.y, 26, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,.75)'; ctx.lineWidth = 6.5;
+    ctx.beginPath(); ctx.arc(b.x, b.y, 15, 0, 6.283); ctx.stroke();
+    ctx.strokeStyle = end; ctx.lineWidth = 3.5;
+    ctx.beginPath(); ctx.arc(b.x, b.y, 15, 0, 6.283); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(b.x-22, b.y); ctx.lineTo(b.x-8, b.y);
+    ctx.moveTo(b.x+8, b.y);  ctx.lineTo(b.x+22, b.y);
+    ctx.moveTo(b.x, b.y-22); ctx.lineTo(b.x, b.y-8);
+    ctx.moveTo(b.x, b.y+8);  ctx.lineTo(b.x, b.y+22);
+    ctx.stroke();
+    ctx.font = '900 11px Nunito, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.lineWidth = 3.5;
+    ctx.strokeText('SWERVE', b.x, b.y - 34);
+    ctx.fillStyle = end;
+    ctx.fillText('SWERVE', b.x, b.y - 34);
+    ctx.restore();
+  }
+}
+
 /* Where you have chosen to go, drawn on the goal you are defending. */
 function drawKeepPick(){
   if(state !== ST.KEEP) return;
@@ -4080,15 +4333,20 @@ function update(dt){
   now += dt*1000;
   zoom += (zoomTarget-zoom)*Math.min(1, dt*5);
   panX += (panTarget-panX)*Math.min(1, dt*4);
+  if(timeHold > 0){
+    timeHold -= dt;
+    if(timeHold <= 0) timeScale = 1;
+  }
   stepRain(dt);
   kickerUpdate(dt);
   if(shake>0) shake = Math.max(0, shake-dt*32);
   if(flash>0) flash = Math.max(0, flash-dt*1.8);
-  if(ripple.t>0){ ripple.t += dt; if(ripple.t>1.6) ripple.t=0; }
+  if(ripple.t>0){ ripple.t += dt; if(ripple.t>2.6) ripple.t=0; }
   for(const u of umpires) if(u.flag) u.raise = Math.min(1, u.raise + dt*4);
 
   stepParts(dt);
   stepCrowdFx(dt);
+  keeperRecover(dt);
 
   if(clockRuns()){
     shotT -= dt;
@@ -4099,6 +4357,11 @@ function update(dt){
   }
   if(state===ST.KEEP){
     keepT -= dt;
+    // the moment the bend shows: one cue, once
+    if(cpuShot && !cpuShot.flashed && cpuShot.swerve >= SWERVE_MIN && keepProg() >= 0.40){
+      cpuShot.flashed = true;
+      SFX.tell(); buzz([0,18,40,18]);
+    }
     $('keepFill').style.width = clamp(keepT/KEEP_WINDOW, 0, 1)*100 + '%';
     if(keepT <= 0) commitKeep();
   }
@@ -4140,8 +4403,19 @@ function update(dt){
       if(res==='post' || res==='bar'){
         ball.vz = Math.abs(ball.vz)*0.55; ball.vx *= 0.5;
         if(res==='bar') ball.vy = -Math.abs(ball.vy)*0.4;
-      } else if(res==='save' || res==='tip'){
-        ball.vz = Math.abs(ball.vz)*0.5; ball.vx += rand(-3,3); ball.vy = Math.abs(ball.vy)*0.5+1.5;
+      } else if(res==='save'){
+        // gathered: it stops dead in his hands
+        const hand = keeperHand(keeper);
+        ball.vx = ball.vy = ball.vz = 0;
+        ball.wx = hand.x; ball.wy = hand.y; ball.wz = 0.12;
+        ball.live = false;
+        keeper.held = {x:hand.x, y:hand.y};
+      } else if(res==='tip'){
+        // fingertips: it carries on, deflected away from goal and spinning
+        const away = Math.sign(bx) || 1;
+        ball.vz = Math.abs(ball.vz)*0.34;
+        ball.vx = away*Math.abs(ball.vx)*0.6 + away*4.5;
+        ball.vy = Math.abs(ball.vy)*0.4 + 2.6;
       }
       setTimeout(()=>{ if(state===ST.FLIGHT) award(res); }, res==='goal'?170:60);
     }
@@ -4185,6 +4459,7 @@ function render(){
   drawKicker();
   ctx.restore();
 
+  drawTelegraph();
   drawKeepPick();
   drawDragGesture();
   drawRain();
@@ -4284,7 +4559,7 @@ function frame(t){
   lastT = t;
   try{
     if(state!==ST.TITLE || bg){
-      if(!paused) update(dt);
+      if(!paused) update(dt * timeScale);
       render();                       // a paused frame still draws, so the
     }                                 // overlay sits over the live pitch
   }catch(err){ reportFault(err); }
@@ -4336,7 +4611,7 @@ function startMatch(){
   kickNo=0; survivalLevel=0; duelTurn='a';
   if(mode==='duel') setupDuel();
   P={g:0,t:0,p:0,r:[]}; C={g:0,t:0,p:0,r:[]}; confetti=[]; parts=[];
-  scuffs=[]; crowdFx=[]; crowdT=0; matchSaves=0;
+  scuffs=[]; crowdFx=[]; crowdT=0; matchSaves=0; keepFaced=0; keepSides=[];
   if(!matchSeedFixed) matchSeed = newSeed();
   matchSeedFixed = false;
   seedFrom(matchSeed);                       // opponent, ground and weather
@@ -4637,6 +4912,15 @@ if(new URLSearchParams(location.search).has('debug')){
     get canAim(){ return state === ST.AIM && !paused; },
     get canKeep(){ return state === ST.KEEP && !paused; },
     get goalieOn(){ return goalieOn(); },
+    /* what the keeper is being shown, and what is actually coming, so the
+       fairness of the read can be measured rather than asserted */
+    get telegraph(){
+      if(!cpuShot) return null;
+      return {shown:cpuShot.shown, shownEnd:cpuShot.shownEnd,
+              real:cpuShot.real, clean:cpuShot.clean,
+              swerve:+cpuShot.swerve.toFixed(3), prog:+keepProg().toFixed(3)};
+    },
+    get keepWindow(){ return KEEP_WINDOW; },
     get stateName(){
       return Object.keys(ST).find(k => ST[k] === state) || String(state);
     },

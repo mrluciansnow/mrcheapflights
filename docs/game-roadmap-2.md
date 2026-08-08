@@ -800,3 +800,100 @@ unchanged at 3.2 seconds.
 layout), `npm run test:daily`, `npm run test:balance`. The smoke suite gained
 sections for pace-versus-loft independence, direction, the lit zone, going
 wide, the curl sign, and the clock running down to a rushed strike.
+
+---
+
+# Fourth pass — the keeper half, and twenty around it
+
+## Why the goalie half was a coin toss
+
+Not a tuning problem. A structural one: `cpuShoot()` chose the shot *after*
+`commitKeep()` had already locked in your dive. There was nothing to read in
+the window because the shot did not exist yet. Any indicator built on top of
+that would have been decoration.
+
+The shot is now chosen the moment the turn changes over — `cpuPlan()`, same
+draws in the same order, just earlier — so the window has something to show.
+
+## What the keeper is shown
+
+**The ring.** From the moment the window opens, a pulsing amber sight labelled
+AIMED at the point his current line would cross. It first took the striker's
+county colour, which was fine until the county was Kerry green and the
+backdrop was a white net — both markers now have fixed, unambiguous colours
+with a dark rim under them: amber for where he is aiming, pink for where it
+finishes.
+
+**The swerve flash.** If he has actually wrapped his foot around it
+(`swerve >= 0.30m` of lateral movement), then between 40% and 72% of the way
+through the window a second marker strobes at the true finishing point, joined
+to the ring by a curved arrow and labelled SWERVE. One audio cue and one buzz,
+once. If the shot is straight there is no flash — the ring was the truth.
+
+**Your read is imperfect, on purpose.** Both markers are offset by an error
+drawn from the striker's quality: 0.16m against a junior, 0.62m against an
+All-Ireland forward. It comes from its own stream keyed off the match seed, so
+it is fair and repeatable without disturbing the draw order the simulation
+contract depends on.
+
+The window went from 3.2s to 3.6s and now scales with the tier — a junior
+gives you 1.15× of it, an All-Ireland forward 0.88×.
+
+### Measured
+
+Three keepers faced the same senior kicks, 14 each:
+
+| how they dived | kept out |
+|---|---|
+| blind, at random | 14% |
+| reading the ring and the swerve flash | 43% |
+
+Three times as many saves from reading it. That is the number that says the
+telegraph is information rather than decoration.
+
+## And nineteen more
+
+**Keeper**
+- A dive commits: the body leans further for a corner than for a routine stop,
+  the trailing leg extends, the toe points.
+- He gets back to his feet once the ball is dead instead of lying in the shape
+  he landed in.
+- **A catch and a fingertip no longer look identical** — a save gathers the
+  ball dead in his gloves, a tip deflects it away spinning. Both used to fling
+  it off on the same random vector.
+- A short motion trail behind a committed dive.
+- The saves you have made sit on the keeper bar while you are defending.
+
+**Kicker**
+- The plant foot bites — a divot beside the ball, which is the moment the
+  strike reads from.
+- The body dips into the strike and comes back up out of it.
+
+**Ball and net**
+- The shadow has a real penumbra now: tight and dark with the ball on the
+  deck, wide and faint with it at head height. It was one ellipse at a fixed
+  softness whatever the height, which is most of why height was hard to read.
+- The seams turn about an axis tilted by the sidespin, so a ball that is going
+  to bend looks like it is going to bend.
+- A second, harder highlight from the floodlights at the night grounds.
+- The net takes the ball as a **pocket that punches in and settles**, with a
+  shiver running out of it, rather than a ring on a drumskin.
+
+**Camera**
+- A held beat — 0.3× speed for three quarters of a second — on a save and on
+  the woodwork. Applied only from `award()`, which runs after the outcome is
+  already decided, so the physics it slows is the ball rolling away rather
+  than the ball arriving. It cannot move a result.
+- The camera flinches along the line of the strike and settles.
+
+**Mechanics**
+- **The striker reads you back.** Dive the same way twice running and he backs
+  himself to go the other side — a nudge to his aim rather than a teleport, so
+  it is a tendency you can feel and play against rather than a rule to farm.
+
+## Verification
+
+Parity 120/120 and determinism 40/40 throughout — none of this touches the
+outcome path. The keeper measurement above is `tests/keeper.mjs`. The smoke
+suite gained a section proving the shot exists before the window closes and
+that what you are shown is offset from the truth rather than handed to you.
