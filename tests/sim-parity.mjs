@@ -30,6 +30,14 @@ function records(n){
       curl:  -0.9 + ((i*13) % 19) / 10,
       // every seventh record omits elevation, exercising the fallback
       elev:  (i % 7 === 0) ? undefined : ((i*29) % 101) / 100,
+      /* Half the records carry a keeper's dive, spread across committing well
+         before the strike, exactly on it, and late into the flight. The other
+         half leave it out, which must still run the server's own keeper. */
+      dive:  (i % 2) ? undefined : {
+               x: -2.8 + ((i*37) % 57) / 10,
+               y: 0.2 + ((i*19) % 21) / 10,
+               at: -0.9 + ((i*11) % 15) / 10,
+             },
       x: s[0], z: s[1],
       wall: [0,0,3,4,2][i % 5],
       weather: i % 4,
@@ -48,6 +56,8 @@ for(const bad of [
   {kickIndex:-1, power:0.5, aimM:0}, {kickIndex:0, power:0.5, aimM:0, curl:4},
   {kickIndex:0, power:0.5, aimM:0, difficulty:'godmode'},
   {kickIndex:0, power:0.5, aimM:0, elev:1.4},
+  {kickIndex:0, power:0.5, aimM:0, dive:{x:99, y:1, at:0}},
+  {kickIndex:0, power:0.5, aimM:0, dive:{x:1, y:1, at:40}},
 ]) if(validateRecord(bad)) badRejected++;
 
 const serverOut = RECS.map(serverSim);
@@ -75,13 +85,13 @@ serverOut.forEach(r => spread[r.outcome] = (spread[r.outcome]||0) + 1);
 
 console.log('records            : ' + RECS.length);
 console.log('outcome spread     : ' + JSON.stringify(spread));
-console.log('bad records rejected: ' + badRejected + '/6');
+console.log('bad records rejected: ' + badRejected + '/8');
 console.log('server == client   : ' + (RECS.length - mismatches) + '/' + RECS.length);
 for(const m of firstFew){
   console.log('  MISMATCH #' + m.i);
   console.log('    server ' + JSON.stringify(m.server));
   console.log('    client ' + JSON.stringify(m.client));
 }
-const pass = mismatches === 0 && badRejected === 6;
+const pass = mismatches === 0 && badRejected === 8;
 console.log(pass ? '\nSIM PARITY: PASS' : '\nSIM PARITY: FAIL');
 process.exit(pass ? 0 : 1);

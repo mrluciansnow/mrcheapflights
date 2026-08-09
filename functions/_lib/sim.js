@@ -12,6 +12,12 @@
  *   2. tests/sim-parity.mjs runs the same records through this module and
  *      through the browser build and fails on any divergence.
  *
+ * A record may carry the keeper's dive as well as the striker's swipe:
+ *   dive: {x, y, at}   where he threw himself, and when, relative to the
+ *                      strike. Negative `at` means he had already gone.
+ * Absent, the server plays its own keeper, which is what every solo kick
+ * and every record written before two-sided play looks like.
+ *
  * The draw order from the seeded stream is part of the contract:
  *   wind (2) -> keeper reaction (1) -> keeper lean (1) -> contact slip (1)
  *   -> keeper read (2)
@@ -93,12 +99,15 @@ export function simulate(rec){
 
   const react = gRand(diff.rMin, diff.rMax);
   const lean  = gRand(-1, 1);
+  /* A human keeper overrides the lean: he stands where he chose to stand. */
+  const dive = (rec.dive && typeof rec.dive === 'object') ? rec.dive : null;
   const keeper = {
     wx: lean * KEEPER_LEAN * 0.56, wy:0, tx:0, ty:1.35, side:1, dive:0, committed:false,
-    lean: lean, wx0: lean * KEEPER_LEAN,
-    react: react,
+    lean: lean, wx0: dive ? 0 : lean * KEEPER_LEAN,
+    react: react, diveAt: undefined,
     dur: diff.dur, reach: diff.reach, range: diff.range, err: diff.err,
   };
+  if(dive) keeper.wx = 0;
 
   const power = clamp(rec.power, 0, 1);
   const curl  = clamp(rec.curl || 0, -1, 1);
@@ -120,6 +129,15 @@ export function simulate(rec){
   const alongShot  = () => (b.wx-sx)*uX + (b.wz-sz)*uZ;
   const acrossAt   = (x,z) => (x-sx)*rX + (z-sz)*rZ;
 
+/* How long the dive takes. It used to be a constant, which meant flinging
+   himself three metres into the top corner cost exactly what a half-step to
+   his right cost — so where he stood was decorative and when he went was
+   nearly free. Distance now buys time, which is what makes the set position
+   worth anything and gives committing late a real price. */
+  function diveDur(k){
+    const travel = dhyp2(k.tx - k.wx0, k.ty - 1.15);
+    return k.dur * (0.46 + 0.88 * clamp(travel/2.6, 0, 1.35));
+  }
   function keeperHand(){
     const e = ease(keeper.dive);
     return {x: lerp(keeper.wx0 + keeper.side*0.42, keeper.tx, e),
@@ -127,19 +145,31 @@ export function simulate(rec){
   }
   function keeperUpdate(t){
     if(!keeper.committed){
-      if(t < keeper.react) return;
-      const tt = b.wz / Math.max(0.6, -b.vz);
-      let px = b.wx + b.vx*tt;
-      let py = b.wy + b.vy*tt - 0.5*CFG.G*tt*tt;
-      px += gRand(-keeper.err, keeper.err);
-      py += gRand(-keeper.err, keeper.err)*0.55;
-      keeper.tx = clamp(px, -keeper.range, keeper.range);
-      keeper.ty = clamp(py, 0.20, 2.25);
-      keeper.side = Math.sign(keeper.tx) || 1;
-      keeper.committed = true;
+      if(dive){
+        /* the dive he actually threw. It may have started before the strike,
+           in which case it is already part-way through at t = 0. */
+        if(t < dive.at) return;
+        keeper.tx = clamp(dive.x, -keeper.range, keeper.range);
+        keeper.ty = clamp(dive.y, 0.20, 2.25);
+        keeper.side = Math.sign(keeper.tx) || 1;
+        keeper.committed = true;
+        keeper.diveAt = dive.at;
+      } else {
+        if(t < keeper.react) return;
+        const tt = b.wz / Math.max(0.6, -b.vz);
+        let px = b.wx + b.vx*tt;
+        let py = b.wy + b.vy*tt - 0.5*CFG.G*tt*tt;
+        px += gRand(-keeper.err, keeper.err);
+        py += gRand(-keeper.err, keeper.err)*0.55;
+        keeper.tx = clamp(px, -keeper.range, keeper.range);
+        keeper.ty = clamp(py, 0.20, 2.25);
+        keeper.side = Math.sign(keeper.tx) || 1;
+        keeper.committed = true;
+        keeper.diveAt = keeper.react;
+      }
     }
-    const dt = Math.max(0, t - keeper.react);
-    keeper.dive = clamp(dt / keeper.dur, 0, 1);
+    const dt = Math.max(0, t - keeper.diveAt);
+    keeper.dive = clamp(dt / diveDur(keeper), 0, 1);
     const e = ease(keeper.dive);
     keeper.wx = lerp(keeper.wx0*0.56, keeper.tx*0.56, e);
     keeper.wy = lerp(0, Math.max(0, keeper.ty*0.52 - 0.14), e);
@@ -160,6 +190,9 @@ export function simulate(rec){
   }
 
   const dt = 1/60;
+  /* A dive committed before the strike is already under way at t = 0, so the
+     keeper is stepped once up front to put him where he had got to. */
+  if(dive && dive.at < 0) keeperUpdate(0);
   let t = 0, outcome = 'short';
   for(let i=0;i<900;i++){
     const pz=b.wz, px=b.wx, py=b.wy, pa = wall ? alongShot() : 0;
@@ -229,6 +262,13 @@ export function validateRecord(rec){
   if(typeof rec.aimM !== 'number' || Math.abs(rec.aimM) > 6) return 'aimM';
   if(rec.curl !== undefined && (typeof rec.curl !== 'number' || Math.abs(rec.curl) > 1)) return 'curl';
   if(rec.elev !== undefined && (typeof rec.elev !== 'number' || rec.elev < 0 || rec.elev > 1)) return 'elev';
+  if(rec.dive !== undefined && rec.dive !== null){
+    const d = rec.dive;
+    if(typeof d !== 'object') return 'dive';
+    if(typeof d.x !== 'number' || Math.abs(d.x) > 5) return 'dive.x';
+    if(typeof d.y !== 'number' || d.y < -1 || d.y > 4) return 'dive.y';
+    if(typeof d.at !== 'number' || d.at < -8 || d.at > 8) return 'dive.at';
+  }
   if(rec.difficulty && !DIFF[rec.difficulty]) return 'difficulty';
   if(rec.wall !== undefined && (!Number.isInteger(rec.wall) || rec.wall < 0 || rec.wall > 5)) return 'wall';
   if(rec.weather !== undefined && (!Number.isInteger(rec.weather) || rec.weather < 0 || rec.weather > 3)) return 'weather';

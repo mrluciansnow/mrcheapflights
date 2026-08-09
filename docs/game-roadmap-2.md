@@ -897,3 +897,165 @@ Parity 120/120 and determinism 40/40 throughout — none of this touches the
 outcome path. The keeper measurement above is `tests/keeper.mjs`. The smoke
 suite gained a section proving the shot exists before the window closes and
 that what you are shown is offset from the truth rather than handed to you.
+
+---
+
+# Fifth pass — the keeper half, rebuilt around one clock
+
+The last pass gave the goalkeeper a telegraph to read. It did not give him a
+decision to make, and that is why it still played badly.
+
+## What was actually wrong
+
+Three things, and the first two hid the third.
+
+**1. The dive did not start when you threw it.** `keeper.react` was set to a
+constant at the moment you committed, and the dive was timed from that
+constant. Throwing yourself the instant the window opened and waiting until
+the last possible tenth produced *exactly the same dive*. There was no
+decision in it — only a guess with a countdown attached.
+
+**2. The two halves took turns.** The states ran `KEEP → CPU_WAIT → FLIGHT`:
+you picked, and then he kicked. That is the wrong shape for the game and the
+wrong shape for online, where two people act against the same kick without
+either being able to see the other's input first.
+
+**3. The window shut the instant he struck.** Every keeper gate asked
+`state === ST.KEEP`, and that state ends at contact. So the only dive you
+could ever throw was one committed *before* the ball was hit — which, once
+the striker started reading early commitment, was the one dive guaranteed to
+be punished. Both halves of the decision were closed at once.
+
+## One kick, two sides, one clock
+
+`kickT` starts at zero when the window opens and runs through the wind-up, the
+strike and the flight. `strikeT` records the instant of contact on that same
+clock. Everything either side does is stamped against it.
+
+```
+kickT   0 ─────────────── strikeAt ──────────── ball on the line
+        │                     │                        │
+striker │   winds up          │ strikes                │
+keeper  │   shuffles, may throw himself at any point   │
+```
+
+- The striker hits it at `cpuShot.strikeAt` (1.45–2.30s, drawn from the seeded
+  stream), **not** at a fixed beat, so you cannot wait for a known instant.
+- The keeper may commit anywhere in that whole span, right up until the ball
+  is 0.45m from the line. `keepLive()` — not a state test — is what every
+  keeper gate now asks, in `down`, `move`, `up`, the keyboard handler, the
+  preview drawing and the debug hook alike.
+- Not committing is a real choice with a real cost: he stays rooted. Nothing
+  dives on your behalf.
+
+## The decision, and what each side of it costs
+
+**Go early.** You cover the ground. `diveDur(k)` scales with how far he has to
+travel — `k.dur * (0.46 + 0.88 · clamp(travel/2.6, 0, 1.35))` — so the far
+corner is only reachable if you leave in time. But the forward is watching:
+
+```js
+const lead = cpuShot.strikeAt - keeper.diveAt;
+const seen = clamp((lead - 0.16) / 0.62, 0, 1);
+const sees = READS_KEEPER[difficulty] * seen;
+aimM = lerp(aimM, away * 2.65, sees);
+```
+
+The first version of this punished *any* pre-strike commit in full, which
+turned the telegraph into a trap: read the ring, go, be beaten every time —
+measured at **0% saves**, worse than diving at random. It is now scaled by the
+lead you gave him. Leave a full second early and an All-Ireland forward puts
+it the other side almost every time; leave a fifth of a second early and the
+boot is already through the ball and he barely registers it. `👁 HE CAN SEE
+YOU` sits under the bar for exactly as long as leaving would still be read.
+
+**Go late.** Once it is struck he cannot react to you at all and the flight is
+honest. But there is very little ground left to cover in.
+
+## Measured
+
+`tests/keeper.mjs` was rewritten to play all four combinations — early/late ×
+blind/read — against the same kicks at senior:
+
+| | dive at random | dive at the read |
+|---|---|---|
+| **before the strike** | 29% | 43% |
+| **after the strike** | 14% | 50% |
+
+Reading the shot is worth **36 points** if you go late. Neither timing
+dominates — 43% against 50% — so it is a choice, not a solved line. Nothing
+reaches 85%, so the striker still has a game.
+
+## Two gestures, because there are two decisions
+
+Where to stand and when to go:
+
+- **drag slowly** — shuffle along your line, ±1.25m, free, and it shortens the
+  dive on that side. Only legal before the strike; there is no shuffling once
+  the ball is away.
+- **flick** (`> H·1.15 px/s`) — throw yourself. The same speed distinction the
+  shooting half already makes, so the hand already knows it.
+
+The bar carries the whole timeline: `HE STRIKES IN` counting down to contact,
+then `BALL AWAY` counting the ball down to the line, with the prompt handing
+over to *"Ball away — throw yourself"* rather than going silent at the exact
+moment there is still a dive to throw.
+
+## The foundation online needs
+
+This is the same pass, not a follow-up: the shape the duel now has *is* the
+shape two-sided play requires.
+
+**A source seam.** `srcStriker` and `srcKeeper` are each `'local' | 'ai' |
+'remote'`. `'ai'` and `'local'` are implemented; `'remote'` is a declared seam
+on the same clock with the same commit shape — the input arrives over a
+connection instead of from a thumb, and nothing in the resolution asks which
+it was.
+
+**A record that carries both sides.** The striker's four numbers were always
+there. The keeper's dive joins them:
+
+```js
+dive: { x, y, at }   // where he went, and when — relative to the strike.
+                     // Negative `at` means he had already gone.
+```
+
+Absent, the server plays its own keeper, so every record written before
+two-sided play still replays byte-for-byte. Present, it resolves the duel the
+two players actually had. `functions/_lib/sim.js` mirrors it exactly,
+including stepping the keeper once up front when `dive.at < 0` so a dive
+already under way at contact is part-way through at `t = 0`, and
+`validateRecord` rejects out-of-range `x`, `y` and `at`.
+
+That is the whole of what online needs at this layer: **one kick index, two
+submissions, one authoritative outcome**, with neither side able to see the
+other's before its own is in.
+
+## Two HUD collisions found while looking at it
+
+- The rank strip and the cash chip ran underneath the wind gauge — the money
+  was drawn straight across the wind speed. `.rankbar` now keeps 88px of
+  clearance, and swaps sides with the gauge in left-handed mode.
+- The `REPLAY` badge was drawn through the rank strip. Moved to `H·0.195`.
+- The `keepbar` was never hidden again after the first keeper turn — a leak
+  from the previous pass, where the line that removed it was replaced by the
+  line that relabels it. It is now cleared with the kick.
+
+## Verification
+
+- Parity **120/120**, malformed records **8/8** rejected, determinism
+  **40/40** — with half the parity records carrying dives before, on and after
+  the strike.
+- Smoke suite: all passing, with two new assertions — that the gloves stay
+  live after he strikes so a late dive is possible, and that the bar says
+  `BALL AWAY` when they do.
+- Layout probe clean at 360×640, 420×860 and 540×940.
+- Balance sweep unchanged: junior 100% / intermediate 97% / senior 92% /
+  All-Ireland 64% at the best available corner.
+
+One test bug fixed on the way: the shot-clock assertions slept 5.7s of wall
+time to observe a 5.0s in-game clock. A frame is capped at 33ms of simulated
+time, so a loaded machine drops frames and in-game seconds run slower than
+real ones — under load the test reported a working clock as a broken one. It
+now waits on `CF.shotClock` itself. That is almost certainly the same effect
+behind the intermittent smoke-suite stalls noted earlier.

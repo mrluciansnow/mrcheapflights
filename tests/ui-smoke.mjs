@@ -100,8 +100,8 @@ log('\n— coach marks on the very first kick —');
 await page.click('#bQuick');
 await page.waitForTimeout(900);
 ok(!(await page.locator('#ovCoach').getAttribute('class')).includes('hidden'), 'coach marks appear');
-ok(await page.evaluate(()=>document.querySelectorAll('#coachDots span').length) === 6, 'six coaching cards');
-for(let i=0;i<6;i++) await page.click('#bCoach');
+ok(await page.evaluate(()=>document.querySelectorAll('#coachDots span').length) === 7, 'seven coaching cards');
+for(let i=0;i<7;i++) await page.click('#bCoach');
 ok((await page.locator('#ovCoach').getAttribute('class')).includes('hidden'), 'coach marks dismiss');
 ok(await page.evaluate(()=>JSON.parse(localStorage.getItem('crokerFlicks.v2')).seenCoach),
    'coach marks are remembered');
@@ -382,7 +382,14 @@ ok(clock0.left > 0 && clock0.left <= 5.01, 'it starts at five seconds', String(c
 await page.waitForTimeout(1500);
 const clock1 = await page.evaluate(()=>window.CF.shotClock);
 ok(clock1 < clock0.left - 1, 'it runs down', clock0.left + ' -> ' + clock1);
-await page.waitForTimeout(4200);
+/* Wait on the game's own clock, not the wall's. A frame is capped at 33ms of
+   simulated time, so a loaded machine drops frames and in-game seconds run
+   slower than real ones — a fixed sleep here reports a working clock as a
+   broken one. */
+for(let i=0; i<200 && await page.evaluate(()=>window.CF.shotClock) > 0; i++){
+  await page.waitForTimeout(80);
+}
+await page.waitForTimeout(400);
 const after = await page.evaluate(()=>({
   n: window.CF.stateName, bar: document.getElementById('shotbar').className,
 }));
@@ -428,13 +435,38 @@ ok(sawKeep, "the opponent's kick hands you the gloves",
    'states seen: ' + seen.join('>') + ' after ' + kicks2 + ' kicks');
 if(sawKeep){
   ok(keepState.bar.includes('show'), 'the save clock is showing', keepState.bar);
-  const before = await page.evaluate(()=>window.CF.stateName);
+  /* The window has to span the strike, or the only dive available is a guess
+     made before the ball is hit — which is the one the forward reads. Hold
+     off until it is struck and check the gloves are still live. */
+  const late = await page.evaluate(()=>new Promise(resolve=>{
+    const t0 = Date.now();
+    const tick = () => {
+      const c = window.CF.kickClock;
+      if(Date.now() - t0 > 6000) return resolve({timeout:true});
+      if(!c || !c.struck) return requestAnimationFrame(tick);
+      // the strike lands in the pre-flight branch, so the flight HUD it hands
+      // over to has not drawn yet — give it the frame it is owed
+      requestAnimationFrame(()=>requestAnimationFrame(()=>resolve({
+        struck:true, live:window.CF.canKeep, label:
+          document.getElementById('keepLbl').firstChild.nodeValue.trim()})));
+    };
+    requestAnimationFrame(tick);
+  }));
+  ok(late.struck && late.live,
+     'the gloves stay live after he strikes, so a late dive is possible',
+     JSON.stringify(late));
+  ok(late.label === 'BALL AWAY', 'and the bar says so', JSON.stringify(late));
+  const before = await page.evaluate(()=>window.CF.keepCommitted);
   await page.evaluate(()=>window.CF.keepAt(2.4, 1.0));
   await page.waitForTimeout(150);
-  const after = await page.evaluate(()=>({n:window.CF.stateName,
-    bar:document.getElementById('keepbar').className}));
-  ok(before === 'KEEP' && after.n !== 'KEEP', 'choosing a dive commits it', before+' -> '+after.n);
-  ok(!after.bar.includes('show'), 'the clock stops once you have chosen');
+  const after = await page.evaluate(()=>({
+    committed: window.CF.keepCommitted, clock: window.CF.kickClock,
+  }));
+  ok(!before && after.committed, 'the flick commits the dive',
+     JSON.stringify(after));
+  ok(!after.clock.struck || after.clock.t >= after.clock.strikeAt,
+     'and the striker keeps his own clock rather than waiting for you',
+     JSON.stringify(after.clock));
   await page.waitForTimeout(3000);
   const rec = await page.evaluate(()=>{
     const pr = JSON.parse(localStorage.getItem('crokerFlicks.v2'));
