@@ -4979,6 +4979,143 @@ function mpSubmitTurn(){
 }
 
 /* ==================================================================
+   ONLINE DUELS — the client half
+   ==================================================================
+   A kick is a duel, and the game already has the shape for it: one kick
+   clock, and `srcStriker` / `srcKeeper` each 'local' | 'ai' | 'remote'.
+   This is what fills in 'remote'.
+
+   The protocol is deliberately small, because determinism does the heavy
+   lifting. Nothing streams. Each side sends what its player did — four
+   numbers for a swipe, three for a dive — and the server, which owns the
+   seed, re-runs the same simulation both clients run and stores the one
+   outcome. When a kick resolves, both clients are handed BOTH halves and
+   replay the identical kick locally. Two screens agree without a single
+   frame crossing the wire.
+
+   The one rule that makes it a duel rather than a reaction test: until a
+   kick resolves, the server will not tell you anything about the other
+   side's submission — not what it was, not whether it has arrived. Waiting
+   to see buys you nothing, so there is nothing to gain by stalling.
+   ================================================================== */
+const Duel = {
+  match: null,        // {matchId, seed, kicks, turnMs, difficulty, weather, side}
+  live: null,         // the kick in front of you: {kickIndex, role, deadline, submitted}
+  played: [],         // resolved kicks, in order, each with both halves
+  seen: -1,           // highest kick index already handed to the game
+  state: 'idle',      // idle|waiting|in_progress|settled
+  score: {you:0, them:0},
+  poll: null, busy: false, err: null,
+  /* the game supplies these. Keeping them as fields rather than wiring the
+     loop directly is what lets the transport be tested on its own. */
+  onLive: null,       // (live)   -> it is your turn, in this role, until then
+  onKick: null,       // (kick)   -> a resolved kick, with both halves, to show
+  onEnd: null,        // (final)  -> the duel is over
+};
+
+/* Open a duel and wait, join a specific one, or take whatever is open. */
+async function duelOpen(opts){
+  const body = Object.assign({kicks:10, difficulty:'senior'}, opts||{});
+  const m = await mpFetch('/api/mp/duel', 'POST', body);
+  Duel.match = m; Duel.state = m.state; Duel.played = []; Duel.seen = -1;
+  Duel.live = null; Duel.err = null;
+  /* The server's seed and the server's weather, not ours. Everything either
+     client derives locally — ground, wind, opponent — comes from these, so
+     both of us are standing in the same stadium in the same rain. */
+  matchSeed = m.seed >>> 0;
+  matchSeedFixed = true;
+  difficulty = m.difficulty;
+  duelPollStart();
+  return m;
+}
+const duelJoin = id => duelOpen({matchId: id});
+
+/* One poll. Also the only read: `live` is redacted server-side, so there is
+   nothing here to be careful with. */
+async function duelSync(){
+  if(!Duel.match || Duel.busy) return null;
+  Duel.busy = true;
+  try{
+    const st = await mpFetch('/api/mp/sync/' + Duel.match.matchId);
+    Duel.state = st.state;
+    Duel.score = st.score;
+    Duel.played = st.played;
+    Duel.match.weather = st.weather;
+    /* Hand over every kick that resolved since we last looked, in order.
+       Both clients run this with the same inputs and see the same thing. */
+    for(const k of st.played){
+      if(k.kickIndex <= Duel.seen) continue;
+      Duel.seen = k.kickIndex;
+      if(Duel.onKick) Duel.onKick(k);
+    }
+    const was = Duel.live && Duel.live.kickIndex;
+    Duel.live = st.live;
+    if(st.live && st.live.kickIndex !== was && Duel.onLive) Duel.onLive(st.live);
+    /* This is the seam. Whoever is striking is 'local' on their machine and
+       'remote' on the other, and the kick clock does not care which. */
+    if(st.live){
+      srcStriker = st.live.role === 'striker' ? 'local' : 'remote';
+      srcKeeper  = st.live.role === 'keeper'  ? 'local' : 'remote';
+    }
+    if(st.state === 'settled' || st.state === 'resolved'){
+      duelPollStop();
+      if(Duel.onEnd) Duel.onEnd(st);
+    }
+    Duel.err = null;
+    return st;
+  }catch(e){
+    Duel.err = e.message;              // a dropped poll is not fatal
+    return null;
+  }finally{ Duel.busy = false; }
+}
+
+/* Poll faster while the other player is the one being waited on, slower when
+   the ball is in our court and the screen is busy anyway. */
+function duelPollStart(){
+  duelPollStop();
+  const tick = async () => {
+    await duelSync();
+    if(!Duel.poll) return;
+    const waiting = Duel.live && Duel.live.submitted;
+    Duel.poll = setTimeout(tick, waiting ? 1200 : 3000);
+  };
+  Duel.poll = setTimeout(tick, 0);
+}
+function duelPollStop(){ if(Duel.poll){ clearTimeout(Duel.poll); Duel.poll = null; } }
+
+/* Submit your half. Both are idempotent at the server, so a retry after a
+   dropped connection is safe and is the right thing to do. */
+async function duelSubmit(half, payload){
+  if(!Duel.match || !Duel.live) throw new Error('no kick is open');
+  const body = {matchId: Duel.match.matchId, kickIndex: Duel.live.kickIndex};
+  body[half] = payload;
+  const r = await mpFetch('/api/mp/kick', 'POST', body);
+  if(r.kick) Duel.live = r.kick;
+  duelSync();                          // a resolved kick should show at once
+  return r;
+}
+/* The four numbers of a swipe. Anything else in the record is the local
+   game's business and is dropped by the server anyway. */
+const duelStrike = () => duelSubmit('strike', {
+  power: +power.toFixed(6), aimM: +aimM.toFixed(6),
+  curl: +strikeCurl.toFixed(6), elev: +strikeElev.toFixed(6),
+  x: spot.x, z: spot.z, wall: spot.wall|0,
+});
+/* null is a real answer: it means you held your line. It is not the same as
+   saying nothing, which is what running the clock down does. */
+const duelDive = () => duelSubmit('dive', diveRecord());
+
+function duelLeave(){
+  duelPollStop();
+  Duel.match = null; Duel.live = null; Duel.played = []; Duel.seen = -1;
+  Duel.state = 'idle';
+  srcStriker = 'ai'; srcKeeper = 'ai';
+}
+/* seconds left on the kick in front of you, for the bar that already exists */
+const duelLeft = () => (Duel.live && Duel.match)
+  ? Math.max(0, Duel.live.deadline - Math.floor(Date.now()/1000)) : 0;
+
+/* ==================================================================
    DEBUG API — enabled with ?debug=1
    Exposes the deterministic core so the regression suite can prove that
    an input record replays to the same outcome every time. This is the
@@ -5090,6 +5227,21 @@ if(new URLSearchParams(location.search).has('debug')){
     },
     get kickLabel(){ return document.getElementById('rnd').textContent; },
     get match(){ return MP.match; },
+    /* the duel transport, so the online layer can be driven headlessly
+       against a real server rather than being taken on trust */
+    duel: {
+      open: o => duelOpen(o), join: id => duelJoin(id),
+      sync: () => duelSync(), strike: () => duelStrike(), dive: () => duelDive(),
+      submit: (half, payload) => duelSubmit(half, payload),
+      leave: () => duelLeave(),
+      get state(){ return {state:Duel.state, side:Duel.match && Duel.match.side,
+                           matchSeed:matchSeed>>>0, seedFixed:matchSeedFixed,
+                           live:Duel.live, score:Duel.score, seen:Duel.seen,
+                           played:Duel.played.length, err:Duel.err,
+                           sources:{striker:srcStriker, keeper:srcKeeper},
+                           left:duelLeft()}; },
+      on: (name, fn) => { Duel['on' + name] = fn; },
+    },
     get device(){ return mpToken(); },
     venues: Object.keys(VENUES),
     ranks: RANKS.map(r=>r.n),

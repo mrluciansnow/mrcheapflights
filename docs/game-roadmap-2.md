@@ -1059,3 +1059,140 @@ time, so a loaded machine drops frames and in-game seconds run slower than
 real ones — under load the test reported a working clock as a broken one. It
 now waits on `CF.shotClock` itself. That is almost certainly the same effect
 behind the intermittent smoke-suite stalls noted earlier.
+
+---
+
+# Sixth pass — the online foundation
+
+What already existed was a **parallel time trial**: both players kick at the
+server's AI keeper, the server re-simulates each kick, the scores are compared.
+It works and it stays. But it is not the game — a kick is a duel, and there
+was no server-side concept of two people being in one.
+
+This is that foundation. `srcStriker` and `srcKeeper` have been
+`'local' | 'ai' | 'remote'` on a shared kick clock since the fifth pass;
+this fills in `'remote'`.
+
+## The protocol, in three rules
+
+1. **The server owns the seed.** Wind, weather, keeper reaction and contact
+   slip all derive from `hash2(matchSeed, kickIndex)`. The seed is issued when
+   the duel opens and is never accepted from a client.
+2. **The client sends what the player did, never what happened.** Four numbers
+   for a swipe, three for a dive. The server re-runs the same deterministic
+   simulation and its outcome is the only one stored.
+3. **Neither half is readable by the other player until the kick resolves.**
+   Not the input, not whether it has arrived.
+
+Rule 3 is the one that makes it a duel rather than a reaction test. Without
+it the keeper simply waits for the swipe to land and saves everything.
+
+## Why nothing streams
+
+Determinism has been the point of the whole physics discipline, and this is
+what it buys. The server does not stream a simulation to anybody. It stores
+seven numbers and hands both of them to both clients once the kick is decided,
+and each client replays it locally through its own physics. Two screens agree
+without a single frame crossing the wire.
+
+`tests/duel-client.mjs` asserts exactly that: both browsers replay the stored
+record and must land on the server's outcome. If it ever disagrees, the two
+players are watching different matches, and the test says so before they do.
+
+## Schema — `migrations/0007_duel.sql`
+
+No `ALTER`, only `CREATE ... IF NOT EXISTS`, so re-running the file against a
+live database is a no-op. **A match is a duel if and only if it has a
+`cf_duels` row**, which is what leaves every 0006 match working untouched.
+
+`cf_kicks` is one row per kick, and it carries both halves:
+
+| column | why it exists |
+|---|---|
+| `striker`, `keeper` | who is doing what, decided server-side by kick parity |
+| `strike`, `dive` | the two submissions, each in its own column |
+| `opened_at`, `deadline` | liveness: an abandoned kick is lost, not frozen |
+| `outcome`, `value`, `xp` | server-computed, written exactly once |
+| `resolved_at` | the flag redaction keys off, and the concurrency guard |
+
+The three properties the tables guarantee, because the endpoints cannot on
+their own: **blindness** (separate columns, redacted until resolved),
+**idempotence** (one row per kick; a retried half writes the column it already
+wrote), **liveness** (every open kick carries a deadline).
+
+## Endpoints
+
+- `POST /api/mp/duel` — open, or join. Three ways in, one code path:
+  `{matchId}` joins that duel and no other (a friend, a rematch) and *fails*
+  rather than silently pairing you with a stranger; `{join:false}` opens and
+  waits; neither takes an open lobby if there is one.
+- `POST /api/mp/kick` — submit your half. **Which half is decided by the
+  server from the kick's roles, not by the body**, so a client cannot send a
+  dive against a kick it is supposed to be taking.
+- `GET /api/mp/sync/[id]` — the client's only read. Your role, your deadline,
+  the score oriented to you, and every resolved kick with both halves. Never
+  anything about the live kick's other side.
+
+**Every read advances the match.** `advance()` runs on both endpoints, so a
+duel cannot stall waiting on a background job — whichever player is looking
+pushes it along, and if neither is looking there is nobody for it to stall.
+
+## Two decisions worth naming
+
+**A keeper who holds his line is not the same as a keeper who left.** Both end
+with a man standing still, but only one of them means the player is still
+there. An explicit `dive: null` is stored as the rooted dive and resolves the
+kick immediately; silence sits on the deadline. They resolve identically *on
+purpose* — timing out must never be better than deciding.
+
+`simulate` reads an absent dive as "play the AI keeper", so silence had to be
+spelled out rather than omitted. Otherwise closing the tab would hand you a
+*better* keeper than deliberately standing your ground.
+
+**Going early still costs secrecy, and the record proves it.** `dive.at` is
+relative to the strike and may be negative — the keeper had already gone. The
+server replays that timing exactly, so the fifth pass's whole early/late
+trade-off survives the wire intact.
+
+## Two holes the tests found
+
+- **The server stored whatever the client sent.** A swipe carrying
+  `outcome:'goal', value:3, xp:99999` was correctly ignored for scoring — and
+  then written to the row verbatim and echoed back to *both* clients on
+  replay. Submissions are now projected to the fields the simulation actually
+  uses. Nothing you do not understand should reach the database, and so reach
+  the opponent's screen.
+- **Weather was the client's to choose.** The client picks it from the seeded
+  stream; the server defaulted it to Clear and never checked. In a duel that
+  is a fairness hole — one player could call for a dry ball and hand the other
+  the rain. It is now drawn from the seed when the duel opens, stored on the
+  match, and applied to every simulation whatever the client thinks it is
+  doing.
+
+A third was found by the test suite failing for the wrong reason: a stray
+lobby from a manual probe got joined, which is how the *missing* targeted-join
+feature announced itself.
+
+## Verification
+
+- `npm run test:duel` — **49 API assertions** and **28 two-browser
+  assertions**, all passing against a local `wrangler pages dev`.
+- The blindness section is the one to read: B is not shown the strike, is not
+  told it arrived, and the swipe does not leak anywhere else in the payload.
+- Liveness is measured, not asserted: a blitz duel is left to time out and the
+  abandoned kick resolves to `timeout`, scores nothing, and the match moves on.
+- Offline regression unaffected: parity 120/120, determinism 40/40, smoke and
+  layout clean.
+
+## What is deliberately not built yet
+
+The transport, the seam and the protocol are done and tested. **The gameplay
+wiring is not**: `Duel.onLive` / `onKick` / `onEnd` are the three callbacks the
+game loop hangs off, and nothing is subscribed to them yet — the local match
+flow still runs unchanged. Also outstanding: matchmaking UI, reconnect on a
+kick already submitted (the transport handles it, nothing surfaces it),
+presence, and a sweeper for lobbies nobody ever joined.
+
+None of that requires inventing anything further. The hard part — what a kick
+is, who owns which number, and what neither player is allowed to see — is
+settled and has tests holding it in place.
