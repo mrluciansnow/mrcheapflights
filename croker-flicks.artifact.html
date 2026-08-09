@@ -249,7 +249,7 @@ body.keeping .readout{opacity:0 !important}
 .prow i{font-style:normal;font-variant-numeric:tabular-nums;opacity:.7}
 
 /* ---------- stage: ranks, money, kitbag ---------- */
-.rankbar{position:absolute;top:126px;left:10px;right:10px;display:flex;align-items:center;
+.rankbar{position:absolute;top:126px;left:10px;right:88px;display:flex;align-items:center;
   justify-content:space-between;gap:.6rem;pointer-events:none}
 .rk{display:flex;align-items:center;gap:.4rem;background:rgba(4,13,22,.62);
   border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:.22rem .55rem;backdrop-filter:blur(6px)}
@@ -280,8 +280,16 @@ body.dragging .betbar,body.dragging .prompt,body.dragging .comm{pointer-events:n
 .keeplbl{font-size:.56rem;font-weight:900;letter-spacing:.18em;color:var(--sky);
   text-shadow:0 2px 8px rgba(0,0,0,.8)}
 .keeplbl b{color:#fff;opacity:.75;letter-spacing:.06em}
+/* an eye on the bar while the forward can still see you leave. It fades as
+   the strike closes in, which is the cue to hold your dive. */
+.keepbar.watched .keeptrack::after{content:'👁 HE CAN SEE YOU';display:block;
+  margin-top:5px;font-size:.44rem;font-weight:900;letter-spacing:.14em;
+  color:var(--yellow);opacity:.85;white-space:nowrap;text-shadow:0 2px 6px rgba(0,0,0,.9)}
+.keepbar .keeptrack{position:relative;overflow:visible}
+.keepbar .keeptrack span{overflow:hidden}
 #shotbar .keeplbl{color:var(--yellow)}
-#shotbar.tight .keeplbl{color:var(--hot-pink);animation:pulse .5s ease-in-out infinite}
+#shotbar.tight .keeplbl,.keepbar.tight .keeplbl{color:var(--hot-pink);
+  animation:pulse .5s ease-in-out infinite}
 .keeptrack{width:150px;height:5px;border-radius:3px;background:rgba(255,255,255,.16);
   overflow:hidden;margin:4px auto 0}
 .keeptrack span{display:block;height:100%;width:100%;border-radius:3px;
@@ -346,6 +354,9 @@ body.lefty .pausebtn{left:auto;right:10px}
 body.lefty .mute{right:auto;left:10px}
 body.lefty #gDist{left:auto;right:10px}
 body.lefty #gWind{right:auto;left:10px}
+/* the wind gauge swaps sides for a left-hander, so the rank strip's clearance
+   has to swap with it */
+body.lefty .rankbar{left:88px;right:10px}
 
 /* settings rows */
 .opts{display:flex;flex-direction:column;gap:.4rem;width:100%;max-width:330px;margin-top:.5rem}
@@ -513,7 +524,7 @@ window.addEventListener('error', function(e){
     <div class="keeptrack"><span id="shotFill"></span></div>
   </div>
   <div class="keepbar" id="keepbar">
-    <div class="keeplbl">YOUR SAVE <b id="keepTally"></b></div>
+    <div class="keeplbl" id="keepLbl">HE STRIKES IN <b id="keepTally"></b></div>
     <div class="keeptrack"><span id="keepFill"></span></div>
   </div>
   <div class="prompt" id="prompt">Swipe the shot you want</div>
@@ -1543,6 +1554,10 @@ function newKeeper(defendingCounty, tier){
     sharp: clamp((d.rMax - react)/span, 0, 1),
     dur: d.dur, reach: d.reach, range: d.range, err: d.err,
     dive: 0, committed: false,
+    /* ai:true means he reads the ball himself. A human or a remote keeper
+       sets it false and supplies diveAt — the moment on the kick clock at
+       which the dive began. */
+    ai: true, diveAt: undefined, plan: null,
     recover: 0, held: null,
   };
 }
@@ -1592,17 +1607,43 @@ function keeperRecover(dt){
   const done = state===ST.RESULT || state===ST.OVER;
   keeper.recover = clamp(keeper.recover + (done ? dt*1.7 : -dt*4), 0, 1);
 }
-function keeperUpdate(k, t, b){
+/* `now` here is the kick clock, not the flight clock — a keeper may commit
+   long before the ball is struck, and that has to buy him the travel. */
+function keeperUpdate(k, nowT, b){
   if(!k.committed){
-    if(t >= k.react) keeperCommit(k, b);
-    else return;
+    if(k.plan){
+      // a dive that arrived in a record: held until its moment, then thrown
+      if(nowT < k.plan.at) return;
+      k.tx = clamp(k.plan.x, -k.range, k.range);
+      k.ty = clamp(k.plan.y, 0.20, 2.25);
+      k.side = Math.sign(k.tx) || 1;
+      k.committed = true;
+      k.diveAt = k.plan.at;
+    }
+    // an AI keeper reads the flight and goes at his own reaction time; a
+    // human keeper has already committed or has not
+    else if(k.ai !== false && strikeT !== null && nowT >= strikeT + k.react){
+      keeperCommit(k, b);
+      k.diveAt = nowT;
+    } else return;
   }
-  const dt = Math.max(0, t - k.react);
-  k.dive = clamp(dt / k.dur, 0, 1);
+  const base = k.diveAt !== undefined ? k.diveAt
+             : (strikeT === null ? 0 : strikeT) + k.react;
+  const dt = Math.max(0, nowT - base);
+  k.dive = clamp(dt / diveDur(k), 0, 1);
   const e = ease(k.dive);
   // the dive starts from wherever he had his weight, not from centre
   k.wx = lerp(k.wx0*0.56, k.tx*0.56, e);
   k.wy = lerp(0, Math.max(0, k.ty*0.52 - 0.14), e);
+}
+/* How long the dive takes. It used to be a constant, which meant flinging
+   himself three metres into the top corner cost exactly what a half-step to
+   his right cost — so where he stood was decorative and when he went was
+   nearly free. Distance now buys time, which is what makes the set position
+   worth anything and gives committing late a real price. */
+function diveDur(k){
+  const travel = dhyp2(k.tx - k.wx0, k.ty - 1.15);
+  return k.dur * (0.46 + 0.88 * clamp(travel/2.6, 0, 1.35));
 }
 function keeperHand(k){
   const e = ease(k.dive);
@@ -2337,8 +2378,38 @@ const KEEP_BASE = 3.6;
 const KEEP_TIER = {junior:1.15, intermediate:1.05, senior:1.0, allireland:0.88};
 const keepWindow = () => KEEP_BASE * (KEEP_TIER[difficulty] || 1);
 let KEEP_WINDOW = KEEP_BASE;   // the window actually in use, set per kick
+
+/* ---- the kick clock ----
+   Zero when the window opens, and it keeps running through the strike and
+   the flight. Everything either side does is stamped against it, which is
+   what lets the two of them act at the same time instead of in turn. */
+let kickT = 0, strikeT = null;
+/* Where each side's input comes from. 'ai' and 'local' are implemented;
+   'remote' is the seam an online opponent slots into — same clock, same
+   commit shape, the input simply arrives over a connection instead of from
+   a thumb. Nothing else in the resolution cares which it was. */
+let srcStriker = 'ai', srcKeeper = 'ai';
+const iAmKeeper  = () => srcKeeper  === 'local';
+const iAmStriker = () => srcStriker === 'local';
 const KEEP_REACT  = 0.06;       // he goes as the ball is struck
 let keepT = 0, keepPick = null, keepDone = false, matchSaves = 0;
+let keepIntent = null;              // 'set' while shuffling, 'dive' on a flick
+/* how quick a swipe has to be before it counts as throwing yourself, and how
+   far along his line he may shuffle before committing */
+const KEEP_FLICK = () => H * 1.15;
+const KEEP_SET   = 1.25;
+/* Is the goalkeeper's input live? True from the moment the window opens until
+   he commits or the ball reaches the line — across the strike, not up to it.
+   Every keeper gate asks this rather than asking what state the kick is in,
+   which is also what lets a remote keeper's input arrive at any point in the
+   same span without a special case. */
+function keepLive(){
+  if(srcKeeper !== 'local' || keepDone || paused) return false;
+  if(state === ST.KEEP) return true;
+  // in flight: still live until the ball is effectively on him
+  return state === ST.FLIGHT && !crossed && !!ball && ball.wz > 0.45;
+}
+let keepDrag = false;               // this drag belongs to the keeper
 let keepFaced = 0, keepSides = [];       // which way you went, most recent last
 const goalieOn = () => opts.goalie && isShootout() && mode !== 'duel' && !MP.match;
 /* Dive where you swipe. Straight up is a leap down the middle, across is a
@@ -2357,35 +2428,45 @@ function keepFromSwipe(path){
 function beginKeep(){
   KEEP_WINDOW = keepWindow();
   keepT = KEEP_WINDOW; keepPick = null; keepDone = false;
+  kickT = 0; strikeT = null;
+  srcStriker = 'ai'; srcKeeper = 'local';
+  keeper.ai = false;          // nobody dives on your behalf
   state = ST.KEEP;
   document.body.classList.add('keeping');
   zoom = zoomTarget = 1; panX = panTarget = 0;   // identity, so the touch maps
   keeper.wx0 = 0; keeper.wx = 0;                 // no free lean for your own man
   $('prompt').style.display = '';
-  $('prompt').textContent = 'Read the ring — watch for a swerve';
+  $('prompt').textContent = 'Set your line — flick to dive, any time';
+  $('keepLbl').firstChild.nodeValue = 'HE STRIKES IN ';
   $('keepTally').textContent = keepFaced ? '· ' + matchSaves + '/' + keepFaced : '';
   $('keepbar').classList.add('show');
   showBetBar(false);
 }
+/* Throw yourself. Legal at any point in the kick — before he strikes, as he
+   strikes, or while the ball is in the air. The clock does not stop and the
+   window does not close; all that changes is how much of the dive is behind
+   you when the ball arrives. */
 function commitKeep(){
   if(keepDone) return;
   keepDone = true;
-  document.body.classList.remove('keeping');
-  $('keepbar').classList.remove('show');
   if(keepPick){
     keeper.tx = clamp(keepPick.x, -keeper.range, keeper.range);
     keeper.ty = clamp(keepPick.y, 0.20, 2.25);
   } else {
-    keeper.tx = 0; keeper.ty = 1.35;             // stood still, stayed central
+    keeper.tx = keeper.wx0; keeper.ty = 1.35;    // stood his ground
   }
-  keeper.side = Math.sign(keeper.tx) || 1;
+  keeper.side = Math.sign(keeper.tx - keeper.wx0) || Math.sign(keeper.tx) || 1;
   keepSides.push(Math.abs(keeper.tx) < 0.6 ? 0 : Math.sign(keeper.tx));
   if(keepSides.length > 6) keepSides.shift();
   keeper.committed = true;                        // your read, not his
-  keeper.react = KEEP_REACT;
+  keeper.ai = false;
+  keeper.diveAt = kickT;                          // the dive starts NOW
   keeper.player = true;
-  state = ST.CPU_WAIT; cpuT = 0.42;
-  $('prompt').textContent = CO_C.n + ' steps up…';
+  $('keepLbl').firstChild.nodeValue = 'COMMITTED ';
+  $('keepbar').classList.remove('tight');
+  $('prompt').textContent = strikeT === null
+    ? 'Gone early — he can see you go'
+    : 'Thrown late — get something on it';
 }
 /* ---- local multiplayer: 2-4 on one device ----
    Every player in a round kicks at the same kick index, so the seeded
@@ -2749,6 +2830,12 @@ function newShot(who){
   trail.length = 0; replay = [];
   setWind();
   power = 0.62; aimM = 0; curl = 0; elev = 0.5; dragging = false; dragPath = [];
+  kickT = 0; strikeT = null;
+  srcStriker = who==='p' ? 'local' : 'ai';
+  srcKeeper  = 'ai';
+  document.body.classList.remove('keeping');
+  $('keepbar').classList.remove('show', 'tight');
+  keepDone = false; keepDrag = false; keepIntent = null; keepPick = null;
   kbAim = false; document.body.classList.remove('dragging');
   crossed = false; outcome = null; flightT = 0;
   ripple.t = 0;
@@ -2840,6 +2927,9 @@ function cpuPlan(){
   }
 
   cpuShot = {
+    /* when he will actually hit it, on the kick clock. Not a fixed beat, so
+       you cannot simply wait for a known instant and go then. */
+    strikeAt: 1.45 + jr()*0.85,
     power: power, aimM: aimM, elev: elev, curl: curl,
     clean: clean, real: real,
     swerve: dhyp2(real.x - clean.x, real.y - clean.y),
@@ -2848,16 +2938,37 @@ function cpuPlan(){
     flashed: false,
   };
 }
+const READS_KEEPER = {junior:0.16, intermediate:0.38, senior:0.62, allireland:0.86};
 function cpuShoot(){
   if(cpuShot){                       // play the shot that was already chosen
     power = cpuShot.power; aimM = cpuShot.aimM;
     elev  = cpuShot.elev;  curl = cpuShot.curl;
+    /* If the keeper has already thrown himself, he is a body committed to one
+       side of the goal and the other side is open. How much of that a forward
+       takes depends on how good he is. */
+    if(keeper && keeper.committed && keeper.ai === false && keeper.diveAt !== undefined){
+      /* how long he has had to see it. Under a fifth of a second and the
+         strike is already under way; past REGISTER he has seen all of it. */
+      const REGISTER = 0.62;
+      const lead = cpuShot.strikeAt - keeper.diveAt;
+      const seen = clamp((lead - 0.16) / REGISTER, 0, 1);
+      const sees = (READS_KEEPER[difficulty] || 0.5) * seen;
+      const gone = keeper.tx - keeper.wx0;
+      if(sees > 0.02 && Math.abs(gone) > 0.5){
+        const away = -(Math.sign(gone) || 1);
+        aimM = lerp(aimM, away*2.65, sees);
+        curl = lerp(curl, away*0.35, sees*0.6);
+        cpuShot.punished = true;
+        cpuShot.seen = +seen.toFixed(3);
+      }
+    }
   }
   if(!keeper || !keeper.player) keeper = newKeeper(CO_P, OWN_KEEPER_TIER);
   fire();
 }
 function fire(){
   stopShotClock();
+  strikeT = kickT;                 // the instant both sides are timed against
   strikeCurl = curl; strikeElev = elev; strikeAim = aimM;
   if(shotStake>0) debit(shotStake);
   // contact is never perfect — harder strikes stray more
@@ -3640,6 +3751,7 @@ const COACH = [
   ['4 · Beat the clock','You have five seconds. Run them down and he takes it on anyway, off balance and with nothing on it.'],
   ['5 · Go in goal', 'When they kick, you are the keeper. Swipe the way you want to dive — across for a low one, up and across for full stretch — before he strikes.'],
   ['6 · Read the shot','In goal you get two tells. A ring shows where he is lining it up. If he wraps his foot around it, a second marker flashes SWERVE where it will really finish — that is the one to dive at. The better the forward, the less honest the first ring is.'],
+  ['7 · Stand, then go','Two decisions, two gestures. Drag slowly to shuffle along your line — free, and it shortens the dive on that side. Flick to throw yourself. Go before he strikes and you will get there, but while HE CAN SEE YOU is under the bar he will put it the other way — and the earlier you go, the more of it he takes. Wait until the ball is gone and he cannot read you at all, but you will not reach the corner. Late and central, or early and brave.'],
 ];
 let coachStep = 0;
 function showCoach(){
@@ -3766,10 +3878,9 @@ const stamp = () => (window.performance && performance.now) ? performance.now() 
 function samp(e){ const q = pos(e); q.t = stamp(); return q; }
 
 function down(e){
-  if(state===ST.KEEP){
-    dragging = true; dragA = samp(e); dragPath = [dragA];
-    // show him on his line straight away, so the preview answers the touch
-    keepPick = {x:0, y:1.15};
+  if(keepLive()){
+    dragging = true; keepDrag = true; dragA = samp(e); dragPath = [dragA];
+    keepPick = null;
     document.body.classList.add('dragging');
     e.preventDefault();
     return;
@@ -3830,10 +3941,25 @@ function refreshAimUI(){
 }
 function move(e){
   if(!dragging) return;
-  if(state===ST.KEEP){
+  if(keepDrag){
     dragPath.push(samp(e));
     if(dragPath.length>70) dragPath.shift();
-    keepPick = keepFromSwipe(dragPath);
+    const sw = readSwipe(dragPath);
+    /* Slow along the line is a shuffle; quick in a direction is a dive. The
+       same distinction the shooting half already makes, so the hand already
+       knows it. */
+    if(sw && sw.speed > KEEP_FLICK()){
+      keepPick = keepFromSwipe(dragPath);
+      keepIntent = 'dive';
+    } else {
+      keepIntent = 'set';
+      if(state === ST.KEEP){        // once it is struck there is no shuffling
+        const a = dragPath[0], b = dragPath[dragPath.length-1];
+        keeper.wx0 = clamp((b.x - a.x)/(W*0.34) * KEEP_SET, -KEEP_SET, KEEP_SET);
+        keeper.wx = keeper.wx0*0.56;
+      }
+      keepPick = null;
+    }
     e.preventDefault();
     return;
   }
@@ -3850,11 +3976,12 @@ function move(e){
 function up(e){
   if(!dragging) return;
   dragging=false;
-  if(state===ST.KEEP){
+  if(keepDrag){
+    keepDrag = false;
     document.body.classList.remove('dragging');
-    const a = dragPath[0], b = dragPath[dragPath.length-1];
-    // a tap is not a dive; leave it uncommitted and let him read it longer
-    if(keepPick && dhyp2(b.x-a.x, b.y-a.y) >= 14) commitKeep();
+    // only a flick throws him; a shuffle just leaves him where you put him
+    if(keepIntent === 'dive' && keepPick) commitKeep();
+    keepIntent = null;
     e.preventDefault();
     return;
   }
@@ -3895,7 +4022,7 @@ addEventListener('keydown', e => {
     togglePause(); return;
   }
   if(e.key === 'm' || e.key === 'M'){ toggleSound(); return; }
-  if(state === ST.KEEP && !paused){
+  if(keepLive()){
     const P0 = keepPick || {x:0, y:1.2};
     let used = true;
     switch(e.key){
@@ -4092,7 +4219,7 @@ function drawAimPreview(){
 
 /* --- the telegraph --------------------------------------------------- */
 /* progress through the window, 0 at the whistle to 1 at the strike */
-const keepProg = () => clamp(1 - keepT/KEEP_WINDOW, 0, 1);
+const keepProg = () => clamp(kickT / (cpuShot ? cpuShot.strikeAt : KEEP_WINDOW), 0, 1);
 /* the swerve declares itself in the middle third, and only if there is one */
 const SWERVE_MIN = 0.30;
 function swerveWindow(){
@@ -4185,7 +4312,7 @@ function drawTelegraph(){
 
 /* Where you have chosen to go, drawn on the goal you are defending. */
 function drawKeepPick(){
-  if(state !== ST.KEEP) return;
+  if(state !== ST.KEEP && !keepLive()) return;
   const L = prj(-HW, 0, 0), R = prj(HW, 0, 0), T = prj(0, CFG.BAR_H, 0), B = prj(0, 0, 0);
   ctx.save();
   // the mouth you are covering
@@ -4225,8 +4352,8 @@ function drawKeepPick(){
 function drawDragGesture(){
   if(!dragging || dragPath.length < 2) return;
   const bend = Math.abs(curl) > 0.12;
-  const hue  = state === ST.KEEP ? '0,170,255' : (bend ? '0,170,255' : '255,210,0');
-  const pace = state === ST.KEEP ? 0.6 : power;
+  const hue  = keepDrag ? '0,170,255' : (bend ? '0,170,255' : '255,210,0');
+  const pace = keepDrag ? 0.6 : power;
   ctx.save();
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   for(let i=1;i<dragPath.length;i++){
@@ -4356,24 +4483,49 @@ function update(dt){
     if(shotT <= 0) rushShot();
   }
   if(state===ST.KEEP){
+    kickT += dt;
     keepT -= dt;
     // the moment the bend shows: one cue, once
     if(cpuShot && !cpuShot.flashed && cpuShot.swerve >= SWERVE_MIN && keepProg() >= 0.40){
       cpuShot.flashed = true;
       SFX.tell(); buzz([0,18,40,18]);
     }
-    $('keepFill').style.width = clamp(keepT/KEEP_WINDOW, 0, 1)*100 + '%';
-    if(keepT <= 0) commitKeep();
+    // his dive, if he has already thrown himself, runs while he waits
+    if(keeper && keeper.committed) keeperUpdate(keeper, kickT, ball);
+    const untilStrike = cpuShot ? clamp(1 - kickT/cpuShot.strikeAt, 0, 1) : 0;
+    $('keepFill').style.width = untilStrike*100 + '%';
+    // amber the moment leaving would still be read: it is the window to hold
+    $('keepbar').classList.toggle('tight', untilStrike < 0.3);
+    $('keepbar').classList.toggle('watched', !keepDone && untilStrike > 0.22);
+    // he strikes when he is ready — you are not given a whistle to react to
+    if(cpuShot && kickT >= cpuShot.strikeAt) cpuShoot();
   }
   else if(state===ST.CPU_WAIT){
     cpuT -= dt; if(cpuT<=0) cpuShoot();
   }
   else if(state===ST.FLIGHT){
     flightT += dt;
+    kickT += dt;
+    if(srcKeeper === 'local'){
+      if(keepLive()){
+        const toLine = ball.wz / Math.max(1, -ball.vz);
+        if($('keepLbl').firstChild.nodeValue !== 'BALL AWAY '){
+          // the one frame it changes over: he still has a dive to throw and
+          // the bottom of the screen had gone silent on him
+          $('prompt').style.display = '';
+          $('prompt').textContent = 'Ball away — throw yourself';
+        }
+        $('keepLbl').firstChild.nodeValue = 'BALL AWAY ';
+        $('keepFill').style.width = clamp(toLine/0.85, 0, 1)*100 + '%';
+        $('keepbar').classList.add('tight');
+      } else if(keepDone || crossed){
+        $('keepbar').classList.remove('show', 'tight');
+      }
+    }
     const prevZ = ball.wz, prevX = ball.wx, prevY = ball.wy;
     const prevAlong = wall ? alongShot(ball) : 0;
     stepBall(dt);
-    keeperUpdate(keeper, flightT, ball);
+    keeperUpdate(keeper, kickT, ball);
     if(wall) wallUpdate(wall, flightT);
     recordFrame();
     // the ball has to get over or around the wall first
@@ -4527,8 +4679,9 @@ function drawReplayFurniture(){
   const bar = H*0.055;
   ctx.fillStyle='rgba(0,0,0,.72)';
   ctx.fillRect(0,0,W,bar); ctx.fillRect(0,H-bar,W,bar);
-  // sits clear of the scoreboard, which is a DOM layer above the canvas
-  const y = H*0.145;
+  // sits clear of the scoreboard AND the rank strip, both DOM layers above
+  // the canvas and both of them wider than they look
+  const y = H*0.195;
   ctx.fillStyle='rgba(0,0,0,.55)';
   ctx.beginPath(); ctx.roundRect(12, y-11, 84, 22, 11); ctx.fill();
   ctx.fillStyle='#ff2d6b';
@@ -4776,6 +4929,15 @@ async function mpFetch(path, method, body){
   if(!res.ok) throw new Error(json.error || ('HTTP ' + res.status));
   return json;
 }
+/* The keeper's committed dive, in the form the server can replay. Null when
+   nobody was in goal for this kick — which is every kick the AI defended. */
+function diveRecord(){
+  if(!keeper || !keeper.committed || keeper.ai !== false) return null;
+  if(keeper.diveAt === undefined || strikeT === null) return null;
+  return { x: +keeper.tx.toFixed(4), y: +keeper.ty.toFixed(4),
+           at: +(keeper.diveAt - strikeT).toFixed(4) };
+}
+
 /* the record is everything the server needs to reproduce this kick */
 function inputRecord(){
   return {
@@ -4786,6 +4948,9 @@ function inputRecord(){
     aimM:  +aimM.toFixed(6),
     curl:  +strikeCurl.toFixed(6),
     elev:  +strikeElev.toFixed(6),
+    /* the keeper's half of this kick, if a keeper played it. `at` is seconds
+       relative to the strike, so it is meaningful without the kick clock. */
+    dive:  diveRecord(),
     x: spot.x, z: spot.z, wall: spot.wall|0,
   };
 }
@@ -4860,7 +5025,9 @@ if(new URLSearchParams(location.search).has('debug')){
     simulate(rec){
       const save = {spot:spot, dist:shotDist, u:shotU, r:shotR, ball:ball,
                     keeper:keeper, wall:wall, curl:curl, diff:difficulty,
-                    weather:weather, windAcc:windAcc, mode:mode};
+                    weather:weather, windAcc:windAcc, mode:mode,
+                    kickT:kickT, strikeT:strikeT};
+      kickT = 0; strikeT = 0;        // the strike is the origin of this replay
       difficulty = rec.difficulty || 'senior';
       mode = rec.mode || 'quick';
       seedFrom(hash2(rec.matchSeed>>>0, rec.kickIndex|0));
@@ -4869,6 +5036,11 @@ if(new URLSearchParams(location.search).has('debug')){
       weather = WEATHERS[rec.weather||0];
       setWind();
       keeper = newKeeper(CO_C, difficulty);
+      if(rec.dive){
+        keeper.ai = false;
+        keeper.plan = rec.dive;
+        keeper.wx0 = 0; keeper.wx = 0;      // he stood where he chose to
+      }
       curl = rec.curl||0;
       ball = newBall();
       const slip = gRand(-0.17,0.17)*(0.30+rec.power*0.85);
@@ -4894,6 +5066,7 @@ if(new URLSearchParams(location.search).has('debug')){
       spot=save.spot; shotDist=save.dist; shotU=save.u; shotR=save.r;
       ball=save.ball; keeper=save.keeper; wall=save.wall; curl=save.curl;
       difficulty=save.diff; weather=save.weather; windAcc=save.windAcc; mode=save.mode;
+      kickT=save.kickT; strikeT=save.strikeT;
       return out;
     },
     conditions(matchSeed, kickIndex){
@@ -4910,7 +5083,7 @@ if(new URLSearchParams(location.search).has('debug')){
     },
     get paused(){ return paused; },
     get canAim(){ return state === ST.AIM && !paused; },
-    get canKeep(){ return state === ST.KEEP && !paused; },
+    get canKeep(){ return keepLive(); },
     get goalieOn(){ return goalieOn(); },
     /* what the keeper is being shown, and what is actually coming, so the
        fairness of the read can be measured rather than asserted */
@@ -4921,13 +5094,18 @@ if(new URLSearchParams(location.search).has('debug')){
               swerve:+cpuShot.swerve.toFixed(3), prog:+keepProg().toFixed(3)};
     },
     get keepWindow(){ return KEEP_WINDOW; },
+    get keepCommitted(){ return !!(keeper && keeper.committed && keeper.ai === false); },
+    get kickClock(){ return {t:+kickT.toFixed(3), strikeAt: cpuShot ? +cpuShot.strikeAt.toFixed(3) : null,
+                             struck: strikeT !== null, punished: !!(cpuShot && cpuShot.punished),
+                             seen: cpuShot ? (cpuShot.seen || 0) : 0}; },
+    get sources(){ return {striker:srcStriker, keeper:srcKeeper}; },
     get stateName(){
       return Object.keys(ST).find(k => ST[k] === state) || String(state);
     },
     /* pick a dive from outside, so the keeper half can be driven in a test
        without synthesising touch coordinates against a projection */
     keepAt(x, y){
-      if(state !== ST.KEEP) return false;
+      if(!keepLive()) return false;
       keepPick = {x: x, y: y};
       commitKeep();
       return true;
