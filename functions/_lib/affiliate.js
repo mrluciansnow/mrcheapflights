@@ -93,6 +93,12 @@ const CITY_IATA = {
   'almaty': 'ALA', 'tashkent': 'TAS', 'kathmandu': 'KTM', 'dhaka': 'DAC',
   'chennai': 'MAA', 'bengaluru': 'BLR', 'bangalore': 'BLR', 'hyderabad': 'HYD',
   'goa': 'GOI', 'kochi': 'COK', 'kolkata': 'CCU',
+  // Found by auditing live deals against the resolver: the ONLY servable deal
+  // on the site was "London → Lapland", which resolved to nothing — so fan-out
+  // reported priced:0 every run and the multi-city features had no data to
+  // work with. Worth checking new destinations resolve before they go live.
+  'lapland': 'RVN', 'rovaniemi': 'RVN', 'kittila': 'KTT', 'ivalo': 'IVL',
+  'macau': 'MFM', 'macao': 'MFM',
   'zante': 'ZTH', 'zakynthos': 'ZTH', 'kos': 'KGS', 'kefalonia': 'EFL',
   'thessaloniki': 'SKG', 'bodrum': 'BJV', 'izmir': 'ADB',
   'tirana': 'TIA', 'sofia': 'SOF', 'bucharest': 'OTP', 'belgrade': 'BEG',

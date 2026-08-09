@@ -95,6 +95,11 @@ export async function fanOutDeal(env, deal, { maxOrigins = 10 } = {}) {
     } catch { out.errors++; }
   }
 
+  // Convert opposite-region prices into candidates (see the note above).
+  try {
+    out.derived = await deriveCrossRegionCandidates(env, deal, dest);
+  } catch { out.derived = 0; }
+
   try {
     await env.DB.prepare('UPDATE deals SET origins_synced_at=unixepoch() WHERE id=?').bind(deal.id).run();
   } catch { /* column missing pre-migration — non-fatal */ }
@@ -102,13 +107,79 @@ export async function fanOutDeal(env, deal, { maxOrigins = 10 } = {}) {
   return out;
 }
 
+/**
+ * Turn fan-out prices into deal CANDIDATES for the other region.
+ *
+ * Measured 2026-08-09: all-time candidates run IE 8 vs UK 108, and a scan of 86
+ * live feed items found exactly ONE mentioning an Irish airport. The Irish site
+ * keeps emptying not because of a parser bug but because the RSS sources barely
+ * cover Ireland — no amount of extraction tuning fixes a supply problem.
+ *
+ * But we already price every tracked destination from Dublin, Cork and Shannon.
+ * If London → Bali is worth featuring, Dublin → Bali at a comparable fare is
+ * worth featuring too, and we have that number. This converts it into a normal
+ * pending candidate: it goes through AI scoring and human review like any other
+ * source, never straight to live, and is capped so it can't flood the queue.
+ */
+async function deriveCrossRegionCandidates(env, deal, dest, cap = 2) {
+  const otherRegion = deal.region === 'ie' ? 'uk' : 'ie';
+  const destName = (String(deal.route).split(/→|->/)[1] || '').trim();
+  if (!destName) return 0;
+
+  // Price the OTHER region's main airports ourselves. The same-region fan-out
+  // above can't supply these — and the currency must follow the target region,
+  // or an Irish candidate would end up quoted in pounds.
+  const targets = (FANOUT_ORIGINS[otherRegion] || []).slice(0, cap + 1);
+  const results = await Promise.all(targets.map(async (cityKey) => {
+    const iata = CITY_IATA[cityKey];
+    if (!iata || iata === dest) return { cityKey, res: null };
+    try {
+      const r = await checkTravelpayouts(env, { region: otherRegion }, { origin: iata, dest });
+      return { cityKey, res: r };
+    } catch { return { cityKey, res: null }; }
+  }));
+
+  let made = 0;
+  for (const { cityKey, res } of results) {
+    if (made >= cap) break;
+    if (!res || res.status !== 'ok' || res.price == null) continue;
+
+    const city = canonicalCity(cityKey);
+    const route = `${city} → ${destName}`;
+    const symbol = symbolFor(res.currency || (otherRegion === 'uk' ? 'GBP' : 'EUR'));
+    const price = `${symbol}${Math.round(res.price)}`;
+
+    try {
+      // Never duplicate something already live, drafted or queued.
+      const exists = await env.DB.prepare(
+        `SELECT 1 FROM deals WHERE route=? AND region=?
+         UNION ALL
+         SELECT 1 FROM scraped_deals WHERE route=? AND region=? AND status IN ('pending','approved')
+         LIMIT 1`
+      ).bind(route, otherRegion, route, otherRegion).first();
+      if (exists) continue;
+
+      await env.DB.prepare(
+        `INSERT INTO scraped_deals (source_name, source_url, flag, route, dates, price, badge, region, raw_snippet)
+         VALUES ('Fan-out (derived)', ?, ?, ?, '', ?, ?, ?, ?)`
+      ).bind(
+        res.url || `https://mrcheapflights.${otherRegion === 'uk' ? 'co.uk' : 'ie'}/`,
+        deal.flag || '✈️', route, price, deal.badge || '🔥 Hot', otherRegion,
+        `Derived from the tracked destination "${destName}": Travelpayouts priced ${city} → ${destName} at ${price}.`
+      ).run();
+      made++;
+    } catch { /* one failure must not stop the fan-out */ }
+  }
+  return made;
+}
+
 /** Cron body: fan out over live deals, stalest (and never-synced) first. */
 export async function runFanOut(env, { maxDeals = 4 } = {}) {
-  const summary = { considered: 0, priced: 0, errors: 0, deals: [], tp_armed: !!env.TRAVELPAYOUTS_TOKEN };
+  const summary = { considered: 0, priced: 0, errors: 0, derived: 0, deals: [], tp_armed: !!env.TRAVELPAYOUTS_TOKEN };
   if (!summary.tp_armed) { summary.reason = 'TRAVELPAYOUTS_TOKEN not set'; return summary; }
 
   const { results } = await env.DB.prepare(
-    `SELECT id, route, region, price FROM deals
+    `SELECT id, route, region, price, flag, badge FROM deals
      WHERE status='live' AND (expiry IS NULL OR date(expiry) >= date('now'))
      ORDER BY (origins_synced_at IS NULL) DESC, origins_synced_at ASC
      LIMIT ?`
@@ -119,6 +190,7 @@ export async function runFanOut(env, { maxDeals = 4 } = {}) {
     const r = await fanOutDeal(env, deal);
     summary.priced += r.priced;
     summary.errors += r.errors;
+    summary.derived += r.derived || 0;
     if (r.priced) summary.deals.push({ id: deal.id, route: deal.route, priced: r.priced, cheapest: r.cheapest });
   }
   return summary;

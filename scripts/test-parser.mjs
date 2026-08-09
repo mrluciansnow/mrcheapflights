@@ -139,5 +139,21 @@ ok('badge assigned', typeof full?.badge === 'string' && full.badge.length > 0, f
 const mistake = parseDealTitle('Mistake fare: Dublin to Tokyo €299', 'https://x.test', 'ie', '');
 ok('mistake fare badge', mistake?.badge === '⚠️ Mistake Fare', mistake?.badge);
 
-console.log(`\n${pass} passed, ${fail} failed\n`);
+
+// ── Destination resolution: a deal whose destination can't resolve is invisible
+// to fan-out, affiliate links and multi-city entirely. The only live deal on the
+// site once resolved to nothing ("London → Lapland"), so fan-out silently
+// reported priced:0 forever. These pin the destinations that caused it.
+console.log('\n── Destinations that must resolve ──');
+const { routeIatas } = await import('../functions/_lib/affiliate.js');
+for (const [route, region] of [
+  ['London → Lapland', 'uk'], ['London → Macau', 'uk'],
+  ['Dublin → Lisbon', 'ie'], ['Manchester → Bali', 'uk'],
+]) {
+  ok(`resolves: ${route}`, !!routeIatas(route, region), routeIatas(route, region));
+}
+
+console.log(`
+${pass} passed, ${fail} failed
+`);
 process.exit(fail ? 1 : 0);
