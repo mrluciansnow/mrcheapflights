@@ -7,7 +7,7 @@
 // Suggested schedule: every 4h, offset from verify-fares. ?deals=N to override.
 
 import { requireAdmin } from '../../_lib/auth.js';
-import { logOp } from '../../_lib/oplog.js';
+import { logOp, startOp, finishOp } from '../../_lib/oplog.js';
 import { runFanOut } from '../../_lib/multicity.js';
 
 async function handle(context) {
@@ -20,6 +20,11 @@ async function handle(context) {
     }
   }
 
+  // Record the run BEFORE the slow work: a scheduler timeout kills the Worker
+  // mid-flight, so a trailing logOp() never executes and the failure leaves no
+  // trace at all. A row still marked 'running' is a run that was killed.
+  const runId = await startOp(context.env, 'fan-out');
+
   const url = new URL(context.request.url);
   const n = parseInt(url.searchParams.get('deals'));
   const maxDeals = Number.isFinite(n) ? Math.min(15, Math.max(1, n)) : 4;
@@ -28,11 +33,11 @@ async function handle(context) {
   try {
     summary = await runFanOut(context.env, { maxDeals });
   } catch (e) {
-    await logOp(context.env, 'fan-out', false, { error: e.message });
+    await finishOp(context.env, runId, 'fan-out', false, { error: e.message });
     return Response.json({ ok: false, error: e.message }, { status: 500 });
   }
 
-  await logOp(context.env, 'fan-out', true, summary);
+  await finishOp(context.env, runId, 'fan-out', true, summary);
   return Response.json({ ok: true, ...summary }, { headers: { 'Cache-Control': 'no-store' } });
 }
 

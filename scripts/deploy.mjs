@@ -59,3 +59,20 @@ execSync(
   { cwd: root, stdio: 'inherit' }
 );
 console.log('✅ Deployed (clean — no secrets/tooling uploaded).');
+
+// Self-verify. Deploys used to be fire-and-forget: the smoke suite existed but
+// only ran when someone remembered, so a regression could sit live unnoticed.
+// Skip with --no-verify (useful when deploying a known-red fix).
+if (!process.argv.includes('--no-verify') && branch === 'main') {
+  console.log('\n🔎 Verifying deployment …');
+  // Pages needs a moment to roll new Functions out to the edge.
+  await new Promise((r) => setTimeout(r, 20000));
+  try {
+    execSync('node scripts/smoke.mjs', { cwd: root, stdio: 'inherit' });
+  } catch {
+    console.error('\n⚠️  Smoke checks FAILED against production (see above).');
+    console.error('   The deploy is live — decide whether to fix forward or roll back:');
+    console.error('   npx wrangler pages deployment list --project-name=mrcheap');
+    process.exitCode = 1;
+  }
+}

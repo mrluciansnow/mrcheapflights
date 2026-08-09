@@ -158,7 +158,10 @@ export async function onRequestPost(context) {
       case 'ads-sync': return (d.considered ?? 0) === 0
         ? `${d.live ? 'live' : 'dry-run'} · no launched campaigns`
         : `${d.considered} campaign(s) · ${d.synced ?? 0} synced${d.paused_by_guardrail && d.paused_by_guardrail.length ? ` · ⏸ ${d.paused_by_guardrail.length} auto-paused` : ''}${d.live ? '' : ' · dry-run'}`;
-      default: return String(detail).slice(0, 80);
+      default: {
+        if (d.status === 'running') return '⏱ killed mid-run — no result written (scheduler timeout?)';
+        return String(detail).slice(0, 80);
+      }
     }
   };
   const opsRows = (opLog.results || []).map(r => {
@@ -170,6 +173,13 @@ export async function onRequestPost(context) {
       <td style="padding:7px 12px;border-bottom:1px solid #eee;font-size:12px;color:#999;white-space:nowrap">${time}</td>
     </tr>`;
   }).join('');
+  // A row still marked 'running' means the Worker was KILLED mid-flight (the
+  // scheduler's 30s cutoff) — the run never got to write its own result. These
+  // used to be completely invisible: op_log simply had no row at all.
+  const opsKilled = (opLog.results || []).filter(r => {
+    if (r.ok) return false;
+    try { return JSON.parse(r.detail || '{}').status === 'running'; } catch { return false; }
+  }).length;
   const opsFailed = (opLog.results || []).filter(r => !r.ok).length;
   const opsHtml = (opLog.results || []).length
     ? `<h2>${opsFailed ? '🚨' : '⚙️'} Automation — last 24h${opsFailed ? ` (${opsFailed} FAILED)` : ' (all green)'}</h2>
@@ -361,7 +371,7 @@ Open https://mrcheapflights.ie/pipeline.html to review pending deals.`;
   const result = await sendEmail(context.env, {
     to,
     subject: opsFailed
-      ? `🚨 MCF Daily Digest — ${opsFailed} automation failure(s) · ${pendingDeals.results.length} pending`
+      ? `🚨 MCF Daily Digest — ${opsFailed} automation failure(s)${opsKilled ? ` (${opsKilled} killed mid-run)` : ''} · ${pendingDeals.results.length} pending`
       : `✈ MCF Daily Digest — ${pendingDeals.results.length} pending · ${stats.premium} premium`,
     html,
     text: plainText,

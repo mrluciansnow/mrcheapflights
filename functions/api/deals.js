@@ -1,7 +1,7 @@
 import { requireAdmin, resolveMemberTier, isPremiumBadge } from '../_lib/auth.js';
 import { routeSearchUrl } from '../_lib/affiliate.js';
 import { fareMapForDeals, publicFare } from '../_lib/fares.js';
-import { originsCountsForDeals, originsForDeal } from '../_lib/multicity.js';
+import { originsCountsForDeals, originsForDeals } from '../_lib/multicity.js';
 
 // Public: list live deals, optionally filtered by region. Mirrors the shape
 // of the old in-memory `deals[]` array so the frontend mapping is 1:1.
@@ -77,11 +77,16 @@ export async function onRequestGet(context) {
   // Per-city prices for entitled members only — withheld from the payload for
   // guests/gated deals, never merely hidden client-side.
   if (tier !== 'guest') {
-    await Promise.all(withLinks.map(async (out) => {
-      if (out.fare_gate !== 'none' || !originCounts[out.id]) return;
-      const origins = await originsForDeal(context.env, out.id, out.price);
-      if (origins.length > 1) out.origins = origins;
-    }));
+    // ONE query for every entitled deal, not one per deal.
+    const wanted = withLinks.filter((d) => d.fare_gate === 'none' && originCounts[d.id]);
+    if (wanted.length) {
+      const priceByDeal = Object.fromEntries(wanted.map((d) => [d.id, d.price]));
+      const map = await originsForDeals(context.env, wanted.map((d) => d.id), priceByDeal);
+      for (const out of wanted) {
+        const origins = map[out.id];
+        if (origins && origins.length > 1) out.origins = origins;
+      }
+    }
   }
   // Vary: Cookie — without it, a browser that cached the public (logged-out)
   // response re-serves it to a logged-in admin for 5 minutes, which locked the

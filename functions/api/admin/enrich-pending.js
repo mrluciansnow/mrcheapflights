@@ -7,7 +7,7 @@
 // Deals with confidence >= 80 are automatically promoted to deals table as drafts.
 
 import { requireAdmin } from '../../_lib/auth.js';
-import { logOp } from '../../_lib/oplog.js';
+import { logOp, startOp, finishOp } from '../../_lib/oplog.js';
 import { destSlugForText, getDestination } from '../../_lib/destinations.js';
 import { deriveExpiry, captionMatchesDeal } from '../../_lib/scraper.js';
 
@@ -30,9 +30,14 @@ export async function onRequestPost(context) {
     }
   }
 
+  // Record the run BEFORE the slow AI call. If cron-job.org kills us at 30s the
+  // Worker dies mid-flight and the logOp() below never executes — which is
+  // exactly how this job failed silently every morning for weeks.
+  const runId = await startOp(context.env, 'enrich');
+
   const apiKey = context.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    await logOp(context.env, 'enrich', false, { error: 'ANTHROPIC_API_KEY not configured' });
+    await finishOp(context.env, runId, 'enrich', false, { error: 'ANTHROPIC_API_KEY not configured' });
     return Response.json({
       enriched: 0,
       reason: 'ANTHROPIC_API_KEY not configured — set it via: wrangler pages secret put ANTHROPIC_API_KEY --project-name mrcheap',
@@ -117,14 +122,14 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
   } catch (err) {
     clearTimeout(to);
     const reason = err.name === 'AbortError' ? 'timeout after 30s' : err.message;
-    await logOp(context.env, 'enrich', false, { error: reason });
+    await finishOp(context.env, runId, 'enrich', false, { error: reason });
     return Response.json({ enriched: 0, error: reason }, { status: 502 });
   }
   clearTimeout(to);
 
   if (!aiRes.ok) {
     const body = await aiRes.text().catch(() => '');
-    await logOp(context.env, 'enrich', false, { error: `Anthropic ${aiRes.status}: ${body.slice(0, 120)}` });
+    await finishOp(context.env, runId, 'enrich', false, { error: `Anthropic ${aiRes.status}: ${body.slice(0, 120)}` });
     return Response.json({ enriched: 0, error: `Anthropic ${aiRes.status}: ${body.slice(0, 200)}` }, { status: 502 });
   }
 
@@ -251,7 +256,7 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
     try { await context.env.DB.batch(blockedStmts); } catch { /* column may predate migration */ }
   }
 
-  await logOp(context.env, 'enrich', true, { enriched, auto_approved: autoApproved, auto_published: autoPublished, blocked: skipped.length, blocked_detail: skipped.slice(0, 5), captions_dropped: captionsDropped });
+  await finishOp(context.env, runId, 'enrich', true, { enriched, auto_approved: autoApproved, auto_published: autoPublished, blocked: skipped.length, blocked_detail: skipped.slice(0, 5), captions_dropped: captionsDropped });
 
   // How many un-scored deals are still queued — lets the UI drain in one click.
   const left = await context.env.DB.prepare(

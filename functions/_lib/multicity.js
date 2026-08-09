@@ -171,6 +171,41 @@ export async function originsCountsForDeals(env, dealIds) {
   } catch { return {}; }
 }
 
+/**
+ * Origin prices for MANY deals in ONE query → { dealId: [rows] }.
+ *
+ * /api/deals previously called originsForDeal() per deal inside a Promise.all,
+ * so rendering 14 deals fired 14 separate D1 round-trips and the cost grew with
+ * the listing. One IN query returns the same data.
+ */
+export async function originsForDeals(env, dealIds, priceByDeal = {}) {
+  if (!dealIds?.length) return {};
+  const marks = dealIds.map(() => '?').join(',');
+  let rows = [];
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT deal_id, origin_city, origin_iata, price, currency, depart_date, return_date,
+              airline, stops, book_url, checked_at
+       FROM deal_origins WHERE deal_id IN (${marks}) AND price IS NOT NULL
+       ORDER BY deal_id, price ASC`
+    ).bind(...dealIds).all();
+    rows = results || [];
+  } catch { return {}; }
+
+  const out = {};
+  for (const r of rows) {
+    const list = (out[r.deal_id] = out[r.deal_id] || []);
+    const listed = parseDealPrice(priceByDeal[r.deal_id]);
+    list.push({
+      ...r,
+      symbol: symbolFor(r.currency),
+      cheapest: list.length === 0,          // rows arrive price-ascending per deal
+      beats_listed: listed != null && r.price < listed,
+    });
+  }
+  return out;
+}
+
 /** Compact per-city payload for posters/captions (no gating concerns). */
 export async function originSlides(env, dealId, limit = 8) {
   const rows = await originsForDeal(env, dealId, null);
