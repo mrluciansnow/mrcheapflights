@@ -42,15 +42,35 @@ export async function fanOutDeal(env, deal, { maxOrigins = 10 } = {}) {
   const marker = (env.TRAVELPAYOUTS_MARKER || '').trim();
   const origins = (FANOUT_ORIGINS[deal.region] || []).slice(0, maxOrigins);
 
-  for (const cityKey of origins) {
+  // Price the origins CONCURRENTLY. Each is an independent Travelpayouts call
+  // with a 12s timeout, so doing ten of them serially could take well over a
+  // minute per deal and made the cron's wall-clock scale with the origin list.
+  // Capped at 4 in flight to stay polite to the API rather than firing all ten.
+  const CONCURRENCY = 4;
+  const queue = origins.filter((cityKey) => {
     const iata = CITY_IATA[cityKey];
-    if (!iata || iata === dest) { out.skipped++; continue; }
+    if (!iata || iata === dest) { out.skipped++; return false; }
+    return true;
+  });
 
-    let res;
-    try {
-      // Reuse the verification client so retries/timeouts/fallbacks are shared.
-      res = await checkTravelpayouts(env, { region: deal.region }, { origin: iata, dest });
-    } catch { out.errors++; continue; }
+  const priced = [];
+  for (let i = 0; i < queue.length; i += CONCURRENCY) {
+    const chunk = queue.slice(i, i + CONCURRENCY);
+    const settled = await Promise.all(chunk.map(async (cityKey) => {
+      const iata = CITY_IATA[cityKey];
+      try {
+        // Reuse the verification client so retries/timeouts/fallbacks are shared.
+        const r = await checkTravelpayouts(env, { region: deal.region }, { origin: iata, dest });
+        return { cityKey, iata, res: r };
+      } catch { return { cityKey, iata, res: null }; }
+    }));
+    priced.push(...settled);
+  }
+
+  // Writes stay sequential — D1 is the cheap part and this keeps the upserts
+  // deterministic and easy to reason about.
+  for (const { cityKey, iata, res } of priced) {
+    if (!res) { out.errors++; continue; }
 
     if (res?.skipped) { out.skipped++; continue; }     // no TP token configured
     if (res?.error || res?.status !== 'ok' || res.price == null) { out.errors++; continue; }

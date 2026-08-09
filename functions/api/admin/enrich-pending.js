@@ -9,7 +9,7 @@
 import { requireAdmin } from '../../_lib/auth.js';
 import { logOp } from '../../_lib/oplog.js';
 import { destSlugForText, getDestination } from '../../_lib/destinations.js';
-import { deriveExpiry } from '../../_lib/scraper.js';
+import { deriveExpiry, captionMatchesDeal } from '../../_lib/scraper.js';
 
 const VALID_TYPES  = new Set(['sun', 'city', 'longhaul', 'wintersun']);
 const VALID_BADGES = new Set(['🔥 Hot', '⚡ Flash', '✈ Long Haul', '⭐ Featured', '⚠️ Mistake Fare']);
@@ -145,13 +145,28 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
   // Write enrichment scores + AI captions back to scraped_deals
   const stmts = [];
   let enriched = 0;
+  let captionsDropped = 0;   // captions that failed the price/destination check
   for (const s of scores) {
     if (!s?.id) continue;
     const confidence = Math.max(0, Math.min(100, parseInt(s.confidence) || 0));
     const destType = VALID_TYPES.has(s.dest_type) ? s.dest_type : null;
     const badge    = VALID_BADGES.has(s.badge)    ? s.badge    : null;
-    // 3 caption variants → JSON string; discard malformed shapes
-    let aiCopy = null;
+    // 3 caption variants → JSON string; discard malformed shapes.
+    //
+    // QUALITY GATE: captions were previously accepted on type and length alone,
+    // so a hallucinated price or the wrong city could go straight to Instagram
+    // under our own branding. Each caption must actually mention this deal's
+    // price AND its destination; ones that don't are dropped. If none survive
+    // the deal still promotes — just without AI copy, which is far safer than
+    // publishing a caption that misquotes the fare.
+    const src = pending.find((p) => p.id === s.id);
+    if (Array.isArray(s.copy) && s.copy.length && s.copy.every((c) => typeof c === 'string')) {
+      const kept = src ? s.copy.filter((c) => captionMatchesDeal(c, src.route, src.price)) : s.copy;
+      if (kept.length !== s.copy.length) {
+        captionsDropped += s.copy.length - kept.length;
+      }
+      s.copy = kept;
+    }
     if (Array.isArray(s.copy) && s.copy.length && s.copy.every((c) => typeof c === 'string')) {
       // IG captions run 500-850 chars by design; 1100 leaves headroom without
       // letting a runaway response bloat the row (IG's own cap is 2200).
@@ -178,11 +193,23 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
 
   let autoApproved = 0;
   let autoPublished = 0;
+  const skipped = [];        // promotion-blocked deals, with the reason
+  const blockedStmts = [];   // reason write-backs, flushed with the batch
   if (highConf?.length) {
     const aStmts = [];
     for (const row of highConf) {
-      // SSRF guard: only promote deals with real https:// source URLs
-      if (!row.source_url || !row.source_url.startsWith('https://')) continue;
+      // SSRF guard: only promote deals with real https:// source URLs.
+      // This used to `continue` silently, so a deal scoring 90 could sit
+      // pending for ever with nothing anywhere explaining why — invisible to
+      // the operator and re-queried on every single run. Now it's counted,
+      // named, and written back as a reason on the row.
+      if (!row.source_url || !row.source_url.startsWith('https://')) {
+        skipped.push({ id: row.id, route: row.route, reason: 'no https source URL' });
+        blockedStmts.push(context.env.DB.prepare(
+          `UPDATE scraped_deals SET skip_reason='no https source URL', updated_at=unixepoch() WHERE id=?`
+        ).bind(row.id));
+        continue;
+      }
 
       // Match on ROUTE+REGION, not slug. The slug used to embed the price, so
       // the same route at a new price minted a fresh slug and the
@@ -220,13 +247,16 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
     }
     if (aStmts.length) await context.env.DB.batch(aStmts);
   }
+  if (blockedStmts.length) {
+    try { await context.env.DB.batch(blockedStmts); } catch { /* column may predate migration */ }
+  }
 
-  await logOp(context.env, 'enrich', true, { enriched, auto_approved: autoApproved, auto_published: autoPublished });
+  await logOp(context.env, 'enrich', true, { enriched, auto_approved: autoApproved, auto_published: autoPublished, blocked: skipped.length, blocked_detail: skipped.slice(0, 5), captions_dropped: captionsDropped });
 
   // How many un-scored deals are still queued — lets the UI drain in one click.
   const left = await context.env.DB.prepare(
     `SELECT COUNT(*) AS n FROM scraped_deals WHERE status='pending' AND confidence IS NULL`
   ).first();
 
-  return Response.json({ enriched, auto_approved: autoApproved, auto_published: autoPublished, remaining: left?.n || 0 });
+  return Response.json({ enriched, auto_approved: autoApproved, auto_published: autoPublished, blocked: skipped, remaining: left?.n || 0 });
 }

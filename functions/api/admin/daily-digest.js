@@ -133,8 +133,14 @@ export async function onRequestPost(context) {
     let d; try { d = JSON.parse(detail); } catch { return ''; }
     if (!d) return '';
     switch (kind) {
-      case 'scrape': return `${d.sources_checked ?? '?'} sources · ${d.deals_found ?? 0} found · ${d.deals_new ?? 0} new${d.errors?.length ? ` · ⚠️ ${d.errors.length} source error(s)` : ''}`;
-      case 'enrich': return d.error ? d.error : `${d.enriched ?? 0} scored · ${d.auto_approved ?? 0} auto-approved${d.auto_published ? ` · ${d.auto_published} straight to live` : ''}`;
+      case 'scrape': {
+        const dead = d.sources ? Object.entries(d.sources).filter(([, v]) => v.ok && !v.found).map(([k]) => k) : [];
+        return `${d.feeds_fetched ?? d.sources_checked ?? '?'} feeds · ${d.deals_found ?? 0} found · ${d.deals_new ?? 0} new`
+          + (d.deals_updated ? ` · ${d.deals_updated} price-updated` : '')
+          + (d.errors?.length ? ` · ⚠️ ${d.errors.length} source error(s)` : '')
+          + (dead.length ? ` · 💤 ${dead.length} source(s) returned nothing: ${dead.slice(0, 3).join(', ')}` : '');
+      }
+      case 'enrich': return d.error ? d.error : `${d.enriched ?? 0} scored · ${d.auto_approved ?? 0} auto-approved${d.auto_published ? ` · ${d.auto_published} straight to live` : ''}${d.blocked ? ` · 🚫 ${d.blocked} blocked from promotion` : ''}${d.captions_dropped ? ` · ✂️ ${d.captions_dropped} caption(s) failed the price/destination check` : ''}`;
       case 'newsletter': return d.armed
         ? `IE ${d.ie?.sent ?? 0}/${d.ie?.subscribers ?? 0} sent · UK ${d.uk?.sent ?? 0}/${d.uk?.subscribers ?? 0} sent`
         : 'shell mode (not armed)';
@@ -144,7 +150,8 @@ export async function onRequestPost(context) {
         : `${d.deals_scanned ?? 0} deal(s) scanned · ${d.matched ?? 0} matched · ${d.sent ?? 0} alert(s) sent${d.skipped_throttle ? ` · ${d.skipped_throttle} throttled` : ''}`;
       case 'dest_content': return `${d.generated ?? 0} destination guide(s) generated`;
       case 'fares': return `${d.tp_checked ?? 0} TP + ${d.google_checked ?? 0} Google checks · ${d.verified ?? 0} verified${d.price_changed ? ` · ${d.price_changed} price-changed` : ''}${d.new_lows && d.new_lows.length ? ` · 📉 ${d.new_lows.length} new low(s)` : ''}${d.staled && d.staled.length ? ` · ⛔ ${d.staled.length} retired (price gone)` : ''}${!d.tp_armed ? ' · TP token unset' : ''}${!d.google_armed ? ' · SerpApi unset' : ''}`;
-      case 'cleanup': return `${d.rate_limit_purged ?? 0} rate-limit rows · ${d.scraped_rejected_purged ?? 0} rejected deals purged`;
+      case 'cleanup': return `${d.rate_limit_purged ?? 0} rate-limit rows · ${d.scraped_rejected_purged ?? 0} rejected deals purged`
+        + (d.images_mb != null ? ` · 🖼 ${d.images_remaining} images using ${d.images_mb}MB` : '');
       case 'publish': return `${d.deals ?? 0} deal(s) fanned out`;
       case 'weekly-report': return d.error ? d.error
         : `${d.thisWeek ?? 0} signups this week${d.delta != null ? ` (${d.delta >= 0 ? '+' : ''}${d.delta}%)` : ''} · email ${d.email || '?'}`;

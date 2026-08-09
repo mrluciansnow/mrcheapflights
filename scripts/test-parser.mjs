@@ -10,7 +10,7 @@
 //
 //   npm run test:parser
 
-import { parseDealTitle, extractPrice, extractRoute, extractDates, deriveExpiry } from '../functions/_lib/scraper.js';
+import { parseDealTitle, extractPrice, extractRoute, extractDates, deriveExpiry, captionMatchesDeal } from '../functions/_lib/scraper.js';
 
 let pass = 0, fail = 0;
 const ok = (name, cond, got) => {
@@ -114,6 +114,20 @@ ok('capped at a year out',
   deriveExpiry('Jul', NOW) <= '2027-08-01', deriveExpiry('Jul', NOW));
 ok('always yields a date (a deal can never be immortal)',
   /^\d{4}-\d{2}-\d{2}$/.test(deriveExpiry('nonsense', NOW)), deriveExpiry('nonsense', NOW));
+
+console.log('\n── Caption gate: AI copy must describe THIS deal ──');
+const R2 = 'Dublin → Lisbon', P2 = '€29';
+ok('accepts a caption with the right price and destination',
+  captionMatchesDeal('€29 to LISBON?! Grab it before it goes ✈', R2, P2));
+ok('rejects a caption quoting the WRONG price',
+  !captionMatchesDeal('€49 to Lisbon, unreal', R2, P2));
+ok('rejects a caption naming the WRONG destination',
+  !captionMatchesDeal('€29 to Barcelona, unreal', R2, P2));
+ok('tolerates thousands separators (€1,299 vs 1299)',
+  captionMatchesDeal('Business class to Tokyo for €1,299', 'Dublin → Tokyo', '€1299'));
+ok('matches a word of a multi-word destination',
+  captionMatchesDeal('£349 to New York baby', 'London → New York', '£349'));
+ok('rejects empty copy', !captionMatchesDeal('', R2, P2));
 
 console.log('\n── Full shape ──');
 const full = parseDealTitle('Cork to Lisbon for €29 return', 'https://x.test', 'ie', 'Travel 12–19 Nov 2026');

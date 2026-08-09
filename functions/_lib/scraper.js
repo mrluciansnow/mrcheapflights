@@ -80,59 +80,149 @@ const SOURCES = [
 
 // ── Main entry point ─────────────────────────────────────────────────────────
 
+/**
+ * Fetch every distinct feed ONCE and apply each region's filter to the result.
+ *
+ * SOURCES lists 8 entries but only 4 distinct URLs — the same feed appeared
+ * once for 'ie' and again for 'uk', so every run fetched identical bytes twice,
+ * doubling requests and latency for nothing. Feeds are also fetched in
+ * PARALLEL now: they're independent, and serialising four network round-trips
+ * was the bulk of the scrape's wall-clock time (which matters, since this runs
+ * under a 30s scheduler ceiling).
+ */
 export async function runScraper(env) {
-  const summary = { sources_checked: 0, deals_found: 0, deals_new: 0, errors: [] };
+  const summary = {
+    sources_checked: 0, feeds_fetched: 0, deals_found: 0, deals_new: 0,
+    deals_updated: 0, errors: [], sources: {},
+  };
 
-  for (const source of SOURCES) {
+  // Group the source list by URL so each feed is fetched exactly once.
+  const byUrl = new Map();
+  for (const s of SOURCES) {
+    if (!byUrl.has(s.url)) byUrl.set(s.url, []);
+    byUrl.get(s.url).push(s);
     summary.sources_checked++;
+  }
+
+  const fetched = await Promise.all([...byUrl.keys()].map(async (url) => {
     try {
-      const deals = source.type === 'rss'
-        ? await parseRss(source.url, source.region, source.filter)
-        : await source.parser(source.url, source.region);
-
-      summary.deals_found += deals.length;
-
-      for (const deal of deals) {
-        const existing = await env.DB.prepare(
-          'SELECT id FROM scraped_deals WHERE source_name=? AND route=? AND price=?'
-        ).bind(source.name, deal.route, deal.price).first();
-
-        if (!existing) {
-          await env.DB.prepare(
-            `INSERT INTO scraped_deals (source_name, source_url, flag, route, dates, price, badge, region, raw_snippet)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-          ).bind(
-            source.name, deal.url || source.url, deal.flag, deal.route,
-            deal.dates || '', deal.price, deal.badge || '🔥 Hot', deal.region, deal.snippet || null
-          ).run();
-          summary.deals_new++;
-        }
-      }
+      return { url, text: await fetchFeed(url), error: null };
     } catch (err) {
-      summary.errors.push(`${source.name}: ${err.message}`);
+      return { url, text: null, error: err.message };
+    }
+  }));
+  summary.feeds_fetched = fetched.length;
+
+  for (const { url, text, error } of fetched) {
+    const variants = byUrl.get(url);
+    if (error) {
+      for (const s of variants) {
+        summary.errors.push(`${s.name}: ${error}`);
+        summary.sources[s.name] = { ok: false, found: 0, error };
+      }
+      continue;
+    }
+    for (const source of variants) {
+      try {
+        const deals = parseFeedText(text, url, source.region, source.filter);
+        summary.deals_found += deals.length;
+        // Per-source outcome, so a feed that has silently stopped producing
+        // anything is visible instead of hiding inside an aggregate count.
+        summary.sources[source.name] = { ok: true, found: deals.length, error: null };
+
+        for (const deal of deals) {
+          const r = await upsertCandidate(env, source, deal);
+          if (r === 'new') summary.deals_new++;
+          else if (r === 'updated') summary.deals_updated++;
+        }
+      } catch (err) {
+        summary.errors.push(`${source.name}: ${err.message}`);
+        summary.sources[source.name] = { ok: false, found: 0, error: err.message };
+      }
     }
   }
 
   return summary;
 }
 
+/**
+ * Insert a candidate, or UPDATE the existing one when the same route is
+ * re-listed at a new price.
+ *
+ * The old dedup keyed on (source_name, route, price) exactly, so a feed
+ * re-publishing the same deal a few pounds cheaper created a second pending
+ * row — the queue filled with near-duplicates of the same fare. Matching on
+ * route+region instead means a price move refreshes the candidate we already
+ * have, and re-scores it (confidence=NULL) because the price it was judged on
+ * has changed.
+ */
+async function upsertCandidate(env, source, deal) {
+  const existing = await env.DB.prepare(
+    `SELECT id, price FROM scraped_deals
+     WHERE source_name=? AND route=? AND region=? AND status='pending'
+     ORDER BY id DESC LIMIT 1`
+  ).bind(source.name, deal.route, deal.region).first();
+
+  if (existing) {
+    if (existing.price === deal.price) return 'seen';   // nothing changed
+    await env.DB.prepare(
+      `UPDATE scraped_deals SET price=?, dates=?, badge=?, raw_snippet=?,
+         confidence=NULL, updated_at=unixepoch() WHERE id=?`
+    ).bind(deal.price, deal.dates || '', deal.badge || '🔥 Hot',
+           deal.snippet || null, existing.id).run();
+    return 'updated';
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO scraped_deals (source_name, source_url, flag, route, dates, price, badge, region, raw_snippet)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(source.name, deal.url || source.url, deal.flag, deal.route,
+         deal.dates || '', deal.price, deal.badge || '🔥 Hot', deal.region, deal.snippet || null).run();
+  return 'new';
+}
+
 // ── RSS parser ───────────────────────────────────────────────────────────────
 // Delegates to the text-based parser which is more reliable for RSS/XML than
 // HTMLRewriter (which was designed for HTML and struggles with self-closing tags
 // and CDATA sections common in RSS feeds).
-async function parseRss(url, region, filterFn) {
-  return parseRssText(url, region, filterFn);
+/**
+ * Fetch one feed. Retries once on a transient failure (network blip or 5xx)
+ * with a short backoff — a single flaky response used to cost the source its
+ * entire daily run, since the scrape only fires once a day. 4xx is NOT retried:
+ * a 403 (Secret Flying blocks Worker IPs) or 404 won't fix itself on a retry.
+ */
+async function fetchFeed(url, attempt = 0) {
+  const controller = new AbortController();
+  const to = setTimeout(() => controller.abort(), 12000);
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'MrCheapFlightsBot/1.0 (+https://mrcheapflights.ie)' },
+      cf: { cacheEverything: true, cacheTtl: 1800 },
+      signal: controller.signal,
+    });
+    clearTimeout(to);
+    if (!res.ok) {
+      if (res.status >= 500 && attempt < 1) {
+        await new Promise((r) => setTimeout(r, 800));
+        return fetchFeed(url, attempt + 1);
+      }
+      throw new Error(`HTTP ${res.status}`);
+    }
+    return await res.text();
+  } catch (e) {
+    clearTimeout(to);
+    const transient = e.name === 'AbortError' || /network|fetch failed|socket/i.test(e.message || '');
+    if (transient && attempt < 1) {
+      await new Promise((r) => setTimeout(r, 800));
+      return fetchFeed(url, attempt + 1);
+    }
+    throw new Error(e.name === 'AbortError' ? 'timeout' : e.message);
+  }
 }
 
-// Text-based RSS parser — more reliable than HTMLRewriter for XML documents.
-async function parseRssText(url, region, filterFn) {
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'MrCheapFlightsBot/1.0 (+https://mrcheapflights.ie)' },
-    cf: { cacheEverything: true, cacheTtl: 1800 },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-  const text = await res.text();
+// Text-based RSS parsing — more reliable than HTMLRewriter for XML documents.
+// Split from fetching so one download can serve several region filters.
+function parseFeedText(text, url, region, filterFn) {
   const items = [];
 
   // Extract <item>...</item> blocks
@@ -362,6 +452,27 @@ export function deriveExpiry(dates, now = new Date()) {
   const max = new Date(now.getTime() + 365 * 86400000);
   if (target < min) return fallback();
   return iso(target > max ? max : target);
+}
+
+/**
+ * Does an AI-written caption actually describe THIS deal?
+ *
+ * Captions used to be accepted on type and length alone, so a hallucinated
+ * price or the wrong city could be published to Instagram under our branding —
+ * on a site whose whole promise is "every deal independently fare-checked".
+ * The caption must mention the deal's price digits and its destination.
+ * Exported so the rule is testable instead of buried in the enrich endpoint.
+ */
+export function captionMatchesDeal(caption, route, price) {
+  const t = String(caption || '').toLowerCase();
+  if (!t) return false;
+  const wantPrice = String(price || '').replace(/[^0-9]/g, '');
+  // Compare digits-only so "€1,299" in the deal matches "1299" or "€1,299".
+  if (wantPrice && !t.replace(/[^0-9]/g, '').includes(wantPrice)) return false;
+  const dest = (String(route || '').split(/→|->/)[1] || '').trim().toLowerCase();
+  if (!dest) return true;
+  // Any significant word of a multi-word destination counts ("New York" → "york").
+  return dest.split(/\s+/).some((w) => w.length > 2 && t.includes(w));
 }
 
 export function parseDealTitle(title, link, region, desc) {

@@ -1128,11 +1128,27 @@ async function runEnrich() {
     while (rounds < 8) {
       rounds++;
       var res  = await fetch('/api/admin/enrich-pending', { method: 'POST' });
-      var data = res.ok ? await res.json() : null;
-      if (!data) { toast('❌ Enrich error: HTTP ' + (res ? res.status : '?'), 'err'); break; }
-      if (data.error) { toast('❌ Enrich: ' + escHtml(String(data.error).slice(0, 160)), 'err'); break; }
+      // Read the BODY on failure, not just the status. A 502 from Anthropic
+      // carries the actual reason (rate limit, bad key, unparseable JSON) and
+      // throwing it away is why "enrich signals an error" was undiagnosable
+      // without going and reading server logs.
+      var data = null;
+      try { data = await res.json(); } catch (e) { data = null; }
+      if (!res.ok) {
+        var why = (data && (data.error || data.reason)) || ('HTTP ' + res.status);
+        toast('❌ Enrich failed: ' + escHtml(String(why).slice(0, 200)), 'err', 9000);
+        if (data && data.raw) console.warn('enrich raw response:', data.raw);
+        break;
+      }
+      if (!data) { toast('❌ Enrich: server sent no JSON (HTTP ' + res.status + ')', 'err'); break; }
+      if (data.error) { toast('❌ Enrich: ' + escHtml(String(data.error).slice(0, 200)), 'err', 9000); break; }
       total += data.enriched || 0;
       approved += data.auto_approved || 0;
+      // Things that used to happen silently.
+      if (data.blocked && data.blocked.length) {
+        toast('🚫 ' + data.blocked.length + ' deal(s) could not be promoted: ' +
+              escHtml(data.blocked.map(function (b) { return b.route + ' (' + b.reason + ')'; }).join(', ').slice(0, 160)), 'warn', 9000);
+      }
       if (!data.remaining) {
         if (total === 0) toast('🤖 ' + escHtml(data.reason || 'Queue already scored — nothing new to enrich.'), 'warn');
         break;
