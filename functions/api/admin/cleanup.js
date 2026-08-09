@@ -31,6 +31,26 @@ export async function onRequestPost(context) {
   const rl = await context.env.DB.prepare('DELETE FROM kv_rate_limit').run();
   results.rate_limit_purged = changes(rl);
 
+  // ── Deal lifecycle: give expired deals a terminal state ─────────────────────
+  // `status` and `expiry` were two independent sources of truth for "is this
+  // deal live", and they disagreed: 13 rows sat at status='live' while long
+  // expired. Every consumer therefore had to remember to AND the expiry check,
+  // and a query that forgot it would happily serve a dead fare. Retiring the
+  // row makes `status` authoritative, and the expiry filters elsewhere become
+  // belt-and-braces rather than load-bearing.
+  //
+  // A 3-day grace matches the public listing rule in /api/deals, so nothing is
+  // retired while the site would still show it. Deal PAGES remain reachable —
+  // this only takes the deal out of the live set.
+  try {
+    const exp = await context.env.DB.prepare(
+      `UPDATE deals SET status='expired', updated_at=unixepoch()
+       WHERE status='live' AND expiry IS NOT NULL
+         AND date(expiry) < date('now', '-3 days')`
+    ).run();
+    results.deals_retired = changes(exp);
+  } catch { /* non-fatal */ }
+
   // Rejected scraped deals older than 30 days
   const rej = await context.env.DB.prepare(
     `DELETE FROM scraped_deals WHERE status='rejected' AND updated_at < unixepoch() - 2592000`

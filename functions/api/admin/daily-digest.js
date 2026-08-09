@@ -140,7 +140,7 @@ export async function onRequestPost(context) {
           + (d.errors?.length ? ` · ⚠️ ${d.errors.length} source error(s)` : '')
           + (dead.length ? ` · 💤 ${dead.length} source(s) returned nothing: ${dead.slice(0, 3).join(', ')}` : '');
       }
-      case 'enrich': return d.error ? d.error : `${d.enriched ?? 0} scored · ${d.auto_approved ?? 0} auto-approved${d.auto_published ? ` · ${d.auto_published} straight to live` : ''}${d.blocked ? ` · 🚫 ${d.blocked} blocked from promotion` : ''}${d.captions_dropped ? ` · ✂️ ${d.captions_dropped} caption(s) failed the price/destination check` : ''}`;
+      case 'enrich': return d.error ? d.error : `${d.enriched ?? 0} scored · ${d.auto_approved ?? 0} auto-approved${d.auto_published ? ` · ${d.auto_published} straight to live` : ''}${d.blocked ? ` · 🚫 ${d.blocked} blocked from promotion` : ''}${d.captions_dropped ? ` · ✂️ ${d.captions_dropped} caption(s) failed the price/destination check` : ''}${d.tokens_out ? ` · ${((d.tokens_in||0)+(d.tokens_out||0)).toLocaleString()} tokens` : ''}`;
       case 'newsletter': return d.armed
         ? `IE ${d.ie?.sent ?? 0}/${d.ie?.subscribers ?? 0} sent · UK ${d.uk?.sent ?? 0}/${d.uk?.subscribers ?? 0} sent`
         : 'shell mode (not armed)';

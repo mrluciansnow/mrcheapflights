@@ -136,6 +136,14 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
   const aiData = await aiRes.json().catch(() => null);
   if (!aiData) return Response.json({ enriched: 0, error: 'invalid response from AI' }, { status: 502 });
 
+  // Token usage — the only visibility into what this costs. enrich now runs
+  // HOURLY, so an unnoticed prompt change or a runaway batch could quietly
+  // multiply spend with nothing anywhere to show it. Anthropic returns usage on
+  // every response; recording it makes the trend visible in the digest.
+  const usage = aiData?.usage || {};
+  const tokensIn = usage.input_tokens ?? 0;
+  const tokensOut = usage.output_tokens ?? 0;
+
   const raw = aiData?.content?.[0]?.text || '';
   let scores;
   try {
@@ -256,7 +264,7 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
     try { await context.env.DB.batch(blockedStmts); } catch { /* column may predate migration */ }
   }
 
-  await finishOp(context.env, runId, 'enrich', true, { enriched, auto_approved: autoApproved, auto_published: autoPublished, blocked: skipped.length, blocked_detail: skipped.slice(0, 5), captions_dropped: captionsDropped });
+  await finishOp(context.env, runId, 'enrich', true, { enriched, auto_approved: autoApproved, auto_published: autoPublished, blocked: skipped.length, blocked_detail: skipped.slice(0, 5), captions_dropped: captionsDropped, tokens_in: tokensIn, tokens_out: tokensOut });
 
   // How many un-scored deals are still queued — lets the UI drain in one click.
   const left = await context.env.DB.prepare(
