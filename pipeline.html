@@ -103,6 +103,11 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
 .btn-no{background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);color:#f87171;border-radius:6px;padding:5px 9px;font-family:'Bebas Neue',cursive;font-size:9px;letter-spacing:1px;cursor:pointer;}
 .btn-no:hover{background:rgba(248,113,113,0.18);}
 .bulk-bar{display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap;}
+.bulk-sep{width:1px;background:rgba(255,255,255,0.15);margin:0 4px;align-self:stretch}
+.bulk-lbl{font-family:'Bebas Neue',cursive;font-size:10px;letter-spacing:1px;color:rgba(255,255,255,0.4);align-self:center}
+.bulk-num{width:52px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:7px;padding:5px 7px;color:#fff;font-size:11px;font-variant-numeric:tabular-nums}
+.bulk-count{font-size:10px;color:rgba(255,255,255,0.45);align-self:center;font-variant-numeric:tabular-nums}
+.bulk-count.has{color:#FFD700}
 .admin-nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1.1rem;border-bottom:1px solid rgba(255,255,255,0.07);padding-bottom:.8rem;}
 .an-link{font-family:'Bebas Neue',cursive;font-size:12px;letter-spacing:1.5px;color:rgba(255,255,255,0.5);text-decoration:none;padding:6px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);}
 .an-link:hover{color:#fff;border-color:rgba(255,255,255,0.25);}
@@ -251,6 +256,16 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
         <button class="act-btn" onclick="approveAllHighConf()">✅ Approve High Conf (≥80)</button>
         <button class="act-btn" onclick="rejectAllLowConf()">🗑️ Reject Low (&lt;40)</button>
         <button class="act-btn" onclick="loadScrapedQueue()">↻ Refresh</button>
+        <span class="bulk-sep"></span>
+        <!-- The 40-79 band had NO bulk action, so anything scoring under 80 sat
+             in the queue for ever — at one point that was the entire queue (24
+             perfectly good deals like Dublin → Peru and London → Barcelona £45).
+             This is the review path for it. -->
+        <label class="bulk-lbl" for="rev-min">Review band</label>
+        <input id="rev-min" class="bulk-num" type="number" min="0" max="100" step="5" value="60"
+               oninput="updateReviewCount()" title="Show candidates scoring at least this"/>
+        <button class="act-btn" onclick="approveReviewBand()" id="rev-btn">👀 Approve reviewed</button>
+        <span id="rev-count" class="bulk-count"></span>
       </div>
       <div class="deal-grid" id="scraped-dg"></div>
     </div><!-- /scraped-pane -->
@@ -501,6 +516,7 @@ function escHtml(s) {
 }
 
 function renderScrapedQueue() {
+  updateReviewCount();
   var grid = document.getElementById('scraped-dg');
   if (!scrapedDeals.length) {
     grid.innerHTML = '<div class="empty-note">Queue empty — click 🔄 Scrape to fetch new deals.</div>';
@@ -622,6 +638,40 @@ async function approveAllHighConf() {
   if (!confirm('Approve ' + hi.length + ' high-confidence deal' + (hi.length > 1 ? 's' : '') + '?')) return;
   for (var i = 0; i < hi.length; i++) await approveScraped(hi[i].id, { quiet: true });
   toast('✅ Approved ' + hi.length + ' deal' + (hi.length > 1 ? 's' : '') + ' → Draft Deals');
+}
+
+// ── Review band (the 40-79 gap) ───────────────────────────────────────────────
+// Auto-approve needs 80+; "reject low" only clears under 40. Everything between
+// had no action at all, so it accumulated silently — the queue once held 24
+// perfectly good deals (Dublin → Peru, London → Barcelona £45) that could
+// neither promote nor be cleared. This surfaces that band and lets it move.
+function reviewBandMin() {
+  var el = document.getElementById('rev-min');
+  var n = el ? parseInt(el.value) : 60;
+  return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 60;
+}
+function reviewBandDeals() {
+  var min = reviewBandMin();
+  return scrapedDeals.filter(function (d) {
+    return d.confidence !== null && d.confidence !== undefined
+      && d.confidence >= min && d.confidence < 80;
+  });
+}
+function updateReviewCount() {
+  var el = document.getElementById('rev-count');
+  if (!el) return;
+  var n = reviewBandDeals().length, min = reviewBandMin();
+  el.textContent = n ? (n + ' in ' + min + '–79 band') : 'none in band';
+  el.className = 'bulk-count' + (n ? ' has' : '');
+}
+async function approveReviewBand() {
+  var band = reviewBandDeals();
+  var min = reviewBandMin();
+  if (!band.length) { toast('Nothing scored ' + min + '–79 right now.', 'warn'); return; }
+  if (!confirm('Approve ' + band.length + ' deal' + (band.length > 1 ? 's' : '') +
+      ' scoring ' + min + '–79?\n\nThese sit below the auto-approve line, so give the list a look first — they go to Draft Deals, not straight live.')) return;
+  for (var i = 0; i < band.length; i++) await approveScraped(band[i].id, { quiet: true });
+  toast('✅ Approved ' + band.length + ' reviewed deal' + (band.length > 1 ? 's' : '') + ' → Draft Deals');
 }
 
 async function rejectAllLowConf() {
