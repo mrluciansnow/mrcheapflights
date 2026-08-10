@@ -107,6 +107,23 @@ npm run test:duel
 > `wrangler.toml` binds. Start dev with no `--d1` flag, or the tables you
 > migrated will not be the tables the server reads.
 
+### `wrangler pages dev` needs you logged in
+
+`wrangler.toml` carries an `[ai]` binding for the content pipeline, and
+Workers AI has **no local emulator** — it always runs against Cloudflare. So
+`wrangler pages dev` opens a remote proxy session for it, and without
+credentials the whole dev server dies before it binds a port:
+
+```
+Failed to start the remote proxy session
+Could not start remote dev session. No credentials found...
+```
+
+That is not a problem with the game. Run `npx wrangler login` once and local
+dev works, AI proxied remotely and everything else local. If you want to work
+offline entirely, comment out the two `[ai]` lines in `wrangler.toml` — nothing
+in Croker Flicks touches that binding.
+
 ## What is still not built
 
 The foundation and the play loop are done. Outstanding, and none of it blocks

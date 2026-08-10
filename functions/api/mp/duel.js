@@ -6,7 +6,7 @@
 import { resolvePlayer, bad, now, publicPlayer } from '../../_lib/mp.js';
 import { randomHex } from '../../_lib/auth.js';
 import { DIFF, WEATHERS } from '../../_lib/sim.js';
-import { openKick, sideOf } from '../../_lib/duel.js';
+import { openKick, sideOf, assignCode, codeFor, matchForCode } from '../../_lib/duel.js';
 
 export async function onRequestPost(context) {
   const { env, request } = context;
@@ -28,6 +28,14 @@ export async function onRequestPost(context) {
                         different requests.
        { join: false }  open a lobby and wait; do not take an open one.
        (neither)        take an open lobby if there is one, else open your own. */
+  /* A code is just a friendlier way of naming a match, so it is resolved to
+     one before anything else looks at the request. */
+  if (body.code && !body.matchId) {
+    const hit = await matchForCode(env, body.code);
+    if (!hit) return bad('no game with that code — check it and try again', 404);
+    body.matchId = hit.match_id;
+  }
+
   if (body.matchId || body.join !== false) {
     const fresh = now() - 15 * 60;
     const open = body.matchId
@@ -56,8 +64,10 @@ export async function onRequestPost(context) {
         // the first kick opens now, so its deadline starts when both players
         // are actually present rather than when the lobby was created
         await openKick(env, match, duel, duel.kick_index);
+        const c = await codeFor(env, open.id);
         return Response.json({
-          matchId: open.id, seed: open.seed >>> 0, kicks: duel.kicks,
+          matchId: open.id, code: c ? c.code : null,
+          seed: open.seed >>> 0, kicks: duel.kicks,
           turnMs: duel.turn_ms, difficulty: open.difficulty, weather: duel.weather,
           state: 'in_progress', you: publicPlayer(me), side: sideOf(match, me.id),
         });
@@ -82,8 +92,9 @@ export async function onRequestPost(context) {
     ).bind(id, kicks, turnMs, weather, t),
   ]);
 
+  const code = await assignCode(env, id);
   return Response.json({
-    matchId: id, seed: seed[0], kicks, turnMs, difficulty, weather,
+    matchId: id, code, seed: seed[0], kicks, turnMs, difficulty, weather,
     state: 'waiting', you: publicPlayer(me), side: 'a',
   });
 }

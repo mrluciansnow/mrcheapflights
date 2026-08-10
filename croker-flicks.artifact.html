@@ -280,6 +280,16 @@ body.dragging .betbar,body.dragging .prompt,body.dragging .comm{pointer-events:n
 .keeplbl{font-size:.56rem;font-weight:900;letter-spacing:.18em;color:var(--sky);
   text-shadow:0 2px 8px rgba(0,0,0,.8)}
 .keeplbl b{color:#fff;opacity:.75;letter-spacing:.06em}
+#mpJoinCode{display:block;margin:.5rem auto;padding:.6rem .8rem;width:min(260px,80%);
+  text-align:center;font:900 1.1rem/1 Nunito,sans-serif;letter-spacing:.14em;
+  text-transform:uppercase;color:#fff;background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.25);border-radius:12px}
+#mpJoinCode:focus{outline:none;border-color:var(--sky)}
+#mpCodeWrap{margin:.4rem 0 .8rem}
+/* `.hidden` is defined for overlays only (.ov.hidden). Inside one it needs
+   its own rule, or every "hide this" in the lobby is a no-op. */
+#ovOnline .hidden{display:none}
+#mpCode{user-select:all;-webkit-user-select:all}
 /* an eye on the bar while the forward can still see you leave. It fades as
    the strike closes in, which is the cue to hold your dive. */
 .keepbar.watched .keeptrack::after{content:'👁 HE CAN SEE YOU';display:block;
@@ -584,8 +594,22 @@ window.addEventListener('error', function(e){
 
 <div class="ov hidden" id="ovOnline">
   <div class="sub">Online</div>
-  <div class="gv w" style="font-size:2rem">MATCHMAKING</div>
-  <div class="gb" id="mpMsg">Connecting…</div>
+  <div class="gv w" style="font-size:2rem">PLAY SOMEBODY</div>
+  <div class="gb" id="mpMsg">One kick, two people, both live at once.</div>
+  <div id="mpPick">
+    <button class="btn" id="bFindGame">FIND AN OPPONENT</button>
+    <button class="btn sm" id="bHostGame">PLAY A FRIEND</button>
+    <button class="btn sm" id="bJoinGame">ENTER A CODE</button>
+  </div>
+  <!-- the code a friend types in. Shown, not hidden behind a share sheet,
+       because two people on a sofa is the common case. -->
+  <div id="mpCodeWrap" class="hidden">
+    <div class="gb" style="opacity:.7">Your code</div>
+    <div class="gv w" id="mpCode" style="font-size:1.6rem;letter-spacing:.22em"></div>
+  </div>
+  <input id="mpJoinCode" class="hidden" maxlength="24" placeholder="ABC12"
+         autocomplete="off" autocapitalize="characters" spellcheck="false">
+  <button class="btn sm hidden" id="bJoinGo">JOIN</button>
   <button class="btn" id="bOnlineClose">BACK</button>
   <div class="ft">Anonymous — no sign-up needed</div>
 </div>
@@ -4894,8 +4918,83 @@ $('bQuick').onclick = startQuick;
 $('bFree').onclick  = startFreekick;
 $('bSurv').onclick  = startSurvival;
 $('bDuel').onclick  = startDuel;
-$('bOnline').onclick = startOnline;
-$('bOnlineClose').onclick = ()=>{ $('ovOnline').classList.add('hidden');
+/* The online button opens the duel lobby. `startOnline` — the older mode,
+   where both players kick at the server's own keeper and the scores are
+   compared — is still there and still works; it is simply no longer what the
+   button does, because a duel is the game. */
+$('bOnline').onclick = openOnline;
+$('bFindGame').onclick = () => netStart({});
+$('bHostGame').onclick = () => netStart({join:false});
+$('bJoinGame').onclick = () => {
+  $('mpPick').classList.add('hidden');
+  $('mpJoinCode').classList.remove('hidden');
+  $('bJoinGo').classList.remove('hidden');
+  mpStatus('Type the code your friend was given.');
+  $('mpJoinCode').focus();
+};
+$('bJoinGo').onclick = () => {
+  const raw = ($('mpJoinCode').value || '').trim();
+  if(!raw) return mpStatus('Enter the code first.', true);
+  // a five-character code, or a full match id pasted from somewhere
+  netStart(raw.length > 8 ? {matchId: raw.toLowerCase().startsWith('m_') ? raw : 'm_' + raw}
+                          : {code: raw.toUpperCase()});
+};
+$('mpJoinCode').addEventListener('keydown', e => {
+  if(e.key === 'Enter'){ e.preventDefault(); $('bJoinGo').click(); }
+});
+
+function openOnline(){
+  if(!gate('quick')) return;
+  $('ovOnline').classList.remove('hidden');
+  $('mpPick').classList.remove('hidden');
+  $('mpCodeWrap').classList.add('hidden');
+  $('mpJoinCode').classList.add('hidden');
+  $('bJoinGo').classList.add('hidden');
+  $('mpJoinCode').value = '';
+  mpStatus('One kick, two people, both live at once.');
+}
+
+/* Open, host or join — one path, because the difference is only which
+   argument goes to the server. */
+async function netStart(opts){
+  $('mpPick').classList.add('hidden');
+  $('mpJoinCode').classList.add('hidden');
+  $('bJoinGo').classList.add('hidden');
+  mpStatus(opts.matchId ? 'Joining…' : 'Looking for an opponent…');
+  try{
+    const m = await netPlay(opts);
+    if(m.state === 'waiting'){
+      /* Waiting for somebody. Show the code so a friend can come straight in
+         rather than hoping the queue pairs you. */
+      /* The five-character code, not the match id — "give them this code" is
+         only a real instruction if it fits in a sentence. */
+      $('mpCode').textContent = m.code || String(m.matchId).replace(/^m_/, '').toUpperCase();
+      $('mpCodeWrap').classList.remove('hidden');
+      mpStatus('Waiting for an opponent — give them this code, or sit tight.');
+      netWaitForOpponent();
+    } else {
+      mpStatus('Matched. First kick is yours or theirs — watch the prompt.');
+      setTimeout(()=>$('ovOnline').classList.add('hidden'), 800);
+    }
+  }catch(err){
+    mpStatus(err.message, true);
+    $('mpPick').classList.remove('hidden');
+  }
+}
+/* Sit on the lobby until somebody joins, then drop into the match. The
+   transport is already polling; this just watches it. */
+function netWaitForOpponent(){
+  const t = setInterval(()=>{
+    if(!Net.match){ clearInterval(t); return; }
+    if(Net.state === 'in_progress'){
+      clearInterval(t);
+      mpStatus('They are here. Play.');
+      setTimeout(()=>$('ovOnline').classList.add('hidden'), 700);
+    }
+  }, 700);
+}
+
+$('bOnlineClose').onclick = ()=>{ $('ovOnline').classList.add('hidden'); netLeave();
   if(MP.poll){ clearInterval(MP.poll); MP.poll=null; } MP.match=null; };
 $('bNext').onclick  = ()=>{ ($('bNext').dataset.act==='next' ? nextRound : toMenu)(); };
 $('bKit').onclick   = openKit;

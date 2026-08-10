@@ -11,7 +11,7 @@
 // you. That redaction lives in `viewKick` and it is the whole game: without
 // it, the keeper waits for the swipe to land and saves everything.
 import { resolvePlayer, bad, publicPlayer, now } from '../../../_lib/mp.js';
-import { advance, viewKick, tally, settle, sideOf } from '../../../_lib/duel.js';
+import { advance, viewKick, tally, settle, sideOf, codeFor } from '../../../_lib/duel.js';
 
 export async function onRequestGet(context) {
   const { env, request, params } = context;
@@ -50,8 +50,10 @@ export async function onRequestGet(context) {
   const player = await env.DB.prepare('SELECT * FROM cf_players WHERE id = ?')
     .bind(me.id).first();
 
+  const c = await codeFor(env, params.id);
   return Response.json({
     matchId: fresh.id,
+    code: c ? c.code : null,
     // the seed the client needs in order to reproduce conditions locally; it
     // is not a secret, it is just not the client's to choose
     seed: fresh.seed >>> 0,

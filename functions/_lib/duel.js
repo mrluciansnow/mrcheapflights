@@ -96,6 +96,38 @@ export function roleFor(match, kickIndex) {
 
 export const sideOf = (match, playerId) => (match.a_player === playerId ? 'a' : 'b');
 
+/* No O/0 and no I/1: a code is read aloud and typed by somebody who did not
+   choose it, so the glyphs that get confused are simply not in the alphabet. */
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const CODE_LEN = 5;
+function mintCode() {
+  const n = new Uint8Array(CODE_LEN);
+  crypto.getRandomValues(n);
+  let s = '';
+  for (let i = 0; i < CODE_LEN; i++) s += CODE_ALPHABET[n[i] % CODE_ALPHABET.length];
+  return s;
+}
+/* Claim a code for a match. Collisions are rare and cheap — the primary key
+   rejects the duplicate and we draw again. */
+export async function assignCode(env, matchId) {
+  for (let tries = 0; tries < 6; tries++) {
+    const code = mintCode();
+    try {
+      await env.DB.prepare(
+        'INSERT INTO cf_duel_codes (code, match_id, created_at) VALUES (?, ?, ?)'
+      ).bind(code, matchId, now()).run();
+      return code;
+    } catch { /* taken — draw again */ }
+  }
+  return null;                                   // playable, just not shareable
+}
+export const codeFor = (env, matchId) => env.DB.prepare(
+  'SELECT code FROM cf_duel_codes WHERE match_id = ?'
+).bind(matchId).first();
+export const matchForCode = (env, code) => env.DB.prepare(
+  'SELECT match_id FROM cf_duel_codes WHERE code = ?'
+).bind(String(code || '').trim().toUpperCase()).first();
+
 /* Open kick `i`, if it is not already open. Racing callers are fine: the
    primary key makes the second insert a no-op. */
 export async function openKick(env, match, duel, i) {

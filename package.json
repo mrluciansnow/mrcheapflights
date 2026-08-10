@@ -14,7 +14,7 @@
     "test:daily": "node tests/daily.mjs",
     "test:balance": "node tests/balance.mjs",
     "test:keeper": "node tests/keeper.mjs",
-    "test:duel": "node tests/duel-api.mjs && node tests/duel-client.mjs && node tests/duel-play.mjs",
+    "test:duel": "node tests/duel-api.mjs && node tests/duel-client.mjs && node tests/duel-play.mjs && node tests/duel-lobby.mjs",
     "migrate": "node tools/migrate.mjs",
     "migrate:remote": "node tools/migrate.mjs --remote"
   },
