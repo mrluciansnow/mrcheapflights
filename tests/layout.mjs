@@ -3,8 +3,17 @@ const { chromium } = (await import(PW)).default;
 const GAME = process.env.GAME_URL || 'file://' + new URL('../game.html', import.meta.url).pathname;
 let problems = 0;
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+/* The composition assumes a portrait frame. Outside this band the goal either
+   squashes flat or stretches, so the stage letterboxes rather than fill. */
+const RATIO_MIN = 0.43, RATIO_MAX = 0.63;
 
-for(const vp of [{width:360,height:640,n:'small phone'},
+/* The extremes are where fitting breaks, so they are in the probe: a folding
+   phone is far narrower than the scene is composed for, and a phone held
+   sideways is wider than tall. Both used to distort the pitch and overlap the
+   title screen's text. */
+for(const vp of [{width:344,height:882,n:'folding phone'},
+                 {width:852,height:393,n:'phone in landscape'},
+                 {width:360,height:640,n:'small phone'},
                  {width:420,height:860,n:'tall phone'},
                  {width:540,height:940,n:'desktop stage'}]){
   const page = await browser.newPage({viewport:{width:vp.width, height:vp.height}});
@@ -68,6 +77,25 @@ for(const vp of [{width:360,height:640,n:'small phone'},
     });
   });
   if(clipped.length){ problems++; console.log('  CLIPPED TEXT: ' + clipped.join(', ')); }
+
+  /* Fit: the stage has to stay inside the viewport it was given, and inside
+     the aspect band the pitch is drawn for. Both were broken — landscape gave
+     1.46 and a folding phone 0.39, against a scene composed for 0.57. */
+  const fit = await page.evaluate(()=>{
+    const r = document.getElementById('stage').getBoundingClientRect();
+    return {w:r.width, h:r.height, vw:innerWidth, vh:innerHeight,
+            scroll: document.documentElement.scrollHeight > innerHeight + 1};
+  });
+  const ratio = fit.w / fit.h;
+  console.log('  fit     ' + Math.round(fit.w) + 'x' + Math.round(fit.h) +
+              '  ratio ' + ratio.toFixed(2));
+  if(fit.h > fit.vh + 1 || fit.w > fit.vw + 1){
+    problems++; console.log('  OVERFLOWS THE VIEWPORT');
+  }
+  if(ratio < RATIO_MIN || ratio > RATIO_MAX){
+    problems++; console.log('  OUT OF ASPECT BAND: ' + ratio.toFixed(2));
+  }
+  if(fit.scroll){ problems++; console.log('  THE PAGE ITSELF SCROLLS'); }
   await page.close();
 }
 await browser.close();

@@ -46,9 +46,30 @@
 :root{--yellow:#FFD200;--hot-pink:#FF2D6B;--navy:#0A1628;--sky:#00AAFF;--white:#FFF}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;font-family:'Nunito',sans-serif;background:#04101c;color:#fff;overflow:hidden;overscroll-behavior:none}
-body{display:flex;align-items:center;justify-content:center;min-height:100vh;background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(0,170,255,.07),transparent 60%),linear-gradient(165deg,#050d18,#0a1628 55%,#07111d)}
-#stage{position:relative;width:100%;max-width:540px;height:100vh;max-height:940px;overflow:hidden;background:#05121e;box-shadow:0 40px 90px rgba(0,0,0,.65)}
-@media(min-width:560px){#stage{border-radius:28px;height:94vh}}
+body{display:flex;align-items:center;justify-content:center;min-height:100vh;min-height:100dvh;background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(0,170,255,.07),transparent 60%),linear-gradient(165deg,#050d18,#0a1628 55%,#07111d)}
+/* The pitch is composed for a portrait frame around 0.57 wide-to-tall. Left
+   to fill any window it stretches with it: a phone in landscape gave a 1.46
+   letterbox with the goal squashed flat, and a folding phone gave 0.39.
+   So the stage is held inside a band — never wider than 0.62 of its height,
+   never narrower than 0.44 — and centred, letterboxing only outside that.
+   Common phones (0.45-0.46) still fill the screen edge to edge. */
+#stage{position:relative;overflow:hidden;background:#05121e;
+  /* The HUD has to size itself against the STAGE, not the window. Held
+     sideways the window is 852px wide while the stage is 244 — a viewport
+     media query would call that "desktop" and lay the HUD out for a width it
+     does not have. */
+  container-type:inline-size;
+  width:  min(100vw, 540px, calc(100vh * 0.62));
+  height: min(100vh, calc(min(100vw, 540px) / 0.44));
+  box-shadow:0 40px 90px rgba(0,0,0,.65)}
+/* dvh is the viewport you can actually SEE. On a phone `100vh` is the height
+   with the browser chrome hidden, so the bottom of the game — the prompt, the
+   pause and sound buttons — sat under the address bar. Declared second so
+   browsers without dvh keep the vh rule above. */
+#stage{
+  width:  min(100vw, 540px, calc(100dvh * 0.62));
+  height: min(100dvh, calc(min(100vw, 540px) / 0.44))}
+@media(min-width:560px){#stage{border-radius:28px}}
 canvas{display:block;width:100%;height:100%;touch-action:none}
 
 .hud{position:absolute;inset:0;pointer-events:none}
@@ -70,6 +91,10 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 .midl{font-size:.55rem;font-weight:900;letter-spacing:.18em;opacity:.45}
 .midv{font-family:'Bebas Neue',sans-serif;font-size:1.45rem;line-height:1}
 .pips{display:flex;gap:3px;margin-top:3px}
+
+
+  .rbar{padding-left:52px;padding-right:52px}
+}
 .pip{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.15);transition:background .2s}
 .pip.g{background:var(--yellow);box-shadow:0 0 6px var(--yellow)}
 .pip.p{background:#7ee0a0}.pip.m{background:var(--hot-pink);opacity:.55;transform:scale(.62)}
@@ -140,7 +165,13 @@ body.keeping .readout{opacity:0 !important}
 .res.miss .big,.res.post .big{color:var(--hot-pink)}.res.save .big{color:var(--sky)}
 
 /* ---------- overlays ---------- */
-.ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+.ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+  /* `safe center` centres short content but falls back to flex-start when the
+     content is taller than the box. Plain `center` overflows in BOTH
+     directions on a scroll container, and the overflow above the top is
+     unreachable — on a tall narrow phone the title screen opened halfway down
+     itself with no way to scroll up to the top of it. */
+  justify-content:safe center;
   text-align:center;padding:1.8rem 1.5rem;pointer-events:auto;transition:opacity .35s;
   background:radial-gradient(ellipse 95% 60% at 50% 18%,rgba(0,170,255,.09),transparent 62%),
              linear-gradient(180deg,rgba(3,11,20,.93),rgba(3,11,20,.985));backdrop-filter:blur(4px)}
@@ -165,7 +196,12 @@ body.keeping .readout{opacity:0 !important}
   color:#0A1628;background:var(--yellow);border:none;border-radius:40px;padding:.45rem 2.2rem;
   box-shadow:0 12px 34px rgba(255,210,0,.28);transition:transform .14s}
 .btn:hover{transform:scale(1.045)}.btn:active{transform:scale(.97)}
-.ft{position:absolute;bottom:13px;font-size:.62rem;font-weight:700;opacity:.3;letter-spacing:.04em}
+/* Was absolutely positioned at the bottom of a scrolling overlay, so it was
+   printed straight over whatever scrolled beneath it — "Championship: 4
+   rounds…" sat on top of "PLAYERS ON THIS DEVICE". It is a line of text at
+   the end of the content, so it is laid out as one. */
+.ft{margin-top:1.1rem;padding-bottom:.2rem;font-size:.62rem;font-weight:700;
+  opacity:.3;letter-spacing:.04em;flex-shrink:0}
 .bootmsg{margin-top:.9rem;font-size:.66rem;font-weight:800;line-height:1.45;max-width:320px;
   padding:.5rem .7rem;border-radius:9px}
 .bootmsg.bad{background:rgba(255,45,107,.92);color:#fff}
@@ -449,6 +485,32 @@ body.lefty .rankbar{left:88px;right:10px}
 
 #ovPause{z-index:8}#ovSet{z-index:8}#ovCab{z-index:8}
 .hint{font-size:.6rem;font-weight:800;opacity:.35;margin-top:.7rem;line-height:1.5;max-width:300px}
+/* ---------- a narrow stage ----------
+   A phone held sideways, or a folding one, leaves the stage around 240-340px
+   across. At that width the centre label ran straight into the wind gauge:
+   .rbar reserves 64px for each gauge, and at 244px wide the label's content
+   box ended at 484 while the gauge began at 480.
+
+   This block lives at the END of the stylesheet on purpose. Sitting earlier it
+   did nothing, because `.rbar{padding:.28rem 64px}` further down is the same
+   specificity and later declarations win — the ID rules in it appeared to work
+   while every class rule silently lost. */
+@container (max-width: 400px){
+  .gauge{padding:.3rem .42rem;border-radius:11px}
+  .gauge .l{font-size:.46rem;letter-spacing:.1em}
+  .gauge .v{font-size:.76rem}
+  /* wider, not narrower: the label has to clear the gauges, and there is less
+     room to clear them in */
+  .rbar{padding-left:72px;padding-right:72px;font-size:.52rem;letter-spacing:.08em}
+}
+@container (max-width: 340px){
+  /* Narrower still, and something has to give. The wind gauge's third line
+     ("FRESH L-R") is the widest thing in the top strip and the arrow above it
+     already says the direction, so it goes first — then the ground name, which
+     is flavour, while the gauges are information. */
+  #wDesc{display:none}
+  #rbV{display:none}
+}
 
 </style>
 <script>
