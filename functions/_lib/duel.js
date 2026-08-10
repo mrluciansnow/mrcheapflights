@@ -121,6 +121,90 @@ export async function assignCode(env, matchId) {
   }
   return null;                                   // playable, just not shareable
 }
+/* ---- the queue ----
+ *
+ * "Find me anyone" is the whole of global matchmaking, and it has three ways
+ * to go wrong that only show up with real strangers:
+ *
+ *   GHOSTS   somebody opens a lobby and closes the tab. Their row still says
+ *            'waiting', so the next player joins a corpse and spends the match
+ *            watching kicks time out. Every request refreshes `last_seen`, and
+ *            a client polls every second or two, so a host who is still there
+ *            is trivially distinguishable from one who is not — LIVE is the
+ *            window that says so.
+ *   THE RACE two people press Find in the same instant, both look, both find
+ *            nothing, both open a lobby. Two lobbies, nobody paired, and with
+ *            exactly two players online that is a permanent deadlock. Fixed by
+ *            `mergeQueue` below rather than by hoping.
+ *   FAIRNESS the queue was newest-first, so the person who had waited longest
+ *            was served last. It is a queue; it is now oldest-first.
+ */
+export const LIVE = 45;          // seconds since a host's last request
+export const STALE = 180;        // after this, their lobby is expired outright
+
+export const openLobby = (env, meId) => env.DB.prepare(
+  `SELECT m.* FROM cf_matches m
+     JOIN cf_duels d ON d.match_id = m.id
+     JOIN cf_players p ON p.id = m.a_player
+    WHERE m.state = 'waiting' AND m.b_player IS NULL AND m.a_player != ?
+      AND p.last_seen > ?
+    ORDER BY m.created_at ASC LIMIT 1`
+).bind(meId, now() - LIVE).first();
+
+/* How many people are actually looking right now, so the lobby can say so
+   instead of leaving you staring at a spinner wondering if it is broken. */
+export const queueDepth = env => env.DB.prepare(
+  `SELECT COUNT(*) AS n FROM cf_matches m
+     JOIN cf_duels d ON d.match_id = m.id
+     JOIN cf_players p ON p.id = m.a_player
+    WHERE m.state = 'waiting' AND m.b_player IS NULL AND p.last_seen > ?`
+).bind(now() - LIVE).first();
+
+/* Sweep lobbies nobody came back to. Cheap, and it runs on the same polls
+   that would otherwise have to trip over them. */
+export const sweepLobbies = env => env.DB.prepare(
+  `UPDATE cf_matches SET state = 'expired', updated_at = ?
+    WHERE state = 'waiting' AND b_player IS NULL
+      AND a_player IN (SELECT id FROM cf_players WHERE last_seen < ?)`
+).bind(now(), now() - STALE).run();
+
+/* Two hosts, both waiting, neither joining: the race resolved.
+ *
+ * While you sit in your own lobby you keep asking whether somebody OLDER is
+ * also sitting in theirs. If so you join them and close yours. Both clients
+ * run this, and because "older" is a total order only one of them can be the
+ * one who moves — the other is the one being joined. It converges in a single
+ * poll, without a lock, without a queue server. */
+export async function mergeQueue(env, match, meId) {
+  if (match.state !== 'waiting' || match.b_player || match.a_player !== meId) return null;
+  const older = await env.DB.prepare(
+    `SELECT m.* FROM cf_matches m
+       JOIN cf_duels d ON d.match_id = m.id
+       JOIN cf_players p ON p.id = m.a_player
+      WHERE m.state = 'waiting' AND m.b_player IS NULL AND m.a_player != ?
+        AND p.last_seen > ? AND m.created_at < ?
+      ORDER BY m.created_at ASC LIMIT 1`
+  ).bind(meId, now() - LIVE, match.created_at).first();
+  if (!older) return null;
+
+  const claim = await env.DB.prepare(
+    `UPDATE cf_matches SET b_player = ?, state = 'in_progress', updated_at = ?
+      WHERE id = ? AND state = 'waiting' AND b_player IS NULL`
+  ).bind(meId, now(), older.id).run();
+  if (claim.meta.changes !== 1) return null;          // somebody beat us to it
+
+  // our own lobby is finished with; retire it so nobody else joins a ghost
+  await env.DB.prepare(
+    `UPDATE cf_matches SET state = 'expired', updated_at = ?
+      WHERE id = ? AND state = 'waiting' AND b_player IS NULL`
+  ).bind(now(), match.id).run();
+
+  const duel = await env.DB.prepare('SELECT * FROM cf_duels WHERE match_id = ?')
+    .bind(older.id).first();
+  await openKick(env, { ...older, b_player: meId }, duel, duel.kick_index);
+  return older.id;
+}
+
 export const codeFor = (env, matchId) => env.DB.prepare(
   'SELECT code FROM cf_duel_codes WHERE match_id = ?'
 ).bind(matchId).first();

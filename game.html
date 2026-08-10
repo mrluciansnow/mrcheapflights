@@ -4938,7 +4938,7 @@ async function netStart(opts){
       $('mpCode').textContent = m.code || String(m.matchId).replace(/^m_/, '').toUpperCase();
       $('mpCodeWrap').classList.remove('hidden');
       mpStatus('Waiting for an opponent — give them this code, or sit tight.');
-      netWaitForOpponent();
+      netWaitForOpponent(!opts.matchId && opts.join !== false);
     } else {
       mpStatus('Matched. First kick is yours or theirs — watch the prompt.');
       setTimeout(()=>$('ovOnline').classList.add('hidden'), 800);
@@ -4950,15 +4950,25 @@ async function netStart(opts){
 }
 /* Sit on the lobby until somebody joins, then drop into the match. The
    transport is already polling; this just watches it. */
-function netWaitForOpponent(){
+function netWaitForOpponent(inQueue){
   const t = setInterval(()=>{
     if(!Net.match){ clearInterval(t); return; }
     if(Net.state === 'in_progress'){
       clearInterval(t);
       mpStatus('They are here. Play.');
       setTimeout(()=>$('ovOnline').classList.add('hidden'), 700);
+      return;
     }
-  }, 700);
+    /* Say how many people are looking. A number that moves is the difference
+       between "searching" and "this is broken". */
+    if(inQueue && Net.queue !== undefined){
+      const others = Math.max(0, Net.queue - 1);
+      mpStatus(others
+        ? 'Looking… ' + others + ' other' + (others>1?'s':'') + ' searching too.'
+        : 'Looking for an opponent… you are first in the queue.');
+      $('mpCodeWrap').classList.remove('hidden');   // a code still works meanwhile
+    }
+  }, 900);
 }
 
 $('bOnlineClose').onclick = ()=>{ $('ovOnline').classList.add('hidden'); netLeave();
@@ -5155,6 +5165,7 @@ const Net = {
   /* the game supplies these. Keeping them as fields rather than wiring the
      loop directly is what lets the transport be tested on its own. */
   skew: 0,            // serverTime - our clock, so both ends stamp the same
+  queue: undefined,   // how many are looking, while waiting
   onLive: null,       // (live)   -> it is your turn, in this role, until then
   onKick: null,       // (kick)   -> a resolved kick, with both halves, to show
   onEnd: null,        // (final)  -> the duel is over
@@ -5184,13 +5195,29 @@ async function netSync(){
   Net.busy = true;
   try{
     const st = await mpFetch('/api/mp/sync/' + Net.match.matchId);
+    /* The queue merged us into somebody else's lobby — they were waiting
+       first, so their match is the one that lives. Follow it. Nothing has
+       started yet, so there is nothing to carry across but the id. */
+    if(st.movedTo){
+      Net.match.matchId = st.movedTo;
+      Net.seen = -1; Net.played = []; Net.live = null;
+      return netSync();
+    }
     /* Two players, two wall clocks, one kick. Everything either of them
        submits is stamped against the server's clock rather than their own,
        so a phone that is forty seconds fast does not get a forty-second
        head start on the dive. */
     if(typeof st.serverTime === 'number') Net.skew = st.serverTime - Date.now()/1000;
     Net.state = st.state;
+    Net.queue = st.queue;
     Net.score = st.score;
+    /* The server's seed belongs to whichever match we are actually in, and
+       after a merge that is not the one we opened. */
+    if(typeof st.seed === 'number' && (matchSeed>>>0) !== (st.seed>>>0)){
+      matchSeed = st.seed >>> 0;
+      if(Net.match){ Net.match.seed = st.seed; Net.match.weather = st.weather; }
+      if(WEATHERS[st.weather]) weather = WEATHERS[st.weather];
+    }
     Net.played = st.played;
     Net.match.weather = st.weather;
     /* Hand over every kick that resolved since we last looked, in order.
@@ -5588,7 +5615,8 @@ if(new URLSearchParams(location.search).has('debug')){
                            live:Net.live, score:Net.score, seen:Net.seen,
                            played:Net.played.length, err:Net.err,
                            mode:mode, phase:Object.keys(ST).find(k=>ST[k]===state),
-                           queue:netQueue.length, begun:netBegun, forced:netForced,
+                           queue:netQueue.length, waiting:Net.queue,
+                           begun:netBegun, forced:netForced,
                            kickT:+netKickT().toFixed(3), skew:+Net.skew.toFixed(3),
                            sources:{striker:srcStriker, keeper:srcKeeper},
                            left:netLeft()}; },

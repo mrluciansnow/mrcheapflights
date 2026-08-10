@@ -11,7 +11,8 @@
 // you. That redaction lives in `viewKick` and it is the whole game: without
 // it, the keeper waits for the swipe to land and saves everything.
 import { resolvePlayer, bad, publicPlayer, now } from '../../../_lib/mp.js';
-import { advance, viewKick, tally, settle, sideOf, codeFor } from '../../../_lib/duel.js';
+import { advance, viewKick, tally, settle, sideOf, codeFor, mergeQueue,
+         queueDepth } from '../../../_lib/duel.js';
 
 export async function onRequestGet(context) {
   const { env, request, params } = context;
@@ -25,6 +26,14 @@ export async function onRequestGet(context) {
   const duel = await env.DB.prepare('SELECT * FROM cf_duels WHERE match_id = ?')
     .bind(params.id).first();
   if (!duel) return bad('not a duel', 409);
+
+  /* Still holding an empty lobby? Then somebody older may be holding one too,
+     and one of us should give way. This is what stops two players who pressed
+     Find at the same instant from waiting on each other forever. */
+  if (match.state === 'waiting') {
+    const movedTo = await mergeQueue(env, match, me.id);
+    if (movedTo) return Response.json({ movedTo });
+  }
 
   // Every read advances the match. A duel therefore cannot stall waiting on a
   // background job: whichever player is looking pushes it along, and if
@@ -51,8 +60,11 @@ export async function onRequestGet(context) {
     .bind(me.id).first();
 
   const c = await codeFor(env, params.id);
+  const q = fresh.state === 'waiting' ? await queueDepth(env) : null;
   return Response.json({
     matchId: fresh.id,
+    // how many people are looking right now, including you
+    queue: q ? q.n : undefined,
     code: c ? c.code : null,
     // the seed the client needs in order to reproduce conditions locally; it
     // is not a secret, it is just not the client's to choose

@@ -6,7 +6,8 @@
 import { resolvePlayer, bad, now, publicPlayer } from '../../_lib/mp.js';
 import { randomHex } from '../../_lib/auth.js';
 import { DIFF, WEATHERS } from '../../_lib/sim.js';
-import { openKick, sideOf, assignCode, codeFor, matchForCode } from '../../_lib/duel.js';
+import { openKick, sideOf, assignCode, codeFor, matchForCode, openLobby,
+         sweepLobbies } from '../../_lib/duel.js';
 
 export async function onRequestPost(context) {
   const { env, request } = context;
@@ -36,21 +37,19 @@ export async function onRequestPost(context) {
     body.matchId = hit.match_id;
   }
 
+  // clear out anyone who opened a lobby and walked away, before we look in it
+  await sweepLobbies(env);
+
   if (body.matchId || body.join !== false) {
-    const fresh = now() - 15 * 60;
     const open = body.matchId
       ? await env.DB.prepare(
           `SELECT m.* FROM cf_matches m
              JOIN cf_duels d ON d.match_id = m.id
             WHERE m.id = ? AND m.state = 'waiting' AND m.a_player != ? AND m.b_player IS NULL`
         ).bind(String(body.matchId), me.id).first()
-      : await env.DB.prepare(
-          `SELECT m.* FROM cf_matches m
-             JOIN cf_duels d ON d.match_id = m.id
-            WHERE m.state = 'waiting' AND m.a_player != ? AND m.b_player IS NULL
-              AND m.created_at > ?
-            ORDER BY m.created_at DESC LIMIT 1`
-        ).bind(me.id, fresh).first();
+      // a friend's code names a match; "find me anyone" takes the front of the
+      // queue, which is the person who has been waiting longest and is still here
+      : await openLobby(env, me.id);
     if (body.matchId && !open) return bad('that duel is not open to join', 409);
     if (open) {
       const res = await env.DB.prepare(
