@@ -22,6 +22,28 @@ grant, so Claude can't do them autonomously. Ordered by priority.
 - [ ] **Change the admin password** (`mrcheap2024` is compromised — it shipped
   in old page source). mrcheapflights.ie/admin → Settings → Security.
 
+## 🔴 One trunk (stops the two sessions overwriting each other)
+
+`main` and `master` had diverged — 27 commits against 36, neither containing
+the other — and `npm run deploy` ships a **whole-site snapshot**, so whichever
+branch deployed last silently reverted the other's work. They are now merged:
+`master` holds everything, and `main` has nothing left that `master` lacks.
+
+One piece is left, and it needs a repo setting Claude cannot change:
+
+- [ ] **Point the default branch at `master`.** GitHub -> Settings -> General ->
+  Default branch -> switch to `master`. It is currently `frontend-rewire`,
+  which is six weeks stale. Two things depend on this: a fresh clone gets the
+  right code, and `workflow_dispatch` workflows (the **Deploy** action) only
+  appear in the Actions tab from the default branch.
+
+- [ ] **Then retire `main` and `frontend-rewire`.** Both are now ancestors of
+  `master`, so deleting them loses nothing and removes the trap. Leaving them
+  is how this happened the first time.
+
+Until the default is switched: **work on `master`**. If two sessions are open
+at once, only one should deploy, and only from `master`.
+
 ## 🟠 Croker Flicks online multiplayer (unblocks online play)
 
 The game, the server, the migrations and the deploy workflow are all in and
