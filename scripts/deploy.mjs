@@ -23,6 +23,11 @@ const dist = join(root, '.dist');
 const SERVED_FILES = [
   'index.html', '404.html', 'directory.html', 'pipeline.html', 'marketing.html',
   'privacy.html', 'terms.html',
+  // Croker Flicks. One self-contained file — no assets, no external requests,
+  // and its only network calls are same-origin /api/mp/*. The .artifact.html
+  // build and selftest.html are deliberately NOT here: they are build outputs
+  // and a test harness, not part of the public site.
+  'game.html',
   'mascot-small.jpg', 'mascot.png',
   '_headers', 'robots.txt',
 ];
