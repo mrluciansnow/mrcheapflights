@@ -16,7 +16,9 @@
     "test:keeper": "node tests/keeper.mjs",
     "db:duel": "wrangler d1 execute mrcheapflights-prod --local --file=migrations/0006_multiplayer.sql && wrangler d1 execute mrcheapflights-prod --local --file=migrations/0007_duel.sql",
     "db:duel:remote": "wrangler d1 execute mrcheapflights-prod --remote --file=migrations/0007_duel.sql",
-    "test:duel": "node tests/duel-api.mjs && node tests/duel-client.mjs"
+    "test:duel": "node tests/duel-api.mjs && node tests/duel-client.mjs && node tests/duel-play.mjs",
+    "migrate": "node tools/migrate.mjs",
+    "migrate:remote": "node tools/migrate.mjs --remote"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

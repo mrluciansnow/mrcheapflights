@@ -61,7 +61,7 @@ export async function onRequestPost(context) {
      resolve to the same keeper — a man on his line — but only one of them
      means the player is still there. */
   const stored = role === 'striker' ? pickStrike(payload)
-               : payload === null ? ROOTED : pickDive(payload);
+               : payload === null ? { held: true } : pickDive(payload);
 
   // Write once. The guard is what makes a retry idempotent rather than a
   // second, different kick: whoever got there first keeps the submission.

@@ -19,6 +19,10 @@ on:
         description: 'Pages branch to deploy as — use the Pages production branch for a live deploy'
         type: string
         default: main
+      url:
+        description: 'Site URL to health-check after deploying, e.g. https://mrcheapflights.com (blank to skip)'
+        type: string
+        default: ''
 
 jobs:
   deploy:
@@ -33,26 +37,46 @@ jobs:
       - name: Install wrangler
         run: npm ci
 
-      # Every statement in 0006 is CREATE ... IF NOT EXISTS, so re-running this
-      # against a database that already has the tables is a no-op.
-      - name: Apply multiplayer schema to production D1
+      # Show what the runner intends to do before it touches production. On a
+      # database that already has the schema this should read "adopted" for
+      # everything up to the last deploy and "applying" only for what is new.
+      - name: Plan the migration
         if: ${{ inputs.migrate }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx wrangler d1 execute mrcheapflights-prod --remote --yes --file=migrations/0006_multiplayer.sql
+        run: node tools/migrate.mjs --remote --dry
 
-      - name: Verify the multiplayer tables exist
+      # One command for every migration, in order, exactly once each. It
+      # records what it applies in cf_migrations and adopts anything already
+      # present, so it is correct on a fresh database and on the live one.
+      - name: Migrate production D1
         if: ${{ inputs.migrate }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          npx wrangler d1 execute mrcheapflights-prod --remote --yes \
-            --command "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'cf_%' ORDER BY name"
+        run: node tools/migrate.mjs --remote
 
       - name: Deploy to Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        id: pages
         run: npx wrangler pages deploy . --branch="${{ inputs.branch }}" --commit-dirty=true
+
+      # The deploy is not finished until the online half can actually serve.
+      # /api/mp/health answers the three things that go wrong — binding,
+      # migrations, wrong database — and fails this job if any of them is off.
+      - name: Check the online half is serving
+        if: ${{ inputs.url != '' }}
+        run: |
+          set -e
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /tmp/health.json -w '%{http_code}' "${{ inputs.url }}/api/mp/health" || true)
+            echo "attempt $i -> HTTP $code"
+            cat /tmp/health.json || true; echo
+            if [ "$code" = "200" ]; then echo "online is ready to serve"; exit 0; fi
+            sleep 10
+          done
+          echo "::error::/api/mp/health did not return 200 — the site deployed but online will not work"
+          exit 1

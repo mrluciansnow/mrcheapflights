@@ -1196,3 +1196,127 @@ presence, and a sweeper for lobbies nobody ever joined.
 None of that requires inventing anything further. The hard part — what a kick
 is, who owns which number, and what neither player is allowed to see — is
 settled and has tests holding it in place.
+
+---
+
+# Seventh pass — both ends live, and a deploy that cannot half-work
+
+Two jobs: make the game actually play at both ends at once, and make going
+live a single step that either works or says why.
+
+## Naming, first
+
+`mode === 'duel'` already meant local pass-and-play. Building a second meaning
+of "duel" on top of it would have been a trap for whoever read it next, so the
+online client layer is **`Net`** / `net*` / `CF.net`, and the online mode is
+`mode === 'online'`. The server keeps `duel` — there is no collision there.
+
+## The problem the shared clock did not solve
+
+`dive.at` is seconds relative to **the strike**, and it is the whole of the
+keeper's timing game: negative means he had already gone. Offline that is easy,
+because one machine watches both halves.
+
+Online it is not. The keeper cannot know when the striker will hit it, and the
+striker cannot know when the keeper left. Neither can time against the other
+without being told something they are not allowed to know.
+
+**So neither of them times against the other.** Both time against the one
+moment they share — the instant the kick opened, which the server stamped and
+told them both — and the server does the subtraction:
+
+```
+strike.t = 1.40   keeper's dive.t = 1.10   ->   dive.at = -0.30  (gone early)
+strike.t = 1.40   keeper's dive.t = 1.90   ->   dive.at = +0.50  (thrown late)
+```
+
+The fifth pass's entire early/late trade-off survives the wire, and neither
+player is told anything. Clock skew is handled the same way: every submission
+is stamped on the server's clock (`serverTime` from each sync), so a phone that
+is forty seconds fast does not get a forty-second head start on the dive.
+
+## Both ends, one kick
+
+When the server opens kick *n*, it opens for both players. One is handed the
+ball and a shot clock; the other is handed the gloves and the same clock.
+Neither waits for the other:
+
+```
+kick opens ─┬─ A: ST.AIM,  shot clock, swipe, submit ─┐
+            └─ B: ST.KEEP, keeper window, dive, submit┴─ server resolves once
+                                                        ↓
+                        both replay the identical kick from both halves
+```
+
+`netPump()` is the only scheduler, with three triggers — a kick opened, a kick
+resolved, the match ended — all asking the same question: is the pitch free,
+and if so what next? A resolved kick always plays out before the next one
+starts, so the order is the server's rather than the network's.
+
+**The outcome is the server's, not each client's.** Both ends run the ball
+through their own physics because it has to *look* like what happened — the
+woodwork has to bounce, the save has to be caught — but `award()` takes the
+result from the one authority both players share. A pixel of drift can never
+become two players disagreeing about whether that was a goal.
+
+## No telegraph online
+
+The keeper's AIMED ring shows where the shot is going. Online that would mean
+the server had told you what your opponent just did, which is the one thing it
+refuses to do. So online there is no telegraph, and the prompt says so: *"Read
+the player, not a ring."* What you get instead is the honest read — where this
+opponent has actually put their kicks, which is public and which they know you
+can see.
+
+## Optimistic, then confirmed
+
+Throwing yourself leaves the goal **immediately**, before the request lands.
+Waiting on the wire to be told your own dive happened is the wrong feel, and
+the round trip is not yours to notice. `submitted` turns true when the server
+confirms, a moment later.
+
+That distinction caused the one real bug in this pass: `netSubmitted` fired a
+sync alongside the POST, and the sync could land *first* — overwriting "your
+half is in" with the server's answer from a moment before it was. The
+submission's own response carries the fresh view; nothing else should race it.
+
+## Going live in one step
+
+`0001`–`0004` are not idempotent — unguarded creates, seed inserts — so "run
+them all again" corrupts a live database. Something has to remember, and
+`cf_migrations` is that memory.
+
+The interesting case is the first run against production: a database that
+already has a schema and no memory of how it got one. Rather than demanding a
+hand-written baseline, **`tools/migrate.mjs` looks**. If the objects a
+migration creates are already there, it records it as applied instead of
+running it. Production's first run adopts `0001`–`0006` and applies only
+`0007`; a fresh database runs all seven in order. One command, correct in both
+cases — which is the point, because the hosting step should not need somebody
+to work out which files to run.
+
+`GET /api/mp/health` exists for the ten minutes after a deploy. The three
+things that go wrong with Pages + D1 are always the same — the binding is
+missing, the migrations never reached production, or they reached a different
+database — and all three otherwise surface as a 500 from deep inside a game.
+It answers plainly, the deploy workflow fails the run if it is not 200, and
+the game asks it before opening a match so a player gets a sentence rather
+than a stack trace.
+
+Full runbook: `docs/deploy-online.md`.
+
+## Verification
+
+| suite | assertions |
+|---|---|
+| `tests/duel-api.mjs` | **49** — blindness, authority, idempotence, liveness, one payout |
+| `tests/duel-client.mjs` | **28** — the transport, against two real browsers |
+| `tests/duel-play.mjs` | **25** — a real match through the game loop, both ends |
+
+The play suite is the one that answers this pass: both ends inside the same
+kick at the same moment, one on the ball and one in goal, clocks running from
+the same instant, the keeper handed no telegraph, the striker untouched by the
+keeper having already gone, and both ending on the same scoreline.
+
+Offline regression unaffected throughout: parity **120/120**, determinism
+**40/40**, smoke and layout clean.

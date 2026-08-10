@@ -34,15 +34,15 @@ async function client(tag) {
   // collect the resolved kicks the transport hands the game
   await p.evaluate(() => {
     window.__kicks = [];
-    window.CF.duel.on('Kick', k => window.__kicks.push(k));
+    window.CF.net.on('Kick', k => window.__kicks.push(k));
   });
   return p;
 }
 const A = await client('a'), B = await client('b');
-const st = p => p.evaluate(() => window.CF.duel.state);
+const st = p => p.evaluate(() => window.CF.net.state);
 
 console.log('\nOPENING A DUEL');
-const opened = await A.evaluate(() => window.CF.duel.open({ kicks: 2, join: false }));
+const opened = await A.evaluate(() => window.CF.net.open({ kicks: 2, join: false }));
 ok('A opens a duel from the browser', opened.state === 'waiting', JSON.stringify(opened));
 ok('the seed came from the server', typeof opened.seed === 'number');
 ok('so did the weather', Number.isInteger(opened.weather));
@@ -51,15 +51,15 @@ ok('the client adopted the server seed rather than rolling its own',
    seedA.matchSeed === (opened.seed >>> 0) && seedA.seedFixed === true,
    JSON.stringify({ client: seedA.matchSeed, server: opened.seed >>> 0, fixed: seedA.seedFixed }));
 
-const joined = await B.evaluate(id => window.CF.duel.join(id), opened.matchId);
+const joined = await B.evaluate(id => window.CF.net.join(id), opened.matchId);
 ok('B joins it', joined.matchId === opened.matchId && joined.state === 'in_progress',
    JSON.stringify(joined));
 ok('both clients hold the same seed', joined.seed === opened.seed);
 ok('and the same weather', joined.weather === opened.weather);
 
 console.log('\nTHE SEAM');
-await A.evaluate(() => window.CF.duel.sync());
-await B.evaluate(() => window.CF.duel.sync());
+await A.evaluate(() => window.CF.net.sync());
+await B.evaluate(() => window.CF.net.sync());
 const a1 = await st(A), b1 = await st(B);
 ok('A is told it is striking', a1.live?.role === 'striker', JSON.stringify(a1.live));
 ok('B is told it is keeping', b1.live?.role === 'keeper', JSON.stringify(b1.live));
@@ -70,11 +70,11 @@ ok('B wires itself the other way round',
 ok('both are given a clock', a1.left > 0 && b1.left > 0, a1.left + ' / ' + b1.left);
 
 console.log('\nBLIND SUBMISSION');
-await A.evaluate(() => window.CF.duel.submit('strike',
+await A.evaluate(() => window.CF.net.submit('strike',
   { power: 0.7, aimM: 2.4, curl: 0.2, elev: 0.4, x: 0, z: 11, wall: 0 }));
 const a2 = await st(A);
 ok('A knows its own half is in', a2.live?.submitted === true, JSON.stringify(a2.live));
-await B.evaluate(() => window.CF.duel.sync());
+await B.evaluate(() => window.CF.net.sync());
 const b2 = await st(B);
 ok('B is not told the strike arrived', b2.live?.submitted === false, JSON.stringify(b2.live));
 ok('and cannot see it in anything the transport holds',
@@ -83,9 +83,9 @@ ok('nothing has been handed to B to show yet',
    (await B.evaluate(() => window.__kicks.length)) === 0);
 
 console.log('\nRESOLUTION REACHES BOTH');
-await B.evaluate(() => window.CF.duel.submit('dive', { x: -2.0, y: 1.0, at: 0.1 }));
-await A.evaluate(() => window.CF.duel.sync());
-await B.evaluate(() => window.CF.duel.sync());
+await B.evaluate(() => window.CF.net.submit('dive', { x: -2.0, y: 1.0, at: 0.1 }));
+await A.evaluate(() => window.CF.net.sync());
+await B.evaluate(() => window.CF.net.sync());
 const kicksA = await A.evaluate(() => window.__kicks);
 const kicksB = await B.evaluate(() => window.__kicks);
 ok('the resolved kick was handed to A', kicksA.length === 1, JSON.stringify(kicksA));
@@ -117,10 +117,10 @@ ok('and B on the ball', b3.live?.role === 'striker' && b3.sources.striker === 'l
    JSON.stringify([b3.live, b3.sources]));
 
 console.log('\nTHE DUEL ENDS');
-await A.evaluate(() => window.CF.duel.submit('dive', null));
-await B.evaluate(() => window.CF.duel.submit('strike',
+await A.evaluate(() => window.CF.net.submit('dive', null));
+await B.evaluate(() => window.CF.net.submit('strike',
   { power: 0.6, aimM: -2.2, curl: -0.3, elev: 0.3, x: 0, z: 11, wall: 0 }));
-await A.evaluate(() => window.CF.duel.sync());
+await A.evaluate(() => window.CF.net.sync());
 const fin = await st(A);
 ok('the match settles', fin.state === 'settled', JSON.stringify(fin));
 ok('both kicks were shown to A', (await A.evaluate(() => window.__kicks.length)) === 2);

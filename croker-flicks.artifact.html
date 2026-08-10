@@ -2348,7 +2348,11 @@ const SFX = {
    GAME STATE
    ================================================================== */
 const ST = {TITLE:0, AIM:1, FLIGHT:2, RESULT:3, CPU_WAIT:4, OVER:5, REPLAY:6,
-            KEEP:7};
+            KEEP:7,
+            /* Online only. Your half of the kick is in and the other player's
+               is not yet — which, because both ends are live at the same
+               time, is normally a fraction of a second. */
+            NET_WAIT:8};
 let state = ST.TITLE;
 let now = 0, lastT = 0;
 let round = 1, ROUNDS = 5, sudden = false;
@@ -2411,7 +2415,8 @@ function keepLive(){
 }
 let keepDrag = false;               // this drag belongs to the keeper
 let keepFaced = 0, keepSides = [];       // which way you went, most recent last
-const goalieOn = () => opts.goalie && isShootout() && mode !== 'duel' && !MP.match;
+const goalieOn = () => opts.goalie && isShootout() && mode !== 'duel'
+                    && mode !== 'online' && !MP.match;
 /* Dive where you swipe. Straight up is a leap down the middle, across is a
    low dive to that side, up and across is full stretch into the corner, and
    a short swipe keeps you near your line. */
@@ -2467,6 +2472,18 @@ function commitKeep(){
   $('prompt').textContent = strikeT === null
     ? 'Gone early — he can see you go'
     : 'Thrown late — get something on it';
+  if(mode==='online' && netForced === null && Net.live && Net.live.role === 'keeper')
+    netKeeperDone();
+}
+
+/* The keeper's half is finished — thrown, or deliberately stood up. Either
+   way it goes now, timestamped, and the wait begins. */
+function netKeeperDone(){
+  if(mode !== 'online' || !Net.live || Net.live.role !== 'keeper') return;
+  if(!keepDone){ keepDone = true; keeper.player = true; }
+  const threw = keeper && keeper.committed && keeper.ai === false;
+  netDive().catch(e => { netMsg = 'Could not send that dive — ' + e.message; });
+  netSubmitted(threw ? 'Thrown — waiting on the kick' : 'Stood up — waiting on the kick');
 }
 /* ---- local multiplayer: 2-4 on one device ----
    Every player in a round kicks at the same kick index, so the seeded
@@ -2548,7 +2565,9 @@ let trainSpot = 0;
 /* which modes can produce a two-pointer at all */
 const twoPointMode = () => mode==='freekick' || mode==='survival'
                         || mode==='daily'    || mode==='training';
-const isShootout   = () => mode==='championship' || mode==='quick' || mode==='duel';
+const isShootout   = () => mode==='championship' || mode==='quick' || mode==='duel'
+                        || mode==='online';
+const isOnline     = () => mode==='online' && !!Net.match;
 const isSolo       = () => mode==='freekick' || mode==='survival'
                         || mode==='daily'    || mode==='training';
 
@@ -2970,6 +2989,15 @@ function fire(){
   stopShotClock();
   strikeT = kickT;                 // the instant both sides are timed against
   strikeCurl = curl; strikeElev = elev; strikeAim = aimM;
+  /* Online, striking does not send the ball anywhere yet: the keeper is
+     playing his half at this exact moment and has not been told a thing.
+     What goes out is the swipe and its timestamp; the ball flies when the
+     server has both halves, on both screens, together. */
+  if(mode==='online' && netForced === null && Net.live && Net.live.role === 'striker'){
+    netStrike().catch(e => { netMsg = 'Could not send that kick — ' + e.message; });
+    netSubmitted('Struck — waiting on the keeper');
+    return;
+  }
   if(shotStake>0) debit(shotStake);
   // contact is never perfect — harder strikes stray more
   // a placed shot should be placeable; a rocket should not be
@@ -3249,6 +3277,11 @@ function advance(){
   advanceNow();
 }
 function advanceNow(){
+  /* ---- online: the server decides what happens next ----
+     Nothing local advances an online match. The next kick arrives because
+     the server opened it, which is the same instant it opens for the other
+     player. That is what keeps the two ends in step. */
+  if(mode==='online'){ netIdle(); return; }
 
   /* ---- solo modes: no opponent, just the next kick ---- */
   if(mode==='freekick'){
@@ -4492,13 +4525,18 @@ function update(dt){
     }
     // his dive, if he has already thrown himself, runs while he waits
     if(keeper && keeper.committed) keeperUpdate(keeper, kickT, ball);
-    const untilStrike = cpuShot ? clamp(1 - kickT/cpuShot.strikeAt, 0, 1) : 0;
+    const untilStrike = cpuShot ? clamp(1 - kickT/cpuShot.strikeAt, 0, 1)
+                      : (mode==='online' ? clamp(keepT/KEEP_WINDOW, 0, 1) : 0);
     $('keepFill').style.width = untilStrike*100 + '%';
     // amber the moment leaving would still be read: it is the window to hold
     $('keepbar').classList.toggle('tight', untilStrike < 0.3);
     $('keepbar').classList.toggle('watched', !keepDone && untilStrike > 0.22);
     // he strikes when he is ready — you are not given a whistle to react to
     if(cpuShot && kickT >= cpuShot.strikeAt) cpuShoot();
+    /* Online there is no cpuShot to strike, because the striker is a person
+       taking their own time at the other end. The window is yours: hold it
+       to the end and you have chosen to stand up. */
+    if(mode==='online' && !keepDone && keepT <= 0) netKeeperDone();
   }
   else if(state===ST.CPU_WAIT){
     cpuT -= dt; if(cpuT<=0) cpuShoot();
@@ -4551,7 +4589,11 @@ function update(dt){
       const bx = lerp(prevX, ball.wx, f);
       const by = lerp(prevY, ball.wy, f);
       crossed = true;
-      const res = evaluateAtPlane(bx, by);
+      /* Online the server has already decided this. We still run the ball
+         through the same physics — it has to LOOK like what happened, and
+         the woodwork and the save have to bounce — but the scoreline comes
+         from the one authority both players share. */
+      const res = netForced !== null ? netForced : evaluateAtPlane(bx, by);
       if(res==='post' || res==='bar'){
         ball.vz = Math.abs(ball.vz)*0.55; ball.vx *= 0.5;
         if(res==='bar') ball.vy = -Math.abs(ball.vy)*0.4;
@@ -4771,6 +4813,11 @@ function startMatch(){
   CO_C = pickOpponent();
   chooseVenue();
   pickWeather();
+  /* Online, the weather is the match's, drawn from the seed by the server.
+     Both clients overwrite their own draw with it, so a ball carries the
+     same distance on both screens. */
+  if(mode==='online' && Net.match && WEATHERS[Net.match.weather])
+    weather = WEATHERS[Net.match.weather];
   $('ovTitle').classList.add('hidden'); $('ovEnd').classList.add('hidden');
   $('ovPass').classList.add('hidden');
   const a=ac(); if(a&&a.state==='suspended') a.resume();
@@ -5012,6 +5059,345 @@ function mpSubmitTurn(){
 }
 
 /* ==================================================================
+   ONLINE DUELS — the client half
+   ==================================================================
+   A kick is a duel, and the game already has the shape for it: one kick
+   clock, and `srcStriker` / `srcKeeper` each 'local' | 'ai' | 'remote'.
+   This is what fills in 'remote'.
+
+   The protocol is deliberately small, because determinism does the heavy
+   lifting. Nothing streams. Each side sends what its player did — four
+   numbers for a swipe, three for a dive — and the server, which owns the
+   seed, re-runs the same simulation both clients run and stores the one
+   outcome. When a kick resolves, both clients are handed BOTH halves and
+   replay the identical kick locally. Two screens agree without a single
+   frame crossing the wire.
+
+   The one rule that makes it a duel rather than a reaction test: until a
+   kick resolves, the server will not tell you anything about the other
+   side's submission — not what it was, not whether it has arrived. Waiting
+   to see buys you nothing, so there is nothing to gain by stalling.
+   ================================================================== */
+const Net = {
+  match: null,        // {matchId, seed, kicks, turnMs, difficulty, weather, side}
+  live: null,         // the kick in front of you: {kickIndex, role, deadline, submitted}
+  played: [],         // resolved kicks, in order, each with both halves
+  seen: -1,           // highest kick index already handed to the game
+  state: 'idle',      // idle|waiting|in_progress|settled
+  score: {you:0, them:0},
+  poll: null, busy: false, err: null,
+  /* the game supplies these. Keeping them as fields rather than wiring the
+     loop directly is what lets the transport be tested on its own. */
+  skew: 0,            // serverTime - our clock, so both ends stamp the same
+  onLive: null,       // (live)   -> it is your turn, in this role, until then
+  onKick: null,       // (kick)   -> a resolved kick, with both halves, to show
+  onEnd: null,        // (final)  -> the duel is over
+};
+
+/* Open a duel and wait, join a specific one, or take whatever is open. */
+async function netOpen(opts){
+  const body = Object.assign({kicks:10, difficulty:'senior'}, opts||{});
+  const m = await mpFetch('/api/mp/duel', 'POST', body);
+  Net.match = m; Net.state = m.state; Net.played = []; Net.seen = -1;
+  Net.live = null; Net.err = null;
+  /* The server's seed and the server's weather, not ours. Everything either
+     client derives locally — ground, wind, opponent — comes from these, so
+     both of us are standing in the same stadium in the same rain. */
+  matchSeed = m.seed >>> 0;
+  matchSeedFixed = true;
+  difficulty = m.difficulty;
+  netPollStart();
+  return m;
+}
+const netJoin = id => netOpen({matchId: id});
+
+/* One poll. Also the only read: `live` is redacted server-side, so there is
+   nothing here to be careful with. */
+async function netSync(){
+  if(!Net.match || Net.busy) return null;
+  Net.busy = true;
+  try{
+    const st = await mpFetch('/api/mp/sync/' + Net.match.matchId);
+    /* Two players, two wall clocks, one kick. Everything either of them
+       submits is stamped against the server's clock rather than their own,
+       so a phone that is forty seconds fast does not get a forty-second
+       head start on the dive. */
+    if(typeof st.serverTime === 'number') Net.skew = st.serverTime - Date.now()/1000;
+    Net.state = st.state;
+    Net.score = st.score;
+    Net.played = st.played;
+    Net.match.weather = st.weather;
+    /* Hand over every kick that resolved since we last looked, in order.
+       Both clients run this with the same inputs and see the same thing. */
+    for(const k of st.played){
+      if(k.kickIndex <= Net.seen) continue;
+      Net.seen = k.kickIndex;
+      if(Net.onKick) Net.onKick(k);
+    }
+    const was = Net.live && Net.live.kickIndex;
+    Net.live = st.live;
+    if(st.live && st.live.kickIndex !== was && Net.onLive) Net.onLive(st.live);
+    /* This is the seam. Whoever is striking is 'local' on their machine and
+       'remote' on the other, and the kick clock does not care which. */
+    if(st.live){
+      srcStriker = st.live.role === 'striker' ? 'local' : 'remote';
+      srcKeeper  = st.live.role === 'keeper'  ? 'local' : 'remote';
+    }
+    if(st.state === 'settled' || st.state === 'resolved'){
+      netPollStop();
+      if(Net.onEnd) Net.onEnd(st);
+    }
+    Net.err = null;
+    return st;
+  }catch(e){
+    Net.err = e.message;              // a dropped poll is not fatal
+    return null;
+  }finally{ Net.busy = false; }
+}
+
+/* Poll faster while the other player is the one being waited on, slower when
+   the ball is in our court and the screen is busy anyway. */
+function netPollStart(){
+  netPollStop();
+  const tick = async () => {
+    await netSync();
+    if(!Net.poll) return;
+    const waiting = Net.live && Net.live.submitted;
+    Net.poll = setTimeout(tick, waiting ? 1200 : 3000);
+  };
+  Net.poll = setTimeout(tick, 0);
+}
+function netPollStop(){ if(Net.poll){ clearTimeout(Net.poll); Net.poll = null; } }
+
+/* Seconds since this kick opened, on the clock both ends share. */
+const netNow  = () => Date.now()/1000 + Net.skew;
+const netKickT = () => Net.live ? Math.max(0, netNow() - Net.live.openedAt) : 0;
+
+/* Submit your half. Both are idempotent at the server, so a retry after a
+   dropped connection is safe and is the right thing to do. */
+async function netSubmit(half, payload){
+  if(!Net.match || !Net.live) throw new Error('no kick is open');
+  const body = {matchId: Net.match.matchId, kickIndex: Net.live.kickIndex};
+  body[half] = payload;
+  const r = await mpFetch('/api/mp/kick', 'POST', body);
+  if(r.kick) Net.live = r.kick;
+  netSync();                          // a resolved kick should show at once
+  return r;
+}
+/* The four numbers of a swipe, plus WHEN it was struck. The time is what
+   makes the keeper's half a duel rather than a guess. */
+const netStrike = () => netSubmit('strike', {
+  power: +power.toFixed(6), aimM: +aimM.toFixed(6),
+  curl: +strikeCurl.toFixed(6), elev: +strikeElev.toFixed(6),
+  x: spot.x, z: spot.z, wall: spot.wall|0,
+  t: +netKickT().toFixed(3),
+});
+/* Where he went and when, on the same shared clock — or `held`, which is a
+   real answer meaning you stood up. Neither is the same as saying nothing,
+   which is what running the clock down does. */
+const netDive = () => netSubmit('dive',
+  (keeper && keeper.committed && keeper.ai === false && keeper.diveAt !== undefined)
+    ? { x:+keeper.tx.toFixed(4), y:+keeper.ty.toFixed(4), t:+netKickT().toFixed(3) }
+    : null);
+
+function netLeave(){
+  netPollStop();
+  Net.match = null; Net.live = null; Net.played = []; Net.seen = -1;
+  Net.state = 'idle';
+  srcStriker = 'ai'; srcKeeper = 'ai';
+}
+/* seconds left on the kick in front of you, for the bar that already exists */
+const netLeft = () => (Net.live && Net.match)
+  ? Math.max(0, Net.live.deadline - Math.floor(Date.now()/1000)) : 0;
+
+/* ==================================================================
+   ONLINE — PLAYING BOTH ENDS AT ONCE
+   ==================================================================
+   The point of the shared kick clock was never the single-player game. It
+   was this: one kick, two people, both live at the same moment.
+
+   When the server opens kick n it opens for both players together. One is
+   handed the ball and a shot clock; the other is handed the gloves and the
+   same clock. Neither waits for the other, and neither can see what the
+   other is doing — so there is no turn order to sit through and nothing to
+   be gained by stalling. Both submit, the server resolves once, and both
+   watch the identical kick play out from the two recorded halves.
+
+   The one thing the keeper does NOT get online is the telegraph. Reading a
+   ring that shows where the shot is going would mean the server had told
+   you what your opponent did, which is precisely what it refuses to do. In
+   its place you get the honest read: where this player has actually put
+   their kicks so far, which is public and which they know you can see.
+   ================================================================== */
+let netForced = null;        // the server's outcome for the kick being shown
+let netQueue  = [];          // resolved kicks waiting to be played out
+let netBegun  = -1;          // the kick index whose half we have already started
+let netOver   = false;
+let netMsg    = '';
+
+/* Is the other end actually able to serve? Asked once, before anything is
+   opened, so a site that has been deployed without its migrations says so in
+   a sentence instead of failing somewhere inside a match. */
+async function netReady(){
+  if(Net.base === null)
+    return {ok:false, why:'This copy is not connected to a server — play online from the site.'};
+  try{
+    const h = await mpFetch('/api/mp/health');
+    return h.ok ? {ok:true}
+                : {ok:false, why: h.error || 'The online service is not ready yet.'};
+  }catch(e){
+    return {ok:false, why: e.message};
+  }
+}
+
+/* Enter an online match. Opens a lobby, or joins one, then plays. */
+async function netPlay(opts){
+  if(!gate('quick')) return null;
+  const ready = await netReady();
+  if(!ready.ok){ netMsg = ready.why; mpStatus(ready.why, true); throw new Error(ready.why); }
+  const m = await netOpen(Object.assign({kicks:10, difficulty:'senior'}, opts||{}));
+  mode = 'online';
+  ROUNDS = Math.max(1, (m.kicks || 10) >> 1);
+  netQueue = []; netForced = null; netBegun = -1; netOver = false;
+  /* One scheduler, three triggers. Everything the server tells us ends up
+     asking the same question: is the pitch free, and if so what next? */
+  Net.onLive = () => netPump();
+  Net.onKick = k => { netQueue.push(k); netPump(); };
+  Net.onEnd  = () => netPump();
+  startMatch();
+  netIdle();                                  // until the server opens a kick
+  return m;
+}
+
+/* Between kicks. Not a turn being taken elsewhere — usually just the round
+   trip, because the other player is doing their half at the same time. */
+function netIdle(){
+  state = ST.NET_WAIT;
+  stopShotClock();
+  $('keepbar').classList.remove('show','tight','watched');
+  document.body.classList.remove('keeping');
+  $('prompt').style.display = '';
+  $('prompt').textContent = netMsg || 'Waiting for the other end…';
+  netPump();
+}
+
+/* A kick opens. Both clients get here within a poll of each other, and from
+   here on the two ends run their own halves against the same deadline. */
+function netBeginKick(live){
+  if(!live || mode !== 'online') return;
+  netBegun = live.kickIndex;
+  kickIndex = live.kickIndex;
+  netForced = null;
+  netMsg = '';
+  seedFrom(hash2(matchSeed, kickIndex));
+  netScene();
+  if(live.submitted){ netIdle(); return; }    // reconnected mid-kick
+  if(live.role === 'striker'){
+    shooter = 'p';
+    keeper = newKeeper(CO_C, difficulty);
+    srcStriker = 'local'; srcKeeper = 'remote';
+    kickT = 0; strikeT = null; cpuShot = null;
+    state = ST.AIM;
+    startShotClock();
+    $('prompt').style.display = '';
+    $('prompt').textContent = 'Your kick — they are already in goal';
+  } else {
+    shooter = 'c';
+    keeper = newKeeper(CO_P, difficulty);
+    srcStriker = 'remote'; srcKeeper = 'local';
+    beginKeep();
+    cpuShot = null;                           // no telegraph: this is a person
+    $('keepLbl').firstChild.nodeValue = 'THEY ARE KICKING ';
+    $('prompt').textContent = 'Read the player, not a ring — set and dive';
+  }
+}
+
+/* The scene for this kick: same spot and same conditions on both ends,
+   because both derive them from the server's seed and kick index. */
+function netScene(){
+  setSpot(0, CFG.PEN_Z, 'Penalty', 0);
+  wall = null;
+  ball = newBall();
+  trail.length = 0; replay = [];
+  setWind();
+  crossed = false; outcome = null; flightT = 0;
+  power = 0.62; aimM = 0; curl = 0; elev = 0.5;
+  strikeCurl = 0; strikeElev = 0.5;
+  dragging = false; dragPath = []; keepDrag = false; keepIntent = null;
+  keepPick = null; keepDone = false;
+  for(const u of umpires){ u.raise = 0; u.flag = 0; }
+  showBetBar(false);
+  buildBackground();
+  updateRoundBar();
+}
+
+/* Your half is in. Say so plainly — the wait is real but it is short, and a
+   player who is not told what is happening assumes it has broken. */
+function netSubmitted(what){
+  netMsg = what;
+  state = ST.NET_WAIT;
+  stopShotClock();
+  $('keepbar').classList.remove('show','tight','watched');
+  document.body.classList.remove('keeping');
+  $('prompt').style.display = '';
+  $('prompt').textContent = what;
+  /* No sync here on purpose. The submission's own response carries the
+     fresh view of the kick, and a poll fired alongside it can land FIRST —
+     overwriting "your half is in" with the server's answer from a moment
+     before it was. netSubmit refreshes once the POST has actually landed. */
+}
+
+/* Play out a resolved kick. Both ends run this with the same two halves and
+   the same seed, and both take the OUTCOME from the server rather than from
+   their own evaluation — so a pixel of drift can never become two players
+   disagreeing about whether that was a goal. */
+function netPlayKick(k){
+  if(!k || !k.strike){                        // nobody took it
+    kickIndex = k ? k.kickIndex : kickIndex;
+    shooter = (k && k.strikerSide === Net.match.side) ? 'p' : 'c';
+    netForced = null;
+    award('miss');
+    return;
+  }
+  kickIndex = k.kickIndex;
+  seedFrom(hash2(matchSeed, kickIndex));
+  netScene();
+  shooter = k.strikerSide === Net.match.side ? 'p' : 'c';
+  setSpot(k.strike.x, k.strike.z, 'Penalty', k.strike.wall|0);
+  power = k.strike.power; aimM = k.strike.aimM;
+  curl  = k.strike.curl;  elev = k.strike.elev;
+  keeper = newKeeper(shooter==='p' ? CO_C : CO_P, difficulty);
+  keeper.ai = false;
+  keeper.plan = k.dive || null;               // the dive that was actually thrown
+  srcStriker = shooter==='p' ? 'local' : 'remote';
+  srcKeeper  = shooter==='p' ? 'remote' : 'local';
+  netForced = k.outcome === 'timeout' ? 'miss' : k.outcome;
+  kickT = 0; strikeT = null;
+  fire();
+}
+
+/* The scheduler. A resolved kick always goes out before the next one is
+   started, so the two ends stay in step even if one of them was slow to
+   look: the order is the server's, not the network's. */
+function netPump(){
+  if(mode !== 'online' || netOver) return;
+  if(state === ST.FLIGHT || state === ST.RESULT || state === ST.REPLAY) return;
+  if(netQueue.length){ netPlayKick(netQueue.shift()); return; }
+  if(Net.live && Net.live.kickIndex !== netBegun && !Net.live.submitted){
+    netBeginKick(Net.live);
+    return;
+  }
+  if(Net.state === 'settled' || Net.state === 'resolved') netFinish();
+}
+
+function netFinish(){
+  if(netOver) return;
+  netOver = true;
+  netForced = null; netMsg = '';
+  endMatch();
+}
+
+/* ==================================================================
    DEBUG API — enabled with ?debug=1
    Exposes the deterministic core so the regression suite can prove that
    an input record replays to the same outcome every time. This is the
@@ -5123,6 +5509,25 @@ if(new URLSearchParams(location.search).has('debug')){
     },
     get kickLabel(){ return document.getElementById('rnd').textContent; },
     get match(){ return MP.match; },
+    /* the duel transport, so the online layer can be driven headlessly
+       against a real server rather than being taken on trust */
+    net: {
+      play: o => netPlay(o), ready: () => netReady(),
+      open: o => netOpen(o), join: id => netJoin(id),
+      sync: () => netSync(), strike: () => netStrike(), dive: () => netDive(),
+      submit: (half, payload) => netSubmit(half, payload),
+      leave: () => netLeave(),
+      get state(){ return {state:Net.state, side:Net.match && Net.match.side,
+                           matchSeed:matchSeed>>>0, seedFixed:matchSeedFixed,
+                           live:Net.live, score:Net.score, seen:Net.seen,
+                           played:Net.played.length, err:Net.err,
+                           mode:mode, phase:Object.keys(ST).find(k=>ST[k]===state),
+                           queue:netQueue.length, begun:netBegun, forced:netForced,
+                           kickT:+netKickT().toFixed(3), skew:+Net.skew.toFixed(3),
+                           sources:{striker:srcStriker, keeper:srcKeeper},
+                           left:netLeft()}; },
+      on: (name, fn) => { Net['on' + name] = fn; },
+    },
     get device(){ return mpToken(); },
     venues: Object.keys(VENUES),
     ranks: RANKS.map(r=>r.n),

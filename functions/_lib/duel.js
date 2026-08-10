@@ -38,6 +38,27 @@ import { now, credit, addXp } from './mp.js';
    behaviour we want, expressed in the record shape that already exists. */
 export const ROOTED = { x: 0, y: 1.35, at: 8 };
 
+/* ---- the shared reference ----
+ *
+ * `dive.at` is seconds relative to the STRIKE, and it is the whole of the
+ * keeper's timing game: negative means he had already gone. Offline that is
+ * easy, because one machine watches both. Online it is not — the keeper
+ * cannot know when the striker will hit it, and the striker cannot know when
+ * the keeper left.
+ *
+ * So neither of them times against the other. Both time against the one
+ * moment they share: the instant the kick opened, which the server stamped
+ * and told them both. Each submits `t`, seconds after that, and the server
+ * does the subtraction. The timing duel survives the wire without either
+ * player ever being told anything about the other.
+ */
+const clampNum = (v, lo, hi) => Math.min(hi, Math.max(lo, +v || 0));
+export function diveFor(strike, dive) {
+  if (!dive || dive.held || typeof dive.t !== 'number') return ROOTED;
+  const st = typeof strike.t === 'number' ? strike.t : 0;
+  return { x: +dive.x, y: +dive.y, at: clampNum(dive.t - st, -8, 8) };
+}
+
 /* Store what we understand and nothing else.
  *
  * A submission is a physical action, and these are all the numbers an action
@@ -53,8 +74,14 @@ export const pickStrike = s => ({
   x: s.x === undefined ? 0 : +s.x,
   z: s.z === undefined ? 11 : +s.z,
   wall: s.wall ? (s.wall | 0) : 0,
+  // when he hit it, measured from the kick opening
+  t: clampNum(s.t, 0, 120),
 });
-export const pickDive = d => ({ x: +d.x, y: +d.y, at: +d.at });
+/* `held` is a decision and `t` is a dive. Offline callers may still send an
+   `at` directly; it is carried so a single-player record replays unchanged. */
+export const pickDive = d => (d && d.held) ? { held: true }
+  : (d && typeof d.t === 'number') ? { x: +d.x, y: +d.y, t: clampNum(d.t, 0, 120) }
+  : { x: +d.x, y: +d.y, at: clampNum(d.at, -8, 8) };
 
 /* Sides alternate. Kick 0 is A striking at B, kick 1 is B striking at A, and
    so on — so an odd `kicks` count would hand somebody an extra kick, which is
@@ -114,7 +141,9 @@ export async function resolveKick(env, match, duel, kick) {
     outcome = 'timeout';
   } else {
     const swipe = JSON.parse(kick.strike);
-    const dive = kick.dive ? JSON.parse(kick.dive) : ROOTED;
+    const raw = kick.dive ? JSON.parse(kick.dive) : null;
+    // strike-relative, derived here, from two numbers neither player saw
+    const dive = raw && raw.at !== undefined ? raw : diveFor(swipe, raw);
     /* Everything the client does not get to choose is applied last, so a
        field smuggled into the swipe cannot survive into the simulation. */
     const record = {
@@ -234,6 +263,10 @@ export function viewKick(kick, viewerId) {
   const base = {
     kickIndex: kick.kick_index,
     role: mine,
+    // the moment both players start timing against. Everything either of
+    // them submits is stamped as an offset from this, which is what lets the
+    // keeper's dive be placed against a strike he never saw.
+    openedAt: kick.opened_at,
     deadline: kick.deadline,
     resolved: !!kick.resolved_at,
   };
@@ -252,7 +285,10 @@ export function viewKick(kick, viewerId) {
     // these two inputs, which is what keeps the two screens showing the same
     // thing without streaming a single frame
     strike: kick.strike ? JSON.parse(kick.strike) : null,
-    dive: kick.dive ? JSON.parse(kick.dive) : ROOTED,
+    dive: kick.strike && kick.dive
+      ? (() => { const d = JSON.parse(kick.dive);
+                 return d.at !== undefined ? d : diveFor(JSON.parse(kick.strike), d); })()
+      : ROOTED,
     strikerSide: null,   // filled in by the endpoint, which knows the match
   };
 }
@@ -268,8 +304,14 @@ export function validateHalf(role, payload) {
   if (role === 'keeper') {
     if (payload === null) return null;                    // held his line
     if (!payload || typeof payload !== 'object') return 'dive';
-    const why = validateRecord({ kickIndex: 0, power: 0, aimM: 0, dive: payload });
-    return why;
+    if (payload.held) return null;
+    if (typeof payload.t === 'number') {
+      if (payload.t < 0 || payload.t > 120) return 'dive.t';
+      // range-check the placement through the same gate as everything else
+      return validateRecord({ kickIndex: 0, power: 0, aimM: 0,
+                              dive: { x: payload.x, y: payload.y, at: 0 } });
+    }
+    return validateRecord({ kickIndex: 0, power: 0, aimM: 0, dive: payload });
   }
   return 'role';
 }
