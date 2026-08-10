@@ -1,6 +1,6 @@
 /* End-to-end test of the multiplayer API against a local Pages dev server.
  *
- *   npx wrangler d1 execute mrcheapflights-prod --local --file=migrations/0006_multiplayer.sql
+ *   npx wrangler d1 execute mrcheapflights-prod --local --file=migrations/0031_multiplayer.sql
  *   npx wrangler pages dev . --port 8788 --d1 DB=mrcheapflights-prod
  *   node tests/mp-api.mjs
  *

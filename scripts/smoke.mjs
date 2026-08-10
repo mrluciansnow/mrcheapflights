@@ -41,7 +41,14 @@ async function run() {
   {
     const { status, text } = await get('/api/health');
     let j = {}; try { j = JSON.parse(text); } catch {}
-    check('/api/health ok', status === 200 && j.ok === true && j.db === true, `status ${status}, ok=${j.ok}, db=${j.db}`);
+    // Separate "the app is broken" from "the shop is empty" — both are real
+    // failures but they need different responses, so don't blur them into one.
+    check('/api/health: DB reachable', j.db === true, `status ${status}, db=${j.db}`);
+    check('/api/health: every region has live deals',
+      !j.empty_regions || j.empty_regions.length === 0,
+      `EMPTY: ${(j.empty_regions || []).join(', ')} — by region ${JSON.stringify(j.deals_by_region || {})}`);
+    check('/api/health ok', status === 200 && j.ok === true,
+      `status ${status}, ok=${j.ok}${j.empty_regions ? ' (empty regions: ' + j.empty_regions.join(',') + ')' : ''}`);
   }
 
   // 3. Deals API + guest fare-gating (SECURITY: guests must not get fare data)
@@ -53,8 +60,33 @@ async function run() {
     check('guest gets NO fare details (fare object withheld)', deals.every((d) => !('fare' in d)),
       'a deal leaked a fare object to an unauthenticated caller');
     check('guest deals carry fare_gate', deals.length === 0 || deals.every((d) => 'fare_gate' in d));
+    // The gating promise is load-bearing: withheld data must be ABSENT from the
+    // payload, not merely hidden by the client. These assert the boundary that
+    // the whole free/premium model rests on, so a refactor can't quietly
+    // widen it.
+    check('guest gets NO per-city prices (origins withheld)',
+      deals.every((d) => !('origins' in d)),
+      'a deal leaked per-city origin prices to an unauthenticated caller');
+    check('guest DOES get the origin_count teaser (login hook intact)',
+      deals.length === 0 || deals.some((d) => !('origin_count' in d) || typeof d.origin_count === 'number'));
+    const rawPayload = JSON.stringify(deals);
+    check('no member_token anywhere in a public payload',
+      !/member_token/.test(rawPayload),
+      'member_token is a capability credential and must never reach a client');
+    check('no raw email addresses in a public payload',
+      !/"email"\s*:/.test(rawPayload));
     const withSlug = deals.find((d) => d.slug);
     firstSlug = withSlug ? withSlug.slug : null;
+  }
+
+  // Every admin/cron surface must refuse an unauthenticated caller. Cheap to
+  // assert, and the failure mode (an endpoint accidentally shipped open) is
+  // severe.
+  for (const path of ['/api/admin/status', '/api/admin/ads', '/api/admin/deals',
+                      '/api/cron/fan-out', '/api/cron/weekly-report', '/api/ingest/email']) {
+    const { status } = await get(path);
+    check(`${path} refuses anonymous access`, status === 401 || status === 404 || status === 405,
+      `expected 401/404/405, got ${status}`);
   }
 
   // 4. Server-rendered deal landing page (if any live deal exists)

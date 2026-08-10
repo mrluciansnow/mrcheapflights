@@ -1,0 +1,288 @@
+// Multi-city fan-out — price one destination from every departure city we serve.
+//
+// When a deal lands for a single origin, this asks Travelpayouts for the same
+// destination from each other IE/UK airport and stores a row per origin in
+// deal_origins. That one table then feeds three surfaces: the "check from
+// other cities" control on the site, per-city Instagram carousel slides, and
+// smarter alerts (match a watcher's home airport).
+//
+// COST: Travelpayouts only — it's free for affiliates and already integrated
+// for fare verification. SerpApi is never used here; a fan-out across ~10
+// origins would burn the entire monthly free tier in a couple of deals.
+
+import { checkTravelpayouts, parseDealPrice } from './fares.js';
+import { routeIatas, buildSearchLink, CITY_IATA, canonicalCity } from './affiliate.js';
+
+// Departure airports we fan out across, per region. Deliberately the airports
+// with real scheduled traffic — not every entry in CITY_IATA.
+export const FANOUT_ORIGINS = {
+  ie: ['dublin', 'cork', 'shannon', 'knock', 'belfast'],
+  uk: ['london', 'manchester', 'birmingham', 'edinburgh', 'glasgow', 'bristol', 'newcastle', 'liverpool'],
+};
+
+function currencyFor(region) { return region === 'uk' ? 'GBP' : 'EUR'; }
+export function symbolFor(currency) { return currency === 'GBP' ? '£' : '€'; }
+
+/** Destination IATA for a deal, or null when the route can't be resolved. */
+function destOf(deal) {
+  const pair = routeIatas(deal.route, deal.region);
+  return pair ? pair.dest : null;
+}
+
+/**
+ * Price `deal` from every fan-out origin and upsert deal_origins rows.
+ * Best-effort: a failing origin is skipped, never throws.
+ */
+export async function fanOutDeal(env, deal, { maxOrigins = 10 } = {}) {
+  const out = { deal_id: deal.id, priced: 0, skipped: 0, errors: 0, cheapest: null };
+  const dest = destOf(deal);
+  if (!dest) { out.skipped++; out.reason = 'destination unresolved'; return out; }
+
+  const currency = currencyFor(deal.region);
+  const marker = (env.TRAVELPAYOUTS_MARKER || '').trim();
+  const origins = (FANOUT_ORIGINS[deal.region] || []).slice(0, maxOrigins);
+
+  // Price the origins CONCURRENTLY. Each is an independent Travelpayouts call
+  // with a 12s timeout, so doing ten of them serially could take well over a
+  // minute per deal and made the cron's wall-clock scale with the origin list.
+  // Capped at 4 in flight to stay polite to the API rather than firing all ten.
+  const CONCURRENCY = 4;
+  const queue = origins.filter((cityKey) => {
+    const iata = CITY_IATA[cityKey];
+    if (!iata || iata === dest) { out.skipped++; return false; }
+    return true;
+  });
+
+  const priced = [];
+  for (let i = 0; i < queue.length; i += CONCURRENCY) {
+    const chunk = queue.slice(i, i + CONCURRENCY);
+    const settled = await Promise.all(chunk.map(async (cityKey) => {
+      const iata = CITY_IATA[cityKey];
+      try {
+        // Reuse the verification client so retries/timeouts/fallbacks are shared.
+        const r = await checkTravelpayouts(env, { region: deal.region }, { origin: iata, dest });
+        return { cityKey, iata, res: r };
+      } catch { return { cityKey, iata, res: null }; }
+    }));
+    priced.push(...settled);
+  }
+
+  // Writes stay sequential — D1 is the cheap part and this keeps the upserts
+  // deterministic and easy to reason about.
+  for (const { cityKey, iata, res } of priced) {
+    if (!res) { out.errors++; continue; }
+
+    if (res?.skipped) { out.skipped++; continue; }     // no TP token configured
+    if (res?.error || res?.status !== 'ok' || res.price == null) { out.errors++; continue; }
+
+    const bookUrl = res.url || buildSearchLink(iata, dest, marker, res.departDate, res.returnDate);
+    try {
+      await env.DB.prepare(
+        `INSERT INTO deal_origins (deal_id, origin_city, origin_iata, price, currency,
+            depart_date, return_date, airline, stops, book_url, source, checked_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'travelpayouts', unixepoch())
+         ON CONFLICT(deal_id, origin_iata) DO UPDATE SET
+           price=excluded.price, currency=excluded.currency, depart_date=excluded.depart_date,
+           return_date=excluded.return_date, airline=excluded.airline, stops=excluded.stops,
+           book_url=excluded.book_url, checked_at=unixepoch()`
+      ).bind(deal.id, canonicalCity(cityKey), iata, res.price, res.currency || currency,
+             res.departDate || null, res.returnDate || null, res.airline || null,
+             res.stops ?? null, bookUrl).run();
+      out.priced++;
+      if (out.cheapest == null || res.price < out.cheapest.price) {
+        out.cheapest = { city: canonicalCity(cityKey), iata, price: res.price };
+      }
+    } catch { out.errors++; }
+  }
+
+  // Convert opposite-region prices into candidates (see the note above).
+  try {
+    out.derived = await deriveCrossRegionCandidates(env, deal, dest);
+  } catch { out.derived = 0; }
+
+  try {
+    await env.DB.prepare('UPDATE deals SET origins_synced_at=unixepoch() WHERE id=?').bind(deal.id).run();
+  } catch { /* column missing pre-migration — non-fatal */ }
+
+  return out;
+}
+
+/**
+ * Turn fan-out prices into deal CANDIDATES for the other region.
+ *
+ * Measured 2026-08-09: all-time candidates run IE 8 vs UK 108, and a scan of 86
+ * live feed items found exactly ONE mentioning an Irish airport. The Irish site
+ * keeps emptying not because of a parser bug but because the RSS sources barely
+ * cover Ireland — no amount of extraction tuning fixes a supply problem.
+ *
+ * But we already price every tracked destination from Dublin, Cork and Shannon.
+ * If London → Bali is worth featuring, Dublin → Bali at a comparable fare is
+ * worth featuring too, and we have that number. This converts it into a normal
+ * pending candidate: it goes through AI scoring and human review like any other
+ * source, never straight to live, and is capped so it can't flood the queue.
+ */
+async function deriveCrossRegionCandidates(env, deal, dest, cap = 2) {
+  const otherRegion = deal.region === 'ie' ? 'uk' : 'ie';
+  const destName = (String(deal.route).split(/→|->/)[1] || '').trim();
+  if (!destName) return 0;
+
+  // Price the OTHER region's main airports ourselves. The same-region fan-out
+  // above can't supply these — and the currency must follow the target region,
+  // or an Irish candidate would end up quoted in pounds.
+  const targets = (FANOUT_ORIGINS[otherRegion] || []).slice(0, cap + 1);
+  const results = await Promise.all(targets.map(async (cityKey) => {
+    const iata = CITY_IATA[cityKey];
+    if (!iata || iata === dest) return { cityKey, res: null };
+    try {
+      const r = await checkTravelpayouts(env, { region: otherRegion }, { origin: iata, dest });
+      return { cityKey, res: r };
+    } catch { return { cityKey, res: null }; }
+  }));
+
+  let made = 0;
+  for (const { cityKey, res } of results) {
+    if (made >= cap) break;
+    if (!res || res.status !== 'ok' || res.price == null) continue;
+
+    const city = canonicalCity(cityKey);
+    const route = `${city} → ${destName}`;
+    const symbol = symbolFor(res.currency || (otherRegion === 'uk' ? 'GBP' : 'EUR'));
+    const price = `${symbol}${Math.round(res.price)}`;
+
+    try {
+      // Never duplicate something already live, drafted or queued.
+      const exists = await env.DB.prepare(
+        `SELECT 1 FROM deals WHERE route=? AND region=?
+         UNION ALL
+         SELECT 1 FROM scraped_deals WHERE route=? AND region=? AND status IN ('pending','approved')
+         LIMIT 1`
+      ).bind(route, otherRegion, route, otherRegion).first();
+      if (exists) continue;
+
+      await env.DB.prepare(
+        `INSERT INTO scraped_deals (source_name, source_url, flag, route, dates, price, badge, region, raw_snippet)
+         VALUES ('Fan-out (derived)', ?, ?, ?, '', ?, ?, ?, ?)`
+      ).bind(
+        res.url || `https://mrcheapflights.${otherRegion === 'uk' ? 'co.uk' : 'ie'}/`,
+        deal.flag || '✈️', route, price, deal.badge || '🔥 Hot', otherRegion,
+        `Derived from the tracked destination "${destName}": Travelpayouts priced ${city} → ${destName} at ${price}.`
+      ).run();
+      made++;
+    } catch { /* one failure must not stop the fan-out */ }
+  }
+  return made;
+}
+
+/** Cron body: fan out over live deals, stalest (and never-synced) first. */
+export async function runFanOut(env, { maxDeals = 4 } = {}) {
+  const summary = { considered: 0, priced: 0, errors: 0, derived: 0, deals: [], tp_armed: !!env.TRAVELPAYOUTS_TOKEN };
+  if (!summary.tp_armed) { summary.reason = 'TRAVELPAYOUTS_TOKEN not set'; return summary; }
+
+  const { results } = await env.DB.prepare(
+    `SELECT id, route, region, price, flag, badge FROM deals
+     WHERE status='live' AND (expiry IS NULL OR date(expiry) >= date('now'))
+     ORDER BY (origins_synced_at IS NULL) DESC, origins_synced_at ASC
+     LIMIT ?`
+  ).bind(maxDeals).all();
+
+  for (const deal of results || []) {
+    summary.considered++;
+    const r = await fanOutDeal(env, deal);
+    summary.priced += r.priced;
+    summary.errors += r.errors;
+    summary.derived += r.derived || 0;
+    if (r.priced) summary.deals.push({ id: deal.id, route: deal.route, priced: r.priced, cheapest: r.cheapest });
+  }
+  return summary;
+}
+
+/**
+ * Origin prices for one deal, cheapest first. Read-only.
+ * `listedPrice` (the deal's own headline price) is used to mark which origin
+ * the published deal refers to.
+ */
+export async function originsForDeal(env, dealId, listedPrice) {
+  let rows = [];
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT origin_city, origin_iata, price, currency, depart_date, return_date,
+              airline, stops, book_url, checked_at
+       FROM deal_origins WHERE deal_id=? AND price IS NOT NULL
+       ORDER BY price ASC LIMIT 12`
+    ).bind(dealId).all();
+    rows = results || [];
+  } catch { return []; }
+
+  const listed = parseDealPrice(listedPrice);
+  return rows.map((r, i) => ({
+    ...r,
+    symbol: symbolFor(r.currency),
+    cheapest: i === 0,
+    // Flag origins beating the headline price — the genuinely useful signal.
+    beats_listed: listed != null && r.price < listed,
+  }));
+}
+
+/**
+ * How many origins each deal is priced from → { dealId: count }.
+ * PUBLIC-SAFE: a count only. It's the hook that makes a guest want to log in
+ * ("priced from 5 cities") without leaking a single price. Prices themselves
+ * stay behind the same tier gate as fare details.
+ */
+export async function originsCountsForDeals(env, dealIds) {
+  if (!dealIds?.length) return {};
+  const marks = dealIds.map(() => '?').join(',');
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT deal_id, COUNT(*) AS n FROM deal_origins
+       WHERE deal_id IN (${marks}) AND price IS NOT NULL GROUP BY deal_id`
+    ).bind(...dealIds).all();
+    const map = {};
+    for (const r of results || []) map[r.deal_id] = r.n;
+    return map;
+  } catch { return {}; }
+}
+
+/**
+ * Origin prices for MANY deals in ONE query → { dealId: [rows] }.
+ *
+ * /api/deals previously called originsForDeal() per deal inside a Promise.all,
+ * so rendering 14 deals fired 14 separate D1 round-trips and the cost grew with
+ * the listing. One IN query returns the same data.
+ */
+export async function originsForDeals(env, dealIds, priceByDeal = {}) {
+  if (!dealIds?.length) return {};
+  const marks = dealIds.map(() => '?').join(',');
+  let rows = [];
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT deal_id, origin_city, origin_iata, price, currency, depart_date, return_date,
+              airline, stops, book_url, checked_at
+       FROM deal_origins WHERE deal_id IN (${marks}) AND price IS NOT NULL
+       ORDER BY deal_id, price ASC`
+    ).bind(...dealIds).all();
+    rows = results || [];
+  } catch { return {}; }
+
+  const out = {};
+  for (const r of rows) {
+    const list = (out[r.deal_id] = out[r.deal_id] || []);
+    const listed = parseDealPrice(priceByDeal[r.deal_id]);
+    list.push({
+      ...r,
+      symbol: symbolFor(r.currency),
+      cheapest: list.length === 0,          // rows arrive price-ascending per deal
+      beats_listed: listed != null && r.price < listed,
+    });
+  }
+  return out;
+}
+
+/** Compact per-city payload for posters/captions (no gating concerns). */
+export async function originSlides(env, dealId, limit = 8) {
+  const rows = await originsForDeal(env, dealId, null);
+  return rows.slice(0, limit).map((r) => ({
+    city: r.origin_city, iata: r.origin_iata,
+    price: r.price, label: r.symbol + Math.round(r.price),
+  }));
+}

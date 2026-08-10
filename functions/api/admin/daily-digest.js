@@ -41,6 +41,7 @@ export async function onRequestPost(context) {
     watchStats,
     topWatchedDests,
     marketingSignups,
+    referralStats,
   ] = await Promise.all([
     db.prepare(`SELECT id, source_name, route, price, badge, region, confidence, created_at
                 FROM scraped_deals WHERE status='pending'
@@ -89,6 +90,11 @@ export async function onRequestPost(context) {
                 FROM subscribers s LEFT JOIN campaigns c ON c.slug = s.source
                 WHERE s.created_at >= unixepoch()-604800
                 GROUP BY src ORDER BY signups DESC LIMIT 6`).all().catch(() => ({ results: [] })),
+    // Referral loop — totals + top referrer (columns exist from migration 0023).
+    db.prepare(`SELECT
+                  (SELECT COUNT(*) FROM subscribers WHERE referred_by IS NOT NULL) AS referred_total,
+                  (SELECT COUNT(*) FROM subscribers WHERE referred_by IS NOT NULL AND created_at >= unixepoch()-604800) AS referred_7d,
+                  (SELECT MAX(referral_count) FROM subscribers) AS top_count`).first().catch(() => null),
   ]);
 
   const today = new Date().toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -120,13 +126,21 @@ export async function onRequestPost(context) {
     alerts:     { icon: '🔔', label: 'Price alerts' },
     dest_content: { icon: '🗺️', label: 'Destination SEO' },
     fares:      { icon: '🔎', label: 'Fare verification' },
+    'ads-sync': { icon: '🎯', label: 'Ad sync' },
+    'weekly-report': { icon: '📈', label: 'Weekly report' },
   };
   const opSummary = (kind, detail) => {
     let d; try { d = JSON.parse(detail); } catch { return ''; }
     if (!d) return '';
     switch (kind) {
-      case 'scrape': return `${d.sources_checked ?? '?'} sources · ${d.deals_found ?? 0} found · ${d.deals_new ?? 0} new${d.errors?.length ? ` · ⚠️ ${d.errors.length} source error(s)` : ''}`;
-      case 'enrich': return d.error ? d.error : `${d.enriched ?? 0} scored · ${d.auto_approved ?? 0} auto-approved${d.auto_published ? ` · ${d.auto_published} straight to live` : ''}`;
+      case 'scrape': {
+        const dead = d.sources ? Object.entries(d.sources).filter(([, v]) => v.ok && !v.found).map(([k]) => k) : [];
+        return `${d.feeds_fetched ?? d.sources_checked ?? '?'} feeds · ${d.deals_found ?? 0} found · ${d.deals_new ?? 0} new`
+          + (d.deals_updated ? ` · ${d.deals_updated} price-updated` : '')
+          + (d.errors?.length ? ` · ⚠️ ${d.errors.length} source error(s)` : '')
+          + (dead.length ? ` · 💤 ${dead.length} source(s) returned nothing: ${dead.slice(0, 3).join(', ')}` : '');
+      }
+      case 'enrich': return d.error ? d.error : `${d.enriched ?? 0} scored · ${d.auto_approved ?? 0} auto-approved${d.auto_published ? ` · ${d.auto_published} straight to live` : ''}${d.blocked ? ` · 🚫 ${d.blocked} blocked from promotion` : ''}${d.captions_dropped ? ` · ✂️ ${d.captions_dropped} caption(s) failed the price/destination check` : ''}${d.tokens_out ? ` · ${((d.tokens_in||0)+(d.tokens_out||0)).toLocaleString()} tokens` : ''}`;
       case 'newsletter': return d.armed
         ? `IE ${d.ie?.sent ?? 0}/${d.ie?.subscribers ?? 0} sent · UK ${d.uk?.sent ?? 0}/${d.uk?.subscribers ?? 0} sent`
         : 'shell mode (not armed)';
@@ -135,10 +149,19 @@ export async function onRequestPost(context) {
         ? d.reason
         : `${d.deals_scanned ?? 0} deal(s) scanned · ${d.matched ?? 0} matched · ${d.sent ?? 0} alert(s) sent${d.skipped_throttle ? ` · ${d.skipped_throttle} throttled` : ''}`;
       case 'dest_content': return `${d.generated ?? 0} destination guide(s) generated`;
-      case 'fares': return `${d.tp_checked ?? 0} TP + ${d.google_checked ?? 0} Google checks · ${d.verified ?? 0} verified${d.price_changed ? ` · ${d.price_changed} price-changed` : ''}${d.new_lows && d.new_lows.length ? ` · 📉 ${d.new_lows.length} new low(s)` : ''}${!d.tp_armed ? ' · TP token unset' : ''}${!d.google_armed ? ' · SerpApi unset' : ''}`;
-      case 'cleanup': return `${d.rate_limit_purged ?? 0} rate-limit rows · ${d.scraped_rejected_purged ?? 0} rejected deals purged`;
+      case 'fares': return `${d.tp_checked ?? 0} TP + ${d.google_checked ?? 0} Google checks · ${d.verified ?? 0} verified${d.price_changed ? ` · ${d.price_changed} price-changed` : ''}${d.new_lows && d.new_lows.length ? ` · 📉 ${d.new_lows.length} new low(s)` : ''}${d.staled && d.staled.length ? ` · ⛔ ${d.staled.length} retired (price gone)` : ''}${!d.tp_armed ? ' · TP token unset' : ''}${!d.google_armed ? ' · SerpApi unset' : ''}`;
+      case 'cleanup': return `${d.rate_limit_purged ?? 0} rate-limit rows · ${d.scraped_rejected_purged ?? 0} rejected deals purged`
+        + (d.images_mb != null ? ` · 🖼 ${d.images_remaining} images using ${d.images_mb}MB` : '');
       case 'publish': return `${d.deals ?? 0} deal(s) fanned out`;
-      default: return String(detail).slice(0, 80);
+      case 'weekly-report': return d.error ? d.error
+        : `${d.thisWeek ?? 0} signups this week${d.delta != null ? ` (${d.delta >= 0 ? '+' : ''}${d.delta}%)` : ''} · email ${d.email || '?'}`;
+      case 'ads-sync': return (d.considered ?? 0) === 0
+        ? `${d.live ? 'live' : 'dry-run'} · no launched campaigns`
+        : `${d.considered} campaign(s) · ${d.synced ?? 0} synced${d.paused_by_guardrail && d.paused_by_guardrail.length ? ` · ⏸ ${d.paused_by_guardrail.length} auto-paused` : ''}${d.live ? '' : ' · dry-run'}`;
+      default: {
+        if (d.status === 'running') return '⏱ killed mid-run — no result written (scheduler timeout?)';
+        return String(detail).slice(0, 80);
+      }
     }
   };
   const opsRows = (opLog.results || []).map(r => {
@@ -150,6 +173,13 @@ export async function onRequestPost(context) {
       <td style="padding:7px 12px;border-bottom:1px solid #eee;font-size:12px;color:#999;white-space:nowrap">${time}</td>
     </tr>`;
   }).join('');
+  // A row still marked 'running' means the Worker was KILLED mid-flight (the
+  // scheduler's 30s cutoff) — the run never got to write its own result. These
+  // used to be completely invisible: op_log simply had no row at all.
+  const opsKilled = (opLog.results || []).filter(r => {
+    if (r.ok) return false;
+    try { return JSON.parse(r.detail || '{}').status === 'running'; } catch { return false; }
+  }).length;
   const opsFailed = (opLog.results || []).filter(r => !r.ok).length;
   const opsHtml = (opLog.results || []).length
     ? `<h2>${opsFailed ? '🚨' : '⚙️'} Automation — last 24h${opsFailed ? ` (${opsFailed} FAILED)` : ' (all green)'}</h2>
@@ -247,6 +277,14 @@ export async function onRequestPost(context) {
       </tbody>
     </table>` : '';
 
+  const rs = referralStats || {};
+  const referralHtml = (rs.referred_total || 0) > 0 ? `
+    <h2>🎁 Referrals</h2>
+    <p style="font-size:13px;color:#333;margin:0 0 16px">
+      <strong>${rs.referred_total}</strong> total referred signups ·
+      <strong>${rs.referred_7d || 0}</strong> in the last 7 days${rs.top_count ? ` · top referrer has <strong>${rs.top_count}</strong> invite(s)` : ''}.
+    </p>` : '';
+
   const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><style>
@@ -285,6 +323,8 @@ export async function onRequestPost(context) {
     ${bizHtml}
 
     ${marketingHtml}
+
+    ${referralHtml}
 
     <h2>🔍 Deals Pending Review (${pendingDeals.results.length})</h2>
     <table>
@@ -331,7 +371,7 @@ Open https://mrcheapflights.ie/pipeline.html to review pending deals.`;
   const result = await sendEmail(context.env, {
     to,
     subject: opsFailed
-      ? `🚨 MCF Daily Digest — ${opsFailed} automation failure(s) · ${pendingDeals.results.length} pending`
+      ? `🚨 MCF Daily Digest — ${opsFailed} automation failure(s)${opsKilled ? ` (${opsKilled} killed mid-run)` : ''} · ${pendingDeals.results.length} pending`
       : `✈ MCF Daily Digest — ${pendingDeals.results.length} pending · ${stats.premium} premium`,
     html,
     text: plainText,

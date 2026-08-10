@@ -80,7 +80,103 @@ const CITY_IATA = {
   'cancun': 'CUN', 'mexico city': 'MEX', 'rio': 'RIO', 'rio de janeiro': 'RIO',
   'sao paulo': 'SAO', 'buenos aires': 'BUE', 'lima': 'LIM', 'bogota': 'BOG',
   'santiago': 'SCL', 'havana': 'HAV',
+  // ── Cities the feeds actually headline that were missing ──
+  // Each of these was a real deal the parser rejected purely because the city
+  // wasn't mapped (e.g. "Manchester to Osaka, Japan for £519").
+  'osaka': 'OSA', 'beijing': 'BJS', 'shanghai': 'SHA', 'seoul': 'SEL',
+  'taipei': 'TPE', 'hanoi': 'HAN', 'ho chi minh': 'SGN', 'saigon': 'SGN',
+  'kuala lumpur': 'KUL', 'manila': 'MNL', 'jakarta': 'CGK', 'colombo': 'CMB',
+  'male': 'MLE', 'maldives': 'MLE', 'mauritius': 'MRU', 'seychelles': 'SEZ',
+  'zanzibar': 'ZNZ', 'marrakesh': 'RAK', 'tel aviv': 'TLV', 'amman': 'AMM',
+  'muscat': 'MCT', 'kuwait': 'KWI', 'bahrain': 'BAH', 'riyadh': 'RUH',
+  'jeddah': 'JED', 'tbilisi': 'TBS', 'yerevan': 'EVN', 'baku': 'GYD',
+  'almaty': 'ALA', 'tashkent': 'TAS', 'kathmandu': 'KTM', 'dhaka': 'DAC',
+  'chennai': 'MAA', 'bengaluru': 'BLR', 'bangalore': 'BLR', 'hyderabad': 'HYD',
+  'goa': 'GOI', 'kochi': 'COK', 'kolkata': 'CCU',
+  // Found by auditing live deals against the resolver: the ONLY servable deal
+  // on the site was "London → Lapland", which resolved to nothing — so fan-out
+  // reported priced:0 every run and the multi-city features had no data to
+  // work with. Worth checking new destinations resolve before they go live.
+  'lapland': 'RVN', 'rovaniemi': 'RVN', 'kittila': 'KTT', 'ivalo': 'IVL',
+  'macau': 'MFM', 'macao': 'MFM',
+  'zante': 'ZTH', 'zakynthos': 'ZTH', 'kos': 'KGS', 'kefalonia': 'EFL',
+  'thessaloniki': 'SKG', 'bodrum': 'BJV', 'izmir': 'ADB',
+  'tirana': 'TIA', 'sofia': 'SOF', 'bucharest': 'OTP', 'belgrade': 'BEG',
+  'ljubljana': 'LJU', 'bratislava': 'BTS', 'riga': 'RIX', 'vilnius': 'VNO',
+  'tallinn': 'TLL', 'gdansk': 'GDN', 'wroclaw': 'WRO', 'poznan': 'POZ',
+  'bergen': 'BGO', 'gothenburg': 'GOT', 'billund': 'BLL', 'aarhus': 'AAR',
+  'bilbao': 'BIO', 'santiago de compostela': 'SCQ', 'asturias': 'OVD',
+  'girona': 'GRO', 'reus': 'REU', 'murcia': 'RMU', 'almeria': 'LEI',
+  'jerez': 'XRY', 'menorca': 'MAH', 'lyon': 'LYS', 'marseille': 'MRS',
+  'bordeaux': 'BOD', 'nantes': 'NTE', 'montpellier': 'MPL', 'biarritz': 'BIQ',
+  'turin': 'TRN', 'bologna': 'BLQ', 'pisa': 'PSA', 'florence': 'FLR',
+  'bari': 'BRI', 'catania': 'CTA', 'palermo': 'PMO', 'cagliari': 'CAG',
+  'sardinia': 'CAG', 'sicily': 'CTA', 'olbia': 'OLB', 'brindisi': 'BDS',
+  'hamburg': 'HAM', 'cologne': 'CGN', 'dusseldorf': 'DUS', 'stuttgart': 'STR',
+  'nuremberg': 'NUE', 'basel': 'BSL', 'salzburg': 'SZG', 'innsbruck': 'INN',
+  'rotterdam': 'RTM', 'eindhoven': 'EIN', 'luxembourg': 'LUX',
+  'boston': 'BOS', 'philadelphia': 'PHL', 'atlanta': 'ATL', 'denver': 'DEN',
+  'seattle': 'SEA', 'san diego': 'SAN', 'phoenix': 'PHX', 'dallas': 'DFW',
+  'houston': 'HOU', 'nashville': 'BNA', 'new orleans': 'MSY',
+  'calgary': 'YYC', 'ottawa': 'YOW', 'halifax': 'YHZ',
+  'bridgetown': 'BGI', 'barbados': 'BGI', 'antigua': 'ANU', 'jamaica': 'MBJ',
+  'montego bay': 'MBJ', 'punta cana': 'PUJ', 'bahamas': 'NAS', 'nassau': 'NAS',
+  'st lucia': 'UVF', 'grenada': 'GND', 'tobago': 'TAB', 'trinidad': 'POS',
+  'brisbane': 'BNE', 'adelaide': 'ADL', 'christchurch': 'CHC',
+  'quito': 'UIO', 'la paz': 'LPB', 'montevideo': 'MVD', 'asuncion': 'ASU',
+  // ── Country-level destinations ──
+  // Feeds headline the country, not the airport ("Manchester to Japan £519").
+  // Mapped to each country's primary long-haul gateway so these resolve
+  // instead of being rejected as unknown places.
+  'japan': 'TYO', 'south korea': 'SEL', 'korea': 'SEL', 'china': 'PEK',
+  'thailand': 'BKK', 'vietnam': 'SGN', 'india': 'DEL', 'indonesia': 'DPS',
+  'malaysia': 'KUL', 'philippines': 'MNL', 'sri lanka': 'CMB',
+  'usa': 'NYC', 'united states': 'NYC', 'america': 'NYC', 'canada': 'YTO',
+  'mexico': 'MEX', 'brazil': 'SAO', 'argentina': 'BUE', 'peru': 'LIM',
+  'colombia': 'BOG', 'chile': 'SCL', 'cuba': 'HAV', 'costa rica': 'SJO',
+  'japan tokyo': 'TYO', 'uae': 'DXB', 'qatar': 'DOH', 'oman': 'MCT',
+  'south africa': 'JNB', 'kenya': 'NBO', 'tanzania': 'JRO', 'egypt': 'CAI',
+  'morocco': 'RAK', 'tunisia': 'TUN', 'turkey': 'IST', 'israel': 'TLV',
+  'australia': 'SYD', 'new zealand': 'AKL',
+  'portugal': 'LIS', 'spain': 'MAD', 'italy': 'ROM', 'france': 'PAR',
+  'greece': 'ATH', 'croatia': 'ZAG', 'germany': 'BER', 'netherlands': 'AMS',
+  'poland': 'WAW', 'hungary': 'BUD', 'austria': 'VIE', 'switzerland': 'ZRH',
+  'norway': 'OSL', 'sweden': 'STO', 'denmark': 'CPH', 'finland': 'HEL',
+  'canaries': 'LPA', 'canary islands': 'LPA', 'algarve': 'FAO',
+  'costa del sol': 'AGP', 'balearics': 'PMI',
 };
+
+/** Departure airports we actually serve, per region. The scraper uses this to
+ *  validate an extracted origin instead of defaulting to Dublin/London — a
+ *  default silently republished "Cork → Lisbon" as "Dublin → Lisbon". */
+export const REGION_ORIGINS = {
+  ie: ['dublin', 'cork', 'shannon', 'knock', 'ireland west', 'kerry', 'farranfore', 'belfast'],
+  uk: ['london', 'heathrow', 'gatwick', 'stansted', 'luton', 'manchester', 'birmingham',
+       'glasgow', 'edinburgh', 'bristol', 'newcastle', 'leeds', 'liverpool', 'cardiff',
+       'aberdeen', 'east midlands', 'belfast'],
+};
+
+/** Canonical display name for a city key ("new york" → "New York"). */
+export function canonicalCity(key) {
+  return String(key || '').split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+/** Resolve free text to a known city key, or null. Exposed so the scraper can
+ *  apply resolve-or-reject rather than inventing a location. */
+export function resolveCityKey(name) {
+  const clean = String(name || '').toLowerCase().trim()
+    .replace(/\s*\(.*\)\s*/g, '').replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
+  if (!clean) return null;
+  if (CITY_IATA[clean]) return clean;
+  // Longest key first so "new york city" doesn't match "york"-like short keys.
+  const keys = Object.keys(CITY_IATA).sort((a, b) => b.length - a.length);
+  for (const key of keys) {
+    if (clean === key || clean.endsWith(' ' + key) || clean.startsWith(key + ' ')) return key;
+  }
+  return null;
+}
+
+export { CITY_IATA };
 
 function cityToIata(name) {
   const clean = String(name || '').toLowerCase().trim()

@@ -1,3 +1,4 @@
+-- (Renumbered from 0007 on the trunk merge — see 0031.)
 -- Croker Flicks online duels.
 --
 -- 0006 gave us a parallel time trial: both players kick against the server's

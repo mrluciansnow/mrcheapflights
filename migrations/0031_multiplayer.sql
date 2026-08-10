@@ -1,3 +1,7 @@
+-- (Renumbered from 0006 when the game branch merged with the site's trunk:
+--  both had independently reached 0006-0008. The runner records migrations
+--  by full filename and adopts anything whose tables already exist, so a
+--  database that applied the old name simply adopts the new one.)
 -- Croker Flicks multiplayer.
 -- Players start as anonymous device accounts and can claim an email later, so
 -- nobody is asked to sign up before they have played.

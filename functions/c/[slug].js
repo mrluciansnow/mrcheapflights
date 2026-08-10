@@ -10,8 +10,13 @@ function esc(s) {
 }
 
 export async function onRequestGet(context) {
-  const isUk = new URL(context.request.url).hostname.includes('co.uk');
+  const reqUrl = new URL(context.request.url);
+  const isUk = reqUrl.hostname.includes('co.uk');
   const region = isUk ? 'uk' : 'ie';
+  // Creative-level attribution: ?v=<n> identifies which ad variant sent them.
+  // Bounded 0-9 and passed through to /api/signup (see migration 0025).
+  const vRaw = parseInt(reqUrl.searchParams.get('v'));
+  const variant = Number.isFinite(vRaw) && vRaw >= 0 && vRaw <= 9 ? vRaw : null;
   const base = isUk ? 'https://mrcheapflights.co.uk' : 'https://mrcheapflights.ie';
   const cur = isUk ? '£' : '€';
   const slug = String(context.params.slug || '').toLowerCase();
@@ -100,16 +105,16 @@ button:active{transform:translateY(1px)}
   </div>
 </div>
 <script>
-var SRC=${JSON.stringify(slug)};
+var SRC=${JSON.stringify(slug)},VAR=${JSON.stringify(variant)};
 document.getElementById('f').addEventListener('submit',function(e){
   e.preventDefault();
   var email=document.getElementById('email').value.trim();
   if(!email||email.indexOf('@')<0){document.getElementById('email').focus();return;}
   var btn=document.getElementById('btn');btn.disabled=true;btn.textContent='Signing you up…';
-  fetch('/api/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,region:${JSON.stringify(region)},source:SRC})})
+  fetch('/api/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,region:${JSON.stringify(region)},source:SRC,variant:VAR})})
    .then(function(r){
      if(r.ok){document.getElementById('form-view').style.display='none';document.getElementById('ok-view').classList.add('on');
-       try{if(window.gtag)gtag('event','sign_up',{method:'campaign',source:SRC});}catch(_){}}
+       try{if(window.gtag)gtag('event','sign_up',{method:'campaign',source:SRC,variant:VAR});}catch(_){}}
      else{btn.disabled=false;btn.textContent='Get Free Deals ✈';alert('Something went wrong — try again.');}
    })
    .catch(function(){btn.disabled=false;btn.textContent='Get Free Deals ✈';alert('Network error — try again.');});

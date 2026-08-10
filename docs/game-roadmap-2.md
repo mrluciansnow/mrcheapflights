@@ -392,7 +392,7 @@ read — as part of the contract.
 
 **The API**, as Pages Functions on the existing D1 binding:
 `POST /api/mp/match` (create or join), `POST /api/mp/turn` (submit a record),
-`GET /api/mp/:id` (poll and settle). Migration `0006_multiplayer.sql` adds
+`GET /api/mp/:id` (poll and settle). Migration `0031_multiplayer.sql` adds
 players, matches, turns and a ledger. Anonymous device accounts from the first
 kick, hashed before storage, claimable by email later.
 
@@ -1099,7 +1099,7 @@ without a single frame crossing the wire.
 record and must land on the server's outcome. If it ever disagrees, the two
 players are watching different matches, and the test says so before they do.
 
-## Schema — `migrations/0007_duel.sql`
+## Schema — `migrations/0032_duel.sql`
 
 No `ALTER`, only `CREATE ... IF NOT EXISTS`, so re-running the file against a
 live database is a no-op. **A match is a duel if and only if it has a

@@ -124,6 +124,21 @@ async function handle(context) {
       continue;
     }
 
+    // CLAIM THE DAY BEFORE SENDING. The "already sent today" marker used to be
+    // written only after the whole loop finished, leaving a window where a
+    // crash or timeout part-way through (say after 200 of 500 emails) meant the
+    // next run saw no marker and mailed EVERYONE a second time. Duplicate
+    // newsletters are far worse than a missed day, so the claim is taken up
+    // front: an interrupted run yields "already sent today" tomorrow rather
+    // than a double send. Deals stay published_email=0 unless a send succeeds,
+    // so their content simply rolls into the next edition.
+    try {
+      await context.env.DB.prepare(
+        `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, unixepoch())
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=unixepoch()`
+      ).bind(`newsletter_last_sent_${region}`, today).run();
+    } catch { /* if the claim fails, fall through — layer 2 still guards */ }
+
     let sent = 0;
     let skippedNoMatch = 0;
     for (const sub of subs) {
@@ -154,7 +169,9 @@ async function handle(context) {
       regionSummary.truncated = `daily send budget (${MAX_SENDS_PER_RUN}) reached`;
     }
 
-    // Mark deals + date only after at least one successful send
+    // Mark deals + date only after at least one successful send.
+    // NOTE the claim date was already taken before the send loop — this block
+    // only records which deals went out.
     if (sent > 0) {
       const stmts = deals.map((d) => context.env.DB.prepare(
         'UPDATE deals SET published_email=1, updated_at=unixepoch() WHERE id=?'

@@ -20,6 +20,12 @@
 import { routeIatas, buildSearchLink } from './affiliate.js';
 
 const VERIFY_TOLERANCE = 0.15; // found ≤ listed×1.15 still counts as verified
+// Beyond this the listed price is no longer a real offer — the site promises
+// "every deal independently fare-checked", so continuing to advertise it is
+// the one outcome we can't allow. Such deals are expired automatically.
+// (Found live on 2026-08-01: Manchester → Hong Kong listed £385, actually £545;
+//  London → Orlando listed £290, actually £457.)
+const STALE_PRICE_RATIO = 1.35;
 
 export function parseDealPrice(price) {
   const n = parseFloat(String(price || '').replace(/[^0-9.]/g, ''));
@@ -259,7 +265,22 @@ async function upsertCheck(env, dealId, source, listedPrice, r) {
       if (prev && prev.lowest != null && r.price < prev.lowest - 0.01) newLow = true;
     } catch { /* price_history may not exist yet — ignore */ }
   }
-  return { status, newLow };
+
+  // Stale-price guard: if the real fare is materially above what we advertise,
+  // retire the deal rather than keep showing a price nobody can book. Only
+  // ever expires (never revives), so it can't resurrect a dead listing.
+  let staled = false;
+  if (status === 'price_changed' && listedPrice != null && r.price != null
+      && r.price > listedPrice * STALE_PRICE_RATIO) {
+    try {
+      await env.DB.prepare(
+        `UPDATE deals SET expiry=date('now','-1 day'), updated_at=unixepoch()
+         WHERE id=? AND (expiry IS NULL OR date(expiry) >= date('now'))`
+      ).bind(dealId).run();
+      staled = true;
+    } catch { /* non-fatal */ }
+  }
+  return { status, newLow, staled };
 }
 
 /** Run fare checks over live deals. Prioritises never-checked deals, then the
@@ -267,7 +288,7 @@ async function upsertCheck(env, dealId, source, listedPrice, r) {
 export async function runFareChecks(env, { maxDeals = 15, maxGoogle = 1 } = {}) {
   const summary = {
     deals_considered: 0, tp_checked: 0, google_checked: 0,
-    verified: 0, price_changed: 0, not_found: 0, errors: 0, new_lows: [],
+    verified: 0, price_changed: 0, not_found: 0, errors: 0, new_lows: [], staled: [],
     tp_armed: !!env.TRAVELPAYOUTS_TOKEN, google_armed: !!env.SERPAPI_KEY,
   };
 
@@ -292,7 +313,8 @@ export async function runFareChecks(env, { maxDeals = 15, maxGoogle = 1 } = {}) 
     const tp = await checkTravelpayouts(env, deal, pair);
     if (!tp.skipped) {
       summary.tp_checked++;
-      const { status: st, newLow } = await upsertCheck(env, deal.id, 'travelpayouts', listedPrice, tp);
+      const { status: st, newLow, staled } = await upsertCheck(env, deal.id, 'travelpayouts', listedPrice, tp);
+      if (staled) summary.staled.push({ deal_id: deal.id, route: deal.route, listed: deal.price, actual: tp.price });
       summary[st === 'verified' ? 'verified' : st === 'price_changed' ? 'price_changed' : st === 'not_found' ? 'not_found' : 'errors']++;
       if (newLow) summary.new_lows.push({ deal_id: deal.id, route: deal.route, price: tp.price, currency: tp.currency });
       if (tp.departDate) tpDates = { depart: tp.departDate, ret: tp.returnDate };
@@ -305,7 +327,8 @@ export async function runFareChecks(env, { maxDeals = 15, maxGoogle = 1 } = {}) 
       if (!g.skipped) {
         googleBudget--;
         summary.google_checked++;
-        const { status: st, newLow } = await upsertCheck(env, deal.id, 'google', listedPrice, g);
+        const { status: st, newLow, staled } = await upsertCheck(env, deal.id, 'google', listedPrice, g);
+        if (staled) summary.staled.push({ deal_id: deal.id, route: deal.route, listed: deal.price, actual: g.price });
         summary[st === 'verified' ? 'verified' : st === 'price_changed' ? 'price_changed' : st === 'not_found' ? 'not_found' : 'errors']++;
         if (newLow) summary.new_lows.push({ deal_id: deal.id, route: deal.route, price: g.price, currency: g.currency });
       }

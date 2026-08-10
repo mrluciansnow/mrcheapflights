@@ -5,9 +5,9 @@
  *   node tools/migrate.mjs --remote --dry
  *
  * Why this exists: `wrangler d1 execute --file` is a single file and no
- * memory. 0006 and 0007 are written to be safely re-runnable, but 0001-0004
- * are not — they create tables unguarded and insert seed rows — so "just run
- * them all again" corrupts a live database. Something has to remember.
+ * memory. Some migrations are written to be safely re-runnable; 0001-0004 are
+ * not — they create tables unguarded and insert seed rows — so "just run them
+ * all again" corrupts a live database. Something has to remember.
  *
  * `cf_migrations` is that memory. The interesting case is the FIRST run
  * against a database that already has a schema and no memory of how it got
@@ -58,6 +58,20 @@ function objectsIn(sql) {
 
 const files = readdirSync(DIR).filter(f => f.endsWith('.sql')).sort();
 if (!files.length) { console.log('no migrations'); process.exit(0); }
+
+/* Two branches numbering independently is how you end up with two 0007s. It is
+   survivable — migrations are recorded by full filename, not by number — but
+   the order between same-numbered files is then alphabetical, which is nobody's
+   intent. Say so rather than let it pass unnoticed. */
+const byNumber = new Map();
+for (const f of files) {
+  const n = f.slice(0, 4);
+  byNumber.set(n, (byNumber.get(n) || []).concat(f));
+}
+for (const [n, group] of byNumber) {
+  if (group.length > 1) console.log('  !!   ' + n + ' is used by ' + group.length +
+    ' migrations: ' + group.join(', ') + ' — order between them is alphabetical');
+}
 
 console.log('database : ' + DB + '  (' + (REMOTE ? 'REMOTE — production' : 'local') + ')');
 console.log('files    : ' + files.length + (DRY ? '   [dry run]' : ''));

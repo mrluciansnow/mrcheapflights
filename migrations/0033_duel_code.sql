@@ -1,3 +1,4 @@
+-- (Renumbered from 0008 on the trunk merge — see 0031.)
 -- A short code you can read down a phone.
 --
 -- Match ids are 20 hex characters, which is right for a URL and useless for a

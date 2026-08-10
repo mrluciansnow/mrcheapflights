@@ -31,6 +31,41 @@ td{padding:8px;border-top:1px solid rgba(255,255,255,0.06);vertical-align:middle
 .pill.tt{background:rgba(255,45,120,0.15);color:#ff7aa8}
 .pill.ig{background:rgba(131,58,180,0.2);color:#c98bff}
 .pill.other{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.5)}
+.pill.meta{background:rgba(24,119,242,0.18);color:#6fa8ff}
+.pill.tiktok{background:rgba(255,45,120,0.15);color:#ff7aa8}
+.pill.dry{background:rgba(255,215,0,0.14);color:var(--y)}
+.pill.live{background:rgba(0,229,204,0.15);color:var(--t)}
+.pill.st-draft{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.55)}
+.pill.st-paused{background:rgba(255,180,0,0.15);color:#ffcf66}
+.pill.st-active{background:rgba(0,229,204,0.15);color:var(--t)}
+.pill.st-archived{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.35)}
+.pill.st-error{background:rgba(248,113,113,0.15);color:#f87171}
+.banner{background:rgba(255,180,0,0.07);border:1px solid rgba(255,180,0,0.28);border-radius:10px;padding:10px 12px;font-size:11.5px;line-height:1.5;color:rgba(255,255,255,0.72);margin-bottom:1rem}
+.banner b{color:#ffcf66}
+.conn{display:flex;gap:8px;flex-wrap:wrap;font-size:11px;margin-bottom:8px}
+.conn .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px}
+.dot.on{background:var(--t)}.dot.off{background:rgba(255,255,255,0.25)}
+.mini{font-size:10px;padding:3px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;cursor:pointer}
+.mini.go{border-color:rgba(0,229,204,0.4);color:var(--t)}
+.mini.stop{border-color:rgba(255,180,0,0.4);color:#ffcf66}
+.adv{font-size:11.5px;padding:6px 10px;border-radius:8px;margin-top:6px;border-left:3px solid}
+.adv-info{background:rgba(255,255,255,0.04);border-color:rgba(255,255,255,0.2);color:rgba(255,255,255,0.6)}
+.adv-warn{background:rgba(255,180,0,0.07);border-color:#ffcf66;color:#ffd98a}
+.adv-good{background:rgba(0,229,204,0.07);border-color:var(--t);color:#7ff0e2}
+.act{font-size:11px;color:rgba(255,255,255,0.6);padding:5px 0;border-top:1px solid rgba(255,255,255,0.05);display:flex;align-items:center;gap:5px}
+.act b{color:rgba(255,255,255,0.85);text-transform:capitalize}
+.act-t{margin-left:auto;color:rgba(255,255,255,0.3);white-space:nowrap}
+#cre-modal{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center;padding:16px}
+.cre-back{position:absolute;inset:0;background:rgba(0,0,0,0.62)}
+.cre-box{position:relative;background:#0A0F2E;border:1px solid rgba(255,255,255,0.12);border-radius:14px;max-width:560px;width:100%;max-height:86vh;overflow:auto;padding:16px 18px;box-shadow:0 24px 70px rgba(0,0,0,0.6)}
+.cre-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}
+.cre-head b{font-size:14px}
+.cre-var{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:11px 12px;margin-bottom:9px}
+.cre-var .hl{font-size:12.5px;color:var(--y);font-weight:800;margin-bottom:5px}
+.cre-var .pt{font-size:13px;color:#fff;line-height:1.45}
+.cre-var .mrow{font-size:10.5px;color:rgba(255,255,255,0.5);margin-top:6px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.cre-var .cta{background:rgba(255,215,0,0.14);color:var(--y);padding:1px 7px;border-radius:8px;font-weight:700}
+.cre-var .concept{font-size:11px;color:rgba(255,255,255,0.42);font-style:italic;margin-top:5px}
 .del{background:none;border:none;color:rgba(248,113,113,0.7);cursor:pointer;font-size:14px}
 .empty{color:rgba(255,255,255,0.3);font-size:12px;padding:14px;text-align:center}
 #gate{max-width:340px;margin:4rem auto;text-align:center}
@@ -47,6 +82,17 @@ td{padding:8px;border-top:1px solid rgba(255,255,255,0.06);vertical-align:middle
 </head>
 <body>
 <div id="toasts"></div>
+<div id="cre-modal">
+  <div class="cre-back" onclick="closeCreative()"></div>
+  <div class="cre-box">
+    <div class="cre-head"><b id="cre-title">Ad creative</b><button class="mini" onclick="closeCreative()">✕ close</button></div>
+    <div id="cre-body"></div>
+    <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+      <button class="btn" id="cre-gen" onclick="genCreativeNow()">✨ Generate variants</button>
+      <span class="muted">Written by Claude · give each variant its own link so signups attribute to the winning copy</span>
+    </div>
+  </div>
+</div>
 <div class="w">
   <div class="logo">MR <span>CHEAP</span> FLIGHTS ✈</div>
   <div class="sub">Marketing · Campaigns &amp; Promo Codes</div>
@@ -85,6 +131,47 @@ td{padding:8px;border-top:1px solid rgba(255,255,255,0.06);vertical-align:middle
     </div>
     <div class="card"><table id="camp-table"><tbody><tr><td class="empty">Loading…</td></tr></tbody></table></div>
 
+    <!-- AD AUTOMATION -->
+    <h2>🤖 Ad automation — Meta &amp; TikTok</h2>
+    <div class="banner">
+      <b>Safe by design.</b> Campaigns are created <b>PAUSED</b> and never spend a cent until you activate them in Meta/TikTok Ads Manager. Nothing is sent to a platform unless it's connected <em>and</em> live mode is on — otherwise every action is a dry run (planned &amp; logged only). The auto-guardrail can only ever <b>pause</b> an over-target campaign, never start or scale one.
+    </div>
+    <div class="card" id="ads-conn">
+      <div class="muted">Loading connection status…</div>
+    </div>
+    <div class="card">
+      <div class="row">
+        <div><label>Platform</label><select id="a-platform"><option value="meta">Meta (FB/IG)</option><option value="tiktok">TikTok</option></select></div>
+        <div><label>Name</label><input id="a-name" placeholder="Meta · Lisbon prospecting"/></div>
+        <div><label>Objective</label><select id="a-objective"><option value="traffic">Traffic</option><option value="reach">Reach</option><option value="engagement">Engagement</option></select></div>
+      </div>
+      <div class="row">
+        <div><label>Region</label><select id="a-region"><option value="ie">🇮🇪 IE</option><option value="uk">🇬🇧 UK</option></select></div>
+        <div><label>Daily budget (€/£)</label><input id="a-budget" type="number" min="1" step="0.5" placeholder="15"/></div>
+        <div><label>Target CPA (optional)</label><input id="a-cpa" type="number" min="0" step="0.1" placeholder="1.20"/></div>
+      </div>
+      <div><label>Link to tracked campaign (/c/…) — drives real CPA</label><select id="a-slug"><option value="">— none —</option></select></div>
+      <button class="btn" onclick="createAd()">+ Create draft campaign (paused)</button>
+      <div class="muted">Draft is created paused. It only reaches a platform when that platform is connected and <b>ADS_LIVE=1</b>; otherwise it's a dry run you can inspect.</div>
+    </div>
+    <div class="card" id="ads-advice" style="display:none"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:2px 2px 6px"><span class="muted">Launched campaigns · spend pulls in on sync</span><button class="mini" onclick="syncAdsNow()">🔄 Sync now</button></div>
+    <div class="card"><table id="ads-table"><tbody><tr><td class="empty">Loading…</td></tr></tbody></table></div>
+    <div id="ads-activity"></div>
+    <div class="card" id="conv-card"></div>
+
+    <!-- AUDIENCES -->
+    <h2>📤 Audiences — Meta / TikTok Custom Audience</h2>
+    <div class="card">
+      <div class="muted" style="margin-bottom:9px">Export subscribers as <b>SHA-256-hashed</b> emails — raw addresses never leave (GDPR-friendly). Upload to Meta/TikTok as a <b>Custom Audience</b>, then build a <b>Lookalike</b> — the best cold targeting in the plan.</div>
+      <div class="row">
+        <div><label>Region</label><select id="au-region" onchange="refreshAudienceCount()"><option value="all">All</option><option value="ie">🇮🇪 IE</option><option value="uk">🇬🇧 UK</option></select></div>
+        <div><label>Tier</label><select id="au-tier" onchange="refreshAudienceCount()"><option value="all">All</option><option value="free">Free</option><option value="premium">Premium</option></select></div>
+        <div><label>&nbsp;</label><button class="btn" onclick="downloadAudience()">⬇ Download hashed CSV</button></div>
+      </div>
+      <div class="muted" id="au-count" style="margin-top:7px">…</div>
+    </div>
+
     <!-- PROMO CODES -->
     <h2>🎟 Promo codes — comped premium trials</h2>
     <div class="card">
@@ -106,6 +193,7 @@ function el(id){return document.getElementById(id);}
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function toast(m,k){var b=el('toasts'),t=document.createElement('div');t.className='toast'+(k==='err'?' err':'');t.innerHTML=m;b.appendChild(t);setTimeout(function(){t.remove();},4500);}
 function copy(txt){navigator.clipboard.writeText(txt).then(function(){toast('📋 Copied');});}
+function timeAgo(ts){if(!ts)return'';var s=Math.max(0,Math.floor(Date.now()/1000)-ts);if(s<60)return s+'s ago';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago';}
 function adminLogout(e){ if(e) e.preventDefault(); fetch('/api/admin/logout',{method:'POST'}).finally(function(){ location.href='/'; }); }
 
 async function doLogin(){
@@ -115,7 +203,7 @@ async function doLogin(){
   else toast('❌ Wrong password','err');
 }
 
-async function boot(){ await Promise.all([loadCampaigns(), loadPromos()]); }
+async function boot(){ await Promise.all([loadCampaigns(), loadAds(), loadPromos()]); refreshAudienceCount(); }
 
 async function loadCampaigns(){
   var res=await fetch('/api/admin/campaigns',{cache:'no-store'});
@@ -123,6 +211,8 @@ async function loadCampaigns(){
   var rows=await res.json();
   var sel=el('p-campaign');
   sel.innerHTML='<option value="">— none —</option>'+rows.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join('');
+  var aslug=el('a-slug');
+  if(aslug) aslug.innerHTML='<option value="">— none —</option>'+rows.map(function(c){return '<option value="'+esc(c.slug)+'">'+esc(c.name)+' (/c/'+esc(c.slug)+')</option>';}).join('');
   var tb=el('camp-table').querySelector('tbody');
   if(!rows.length){tb.innerHTML='<tr><td class="empty">No campaigns yet — create one above.</td></tr>';return;}
   tb.innerHTML='<tr><th>Campaign</th><th>Link</th><th>Visits</th><th>Signups</th><th>Conv</th><th>Spend</th><th>CPA</th><th></th></tr>'+
@@ -149,6 +239,199 @@ async function createCampaign(){
 }
 async function setSpend(id,v){ await fetch('/api/admin/campaigns/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({spend:parseFloat(v)||0})}); loadCampaigns(); }
 async function delCampaign(id,name){ if(!confirm('Delete "'+name+'"? Signups keep their tag.'))return; await fetch('/api/admin/campaigns/'+id,{method:'DELETE'}); toast('🗑 Deleted'); loadCampaigns(); }
+
+/* ── Ad automation ── */
+function connRow(p,label,h,acct){
+  var tok=h.token_present, ac=h.account_set, cfg=h.configured, sb=h.sandbox;
+  var acctId=acct&&acct.account_id?esc(acct.account_id):'';
+  var pill=sb?'<span class="pill dry">🧪 sandbox</span>':'<span class="pill '+(cfg?'live':'dry')+'">'+(cfg?'ready':'not connected')+'</span>';
+  return '<div style="margin:6px 0;padding:8px 0;border-top:1px solid rgba(255,255,255,0.06)">'+
+    '<div class="conn"><b style="color:#fff">'+label+'</b>'+
+      '<span><span class="dot '+(tok?'on':'off')+'"></span>token</span>'+
+      '<span><span class="dot '+((sb||ac)?'on':'off')+'"></span>account</span>'+
+      pill+'</div>'+
+    '<div class="row" style="margin-top:4px">'+
+      '<input id="acct-'+p+'" placeholder="'+(p==='meta'?'Ad account id (digits only)':'Advertiser id')+'" value="'+acctId+'"/>'+
+      '<input id="pix-'+p+'" placeholder="'+(p==='meta'?'Pixel id (for conversions)':'Pixel code (for conversions)')+'" value="'+(acct&&acct.pixel_id?esc(acct.pixel_id):'')+'"/>'+
+      '<button class="mini" onclick="saveAdAccount(\''+p+'\')">Save</button></div>'+
+    (sb?'<div class="muted">🧪 Simulated — no real account needed. Delivery &amp; metrics are fake; swap in a real token to go live.</div>'
+       :(tok?'':'<div class="muted">Token missing — set <b>'+(p==='meta'?'META_ACCESS_TOKEN':'TIKTOK_ACCESS_TOKEN')+'</b> via <code>wrangler pages secret put</code>.</div>'))+
+  '</div>';
+}
+async function loadAds(){
+  var res=await fetch('/api/admin/ads',{cache:'no-store'});
+  if(res.status===401){el('app').style.display='none';el('gate').style.display='block';return;}
+  if(!res.ok)return;
+  var d=await res.json();
+  var h=d.health||{platforms:{},mode:{}}, acc={};
+  (d.accounts||[]).forEach(function(a){acc[a.platform]=a;});
+  var modePill=h.mode.live?'<span class="pill live">LIVE MODE</span>':'<span class="pill dry">DRY RUN</span>';
+  el('ads-conn').innerHTML=
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">'+
+      '<b style="font-size:12px;color:rgba(255,255,255,0.7)">Connections</b>'+
+      '<div>'+modePill+' <span class="muted">ceiling '+(h.mode.max_daily_budget!=null?'€'+h.mode.max_daily_budget+'/day':'—')+'</span></div></div>'+
+    connRow('meta','Meta',h.platforms.meta||{},acc.meta)+
+    connRow('tiktok','TikTok',h.platforms.tiktok||{},acc.tiktok);
+
+  var adv=d.advice||[], advBox=el('ads-advice');
+  if(adv.length){advBox.style.display='block';advBox.innerHTML='<b style="font-size:12px;color:rgba(255,255,255,0.7)">🧠 Suggestions</b>'+adv.map(function(a){return '<div class="adv adv-'+esc(a.level)+'">'+esc(a.text)+'</div>';}).join('');}
+  else{advBox.style.display='none';}
+  var act=d.activity||[], actBox=el('ads-activity');
+  actBox.innerHTML=act.length?('<div class="card"><b style="font-size:12px;color:rgba(255,255,255,0.7)">Recent automation activity</b>'+act.map(function(a){return '<div class="act">'+(a.ok?'✓':'✕')+' <b>'+esc(a.action)+'</b>'+(a.campaign?' · '+esc(a.campaign):'')+(a.platform?' · '+esc(a.platform):'')+(a.dry_run?' <span class="pill dry">dry</span>':'')+'<span class="act-t">'+timeAgo(a.at)+'</span></div>';}).join('')+'</div>'):'';
+
+  renderConversions(d.conversions);
+
+  var tb=el('ads-table').querySelector('tbody');
+  var rows=d.campaigns||[];
+  window.ADS_CACHE=rows;
+  if(!rows.length){tb.innerHTML='<tr><td class="empty">No ad campaigns yet — create a draft above.</td></tr>';return;}
+  tb.innerHTML='<tr><th>Campaign</th><th>Status</th><th>Budget</th><th>Spend</th><th>Signups</th><th>CPA</th><th>Target</th><th></th></tr>'+
+   rows.map(function(c){
+     var sym=c.symbol||'€';
+     var actBtn=c.status==='active'
+       ? '<button class="mini stop" onclick="adStatus('+c.id+',\'paused\')">Pause</button>'
+       : (c.status==='paused'||c.status==='draft')
+         ? '<button class="mini go" onclick="adStatus('+c.id+',\'active\')">Activate</button>' : '';
+     return '<tr><td><b>'+esc(c.name)+'</b><br><span class="pill '+esc(c.platform)+'">'+esc(c.platform)+'</span> '+esc(c.objective)+
+         (c.dry_run?' <span class="pill dry">dry</span>':'')+
+         (c.ext_campaign_id&&c.ext_campaign_id.indexOf('sim_')===0?' <span class="pill dry">🧪 sim</span>':'')+
+         (c.campaign_slug?'<br><span class="muted">/c/'+esc(c.campaign_slug)+'</span>':'')+
+         (c.last_impressions?'<br><span class="muted">'+(c.last_impressions||0).toLocaleString()+' impr · '+(c.last_clicks||0).toLocaleString()+' clicks</span>':'')+
+         (c.note?'<br><span class="muted">'+esc(c.note)+'</span>':'')+'</td>'+
+       '<td><span class="pill st-'+esc(c.status)+'">'+esc(c.status)+'</span></td>'+
+       '<td>'+sym+(c.daily_budget||0)+'<span class="muted">/d</span></td>'+
+       '<td>'+sym+(c.spend||0).toFixed(2)+'</td>'+
+       '<td><b>'+(c.signups||0)+'</b></td>'+
+       '<td>'+(c.cpa!=null?sym+c.cpa:'—')+'</td>'+
+       '<td>'+(c.target_cpa!=null?sym+c.target_cpa:'—')+'</td>'+
+       '<td style="white-space:nowrap"><button class="mini" onclick="openCreative('+c.id+')" title="AI ad copy">✨</button> '+actBtn+' <button class="del" onclick="delAd('+c.id+',\''+esc(c.name)+'\')">🗑</button></td></tr>';
+   }).join('');
+}
+async function saveAdAccount(p){
+  var v=el('acct-'+p).value.trim(), px=(el('pix-'+p)||{}).value;
+  var res=await fetch('/api/admin/ads-accounts',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({platform:p,account_id:v,pixel_id:px?px.trim():null})});
+  if(res.ok){toast('✅ '+p+' saved');loadAds();}else{toast('❌ save failed','err');}
+}
+async function syncAdsNow(){
+  toast('🔄 Syncing…');
+  var r=await fetch('/api/cron/ads-sync?debug=1',{method:'POST'});
+  if(r.ok){var d=await r.json();toast('✅ Synced '+(d.synced||0)+' campaign(s)'+(d.paused_by_guardrail&&d.paused_by_guardrail.length?' · ⏸ '+d.paused_by_guardrail.length+' auto-paused':''));loadAds();}
+  else toast('❌ sync failed','err');
+}
+async function createAd(){
+  var body={platform:el('a-platform').value,name:el('a-name').value.trim(),objective:el('a-objective').value,region:el('a-region').value,dailyBudget:parseFloat(el('a-budget').value),targetCpa:parseFloat(el('a-cpa').value)||undefined,campaignSlug:el('a-slug').value||undefined};
+  if(!body.name){toast('Enter a name','err');return;}
+  if(!(body.dailyBudget>0)){toast('Enter a daily budget','err');return;}
+  var res=await fetch('/api/admin/ads',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  var d=await res.json();
+  if(!res.ok){toast('❌ '+esc(d.error||res.status),'err');return;}
+  toast(d.dry_run?'📝 Draft planned (dry run) — '+esc(d.note):(d.launch&&d.launch.sandbox?'🧪 Sandbox campaign created (simulated)':'✅ Created paused on platform'));
+  ['a-name','a-budget','a-cpa'].forEach(function(i){el(i).value='';});
+  loadAds();
+}
+async function adStatus(id,target){
+  if(target==='active'&&!confirm('Activate this campaign?\n\nIf the platform is connected and live mode is on, this STARTS REAL SPEND. Otherwise it just marks it active locally (dry run).'))return;
+  var res=await fetch('/api/admin/ads/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'status',target:target})});
+  var d=await res.json();
+  if(!res.ok){toast('❌ '+esc(d.error||res.status),'err');return;}
+  toast(d.dryRun?'Marked '+target+' (dry run)':'✅ '+target+' on platform');
+  loadAds();
+}
+async function delAd(id,name){ if(!confirm('Delete "'+name+'" from the dashboard? (A launched campaign stays PAUSED on the platform — remove it in Ads Manager too.)'))return; await fetch('/api/admin/ads/'+id,{method:'DELETE'}); toast('🗑 Deleted'); loadAds(); }
+
+/* ── AI ad creative ── */
+var CRE_ID=null, CRE_ROWS=[];
+function closeCreative(){el('cre-modal').style.display='none';}
+function creCampaign(id){return (window.ADS_CACHE||[]).filter(function(c){return c.id===id;})[0];}
+async function openCreative(id){
+  CRE_ID=id;
+  var c=creCampaign(id);
+  el('cre-title').textContent='✨ Ad creative — '+(c?c.name:'campaign #'+id);
+  el('cre-body').innerHTML='<div class="muted">Loading…</div>';
+  el('cre-modal').style.display='flex';
+  var rows=await fetch('/api/admin/ads-creative?campaignId='+id,{cache:'no-store'}).then(function(r){return r.ok?r.json():[];}).catch(function(){return [];});
+  renderCreative(rows);
+  el('cre-gen').textContent=rows.length?'✨ Regenerate variants':'✨ Generate variants';
+}
+function renderCreative(rows){
+  CRE_ROWS=rows||[];
+  if(!CRE_ROWS.length){el('cre-body').innerHTML='<div class="muted">No creative yet — generate a few ad-copy variants with Claude.</div>';return;}
+  el('cre-body').innerHTML=CRE_ROWS.map(function(v,i){
+    return '<div class="cre-var"'+(v.winner?' style="border-color:rgba(0,229,204,.45)"':'')+'>'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:5px">'+
+        '<span class="muted" style="font-size:10px;letter-spacing:.5px">VARIANT '+String.fromCharCode(65+i)+'</span>'+
+        '<span>'+(v.winner?'<span class="pill live">★ leading</span> ':'')+
+          '<span class="pill '+(v.signups?'live':'other')+'">'+(v.signups||0)+' signup'+(v.signups===1?'':'s')+'</span></span></div>'+
+      (v.headline?'<div class="hl">'+esc(v.headline)+'</div>':'')+
+      '<div class="pt">'+esc(v.primary_text||'')+'</div>'+
+      '<div class="mrow">'+(v.cta?'<span class="cta">'+esc(v.cta)+'</span>':'')+(v.description?'<span>'+esc(v.description)+'</span>':'')+
+        '<button class="copy" onclick="copyCre('+i+')">copy text</button>'+
+        (v.link?'<button class="copy" onclick="copy(\''+v.link+'\')">copy link</button>':'')+'</div>'+
+      (v.link?'<div class="concept" style="font-style:normal;color:rgba(0,229,204,.55)">🔗 '+esc(v.link)+'</div>':'')+
+      (v.concept?'<div class="concept">🎬 '+esc(v.concept)+'</div>':'')+
+    '</div>';
+  }).join('')+
+  (CRE_ROWS.length&&!CRE_ROWS[0].link
+    ? '<div class="adv adv-warn">This campaign isn\'t linked to a tracked /c/ campaign, so per-variant signups can\'t be attributed. Create it with a tracked link to A/B test the copy.</div>'
+    : '');
+}
+function copyCre(i){var v=CRE_ROWS[i]; if(!v)return; copy((v.headline?v.headline+'\n\n':'')+(v.primary_text||''));}
+async function genCreativeNow(){
+  if(!CRE_ID)return;
+  var b=el('cre-gen'); b.disabled=true; var prev=b.textContent; b.textContent='✨ Writing…';
+  var res=await fetch('/api/admin/ads-creative',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({campaignId:CRE_ID})});
+  var d=await res.json().catch(function(){return {};});
+  b.disabled=false;
+  if(!res.ok){toast('❌ '+esc(d.error||res.status),'err'); b.textContent=prev; return;}
+  toast('✅ '+d.variants.length+' ad variants written'); renderCreative(d.variants); b.textContent='✨ Regenerate variants';
+}
+
+/* ── Conversion events (Meta CAPI / TikTok Events API) ── */
+function renderConversions(c){
+  var box=el('conv-card'); if(!box)return;
+  if(!c){box.style.display='none';return;}
+  box.style.display='block';
+  var t=c.totals||{};
+  var plat=['meta','tiktok'].map(function(p){
+    var s=(c.platforms||{})[p]||{};
+    return '<span class="conn" style="display:inline-flex;margin-right:12px"><b style="color:#fff;margin-right:6px">'+(p==='meta'?'Meta':'TikTok')+'</b>'+
+      '<span><span class="dot '+(s.pixel_set?'on':'off')+'"></span>pixel</span>'+
+      (s.sandbox?' <span class="pill dry">sandbox</span>':'')+'</span>';
+  }).join('');
+  box.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">'+
+      '<b style="font-size:12px;color:rgba(255,255,255,.7)">📡 Conversion events → platforms</b>'+
+      (c.enabled?'<span class="pill live">ON</span>':'<span class="pill dry">OFF</span>')+'</div>'+
+    '<div class="muted" style="margin:7px 0">'+(c.enabled
+      ? 'Ad-attributed signups are reported back so Meta/TikTok can optimise. Hashed email only — organic signups are never sent.'
+      : 'Off — no subscriber data leaves the site. Set <b>CONVERSIONS_ENABLED=1</b> to report ad-attributed signups (a GDPR decision: it shares hashed emails with the ad platform).')+'</div>'+
+    '<div style="margin-bottom:6px">'+plat+'</div>'+
+    '<div class="muted">sent '+(t.sent||0)+' · skipped '+(t.skipped||0)+' · errors '+(t.error||0)+'</div>'+
+    ((c.recent||[]).length?'<div style="margin-top:6px">'+c.recent.slice(0,5).map(function(r){
+      return '<div class="act">'+(r.status==='sent'?'✓':r.status==='error'?'✕':'–')+' <b>'+esc(r.platform)+'</b> '+esc(r.event_name)+
+        (r.source?' · /c/'+esc(r.source):'')+' <span class="muted">'+esc(r.detail||r.status)+'</span>'+
+        '<span class="act-t">'+timeAgo(r.created_at)+'</span></div>';
+    }).join('')+'</div>':'');
+}
+
+/* ── Audience export ── */
+async function refreshAudienceCount(){
+  var region=el('au-region').value, tier=el('au-tier').value;
+  el('au-count').textContent='…';
+  var d=await fetch('/api/admin/audience-export?format=count&region='+region+'&tier='+tier,{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});
+  el('au-count').textContent=d?(d.count.toLocaleString()+' subscriber(s) match · opted-out excluded · hashed on export'):'—';
+}
+async function downloadAudience(){
+  var region=el('au-region').value, tier=el('au-tier').value;
+  var res=await fetch('/api/admin/audience-export?region='+region+'&tier='+tier);
+  if(!res.ok){toast('❌ export failed','err');return;}
+  var blob=await res.blob();
+  if(!blob.size||blob.size<12){toast('No subscribers match','err');return;}
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='mcf-audience-'+region+'-'+tier+'-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1200);
+  toast('⬇ Downloaded hashed CSV');
+}
 
 async function loadPromos(){
   var res=await fetch('/api/admin/promo',{cache:'no-store'});

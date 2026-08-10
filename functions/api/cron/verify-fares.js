@@ -7,7 +7,7 @@
 // Optional query overrides for manual runs: ?deals=20&google=3
 
 import { requireAdmin } from '../../_lib/auth.js';
-import { logOp } from '../../_lib/oplog.js';
+import { logOp, startOp, finishOp } from '../../_lib/oplog.js';
 import { runFareChecks } from '../../_lib/fares.js';
 
 async function handle(context) {
@@ -19,6 +19,11 @@ async function handle(context) {
       return new Response('Unauthorized', { status: 401 });
     }
   }
+
+  // Record the run BEFORE the slow work: a scheduler timeout kills the Worker
+  // mid-flight, so a trailing logOp() never executes and the failure leaves no
+  // trace at all. A row still marked 'running' is a run that was killed.
+  const runId = await startOp(context.env, 'fares');
 
   const url = new URL(context.request.url);
   // NaN-safe with explicit zero allowed — `?google=0` must mean zero, not the
@@ -34,7 +39,7 @@ async function handle(context) {
   try {
     summary = await runFareChecks(context.env, { maxDeals, maxGoogle });
   } catch (e) {
-    await logOp(context.env, 'fares', false, { error: e.message });
+    await finishOp(context.env, runId, 'fares', false, { error: e.message });
     return Response.json({ ok: false, error: e.message }, { status: 500 });
   }
 
@@ -46,7 +51,7 @@ async function handle(context) {
     summary.tp_token_shape = { len: t.length, hex32: /^[a-f0-9]{32}$/i.test(t), had_whitespace: t !== (context.env.TRAVELPAYOUTS_TOKEN || '') };
   }
 
-  await logOp(context.env, 'fares', true, summary);
+  await finishOp(context.env, runId, 'fares', true, summary);
   return Response.json({ ok: true, ...summary });
 }
 

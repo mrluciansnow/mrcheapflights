@@ -7,8 +7,9 @@
 // Deals with confidence >= 80 are automatically promoted to deals table as drafts.
 
 import { requireAdmin } from '../../_lib/auth.js';
-import { logOp } from '../../_lib/oplog.js';
+import { logOp, startOp, finishOp } from '../../_lib/oplog.js';
 import { destSlugForText, getDestination } from '../../_lib/destinations.js';
+import { deriveExpiry, captionMatchesDeal } from '../../_lib/scraper.js';
 
 const VALID_TYPES  = new Set(['sun', 'city', 'longhaul', 'wintersun']);
 const VALID_BADGES = new Set(['🔥 Hot', '⚡ Flash', '✈ Long Haul', '⭐ Featured', '⚠️ Mistake Fare']);
@@ -29,19 +30,31 @@ export async function onRequestPost(context) {
     }
   }
 
+  // Record the run BEFORE the slow AI call. If cron-job.org kills us at 30s the
+  // Worker dies mid-flight and the logOp() below never executes — which is
+  // exactly how this job failed silently every morning for weeks.
+  const runId = await startOp(context.env, 'enrich');
+
   const apiKey = context.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    await logOp(context.env, 'enrich', false, { error: 'ANTHROPIC_API_KEY not configured' });
+    await finishOp(context.env, runId, 'enrich', false, { error: 'ANTHROPIC_API_KEY not configured' });
     return Response.json({
       enriched: 0,
       reason: 'ANTHROPIC_API_KEY not configured — set it via: wrangler pages secret put ANTHROPIC_API_KEY --project-name mrcheap',
     });
   }
 
-  // Small batches: 3 Instagram-length captions per deal ≈ 700 output tokens
-  // each — 6 deals stays well inside max_tokens. (The old 12-deal batch could
-  // truncate the JSON mid-array, which surfaced as "unparseable JSON" errors.)
-  const BATCH = 6;
+  // Batch size is a TIMEOUT budget, not a token budget. Three IG-length
+  // captions per deal is ~600 output tokens; at 6 deals that generation ran
+  // past cron-job.org's 30s ceiling and the job was killed — and because every
+  // DB write happens after the AI call returns, a timeout lost the whole batch
+  // and the queue never drained. 3 deals comfortably fits the window.
+  //
+  // ?batch=N overrides it (1-8) for a manual catch-up run from the pipeline,
+  // where there's no 30s ceiling.
+  const url = new URL(context.request.url);
+  const batchParam = parseInt(url.searchParams.get('batch'));
+  const BATCH = Number.isFinite(batchParam) ? Math.min(8, Math.max(1, batchParam)) : 3;
   const { results: pending } = await context.env.DB.prepare(
     `SELECT id, source_name, route, price, badge, region, raw_snippet, dates
      FROM scraped_deals WHERE status='pending' AND confidence IS NULL
@@ -82,8 +95,11 @@ ${JSON.stringify(dealList, null, 0)}
 
 Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
 
+  // 24s, deliberately INSIDE cron-job.org's 30s cutoff: aborting ourselves
+  // returns a clean, logged error the digest can show, whereas being killed by
+  // the scheduler leaves no trace beyond "Failed (timeout)" in their console.
   const controller = new AbortController();
-  const to = setTimeout(() => controller.abort(), 30000);
+  const to = setTimeout(() => controller.abort(), 24000);
   let aiRes;
   try {
     aiRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -95,7 +111,10 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 8192,
+        // Scaled to the batch (~900 tokens/deal covers 3 captions plus the
+        // scoring fields) with headroom, rather than a flat 8192 that let the
+        // model run long enough to blow the timeout.
+        max_tokens: Math.min(8192, 1200 + BATCH * 900),
         messages: [{ role: 'user', content: prompt }],
       }),
       signal: controller.signal,
@@ -103,19 +122,27 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
   } catch (err) {
     clearTimeout(to);
     const reason = err.name === 'AbortError' ? 'timeout after 30s' : err.message;
-    await logOp(context.env, 'enrich', false, { error: reason });
+    await finishOp(context.env, runId, 'enrich', false, { error: reason });
     return Response.json({ enriched: 0, error: reason }, { status: 502 });
   }
   clearTimeout(to);
 
   if (!aiRes.ok) {
     const body = await aiRes.text().catch(() => '');
-    await logOp(context.env, 'enrich', false, { error: `Anthropic ${aiRes.status}: ${body.slice(0, 120)}` });
+    await finishOp(context.env, runId, 'enrich', false, { error: `Anthropic ${aiRes.status}: ${body.slice(0, 120)}` });
     return Response.json({ enriched: 0, error: `Anthropic ${aiRes.status}: ${body.slice(0, 200)}` }, { status: 502 });
   }
 
   const aiData = await aiRes.json().catch(() => null);
   if (!aiData) return Response.json({ enriched: 0, error: 'invalid response from AI' }, { status: 502 });
+
+  // Token usage — the only visibility into what this costs. enrich now runs
+  // HOURLY, so an unnoticed prompt change or a runaway batch could quietly
+  // multiply spend with nothing anywhere to show it. Anthropic returns usage on
+  // every response; recording it makes the trend visible in the digest.
+  const usage = aiData?.usage || {};
+  const tokensIn = usage.input_tokens ?? 0;
+  const tokensOut = usage.output_tokens ?? 0;
 
   const raw = aiData?.content?.[0]?.text || '';
   let scores;
@@ -131,13 +158,28 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
   // Write enrichment scores + AI captions back to scraped_deals
   const stmts = [];
   let enriched = 0;
+  let captionsDropped = 0;   // captions that failed the price/destination check
   for (const s of scores) {
     if (!s?.id) continue;
     const confidence = Math.max(0, Math.min(100, parseInt(s.confidence) || 0));
     const destType = VALID_TYPES.has(s.dest_type) ? s.dest_type : null;
     const badge    = VALID_BADGES.has(s.badge)    ? s.badge    : null;
-    // 3 caption variants → JSON string; discard malformed shapes
-    let aiCopy = null;
+    // 3 caption variants → JSON string; discard malformed shapes.
+    //
+    // QUALITY GATE: captions were previously accepted on type and length alone,
+    // so a hallucinated price or the wrong city could go straight to Instagram
+    // under our own branding. Each caption must actually mention this deal's
+    // price AND its destination; ones that don't are dropped. If none survive
+    // the deal still promotes — just without AI copy, which is far safer than
+    // publishing a caption that misquotes the fare.
+    const src = pending.find((p) => p.id === s.id);
+    if (Array.isArray(s.copy) && s.copy.length && s.copy.every((c) => typeof c === 'string')) {
+      const kept = src ? s.copy.filter((c) => captionMatchesDeal(c, src.route, src.price)) : s.copy;
+      if (kept.length !== s.copy.length) {
+        captionsDropped += s.copy.length - kept.length;
+      }
+      s.copy = kept;
+    }
     if (Array.isArray(s.copy) && s.copy.length && s.copy.every((c) => typeof c === 'string')) {
       // IG captions run 500-850 chars by design; 1100 leaves headroom without
       // letting a runaway response bloat the row (IG's own cap is 2200).
@@ -164,13 +206,33 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
 
   let autoApproved = 0;
   let autoPublished = 0;
+  const skipped = [];        // promotion-blocked deals, with the reason
+  const blockedStmts = [];   // reason write-backs, flushed with the batch
   if (highConf?.length) {
     const aStmts = [];
     for (const row of highConf) {
-      // SSRF guard: only promote deals with real https:// source URLs
-      if (!row.source_url || !row.source_url.startsWith('https://')) continue;
+      // SSRF guard: only promote deals with real https:// source URLs.
+      // This used to `continue` silently, so a deal scoring 90 could sit
+      // pending for ever with nothing anywhere explaining why — invisible to
+      // the operator and re-queried on every single run. Now it's counted,
+      // named, and written back as a reason on the row.
+      if (!row.source_url || !row.source_url.startsWith('https://')) {
+        skipped.push({ id: row.id, route: row.route, reason: 'no https source URL' });
+        blockedStmts.push(context.env.DB.prepare(
+          `UPDATE scraped_deals SET skip_reason='no https source URL', updated_at=unixepoch() WHERE id=?`
+        ).bind(row.id));
+        continue;
+      }
 
-      const slug = slugify(row.route) + '-' + String(row.price).replace(/[^0-9]/g, '');
+      // Match on ROUTE+REGION, not slug. The slug used to embed the price, so
+      // the same route at a new price minted a fresh slug and the
+      // ON CONFLICT(slug,region) upsert could never fire — production ended up
+      // with "London → Bangkok" listed twice at £407 and £426. Existing slugs
+      // are left untouched so already-shared /deals/<slug> links keep working.
+      const existing = await context.env.DB.prepare(
+        'SELECT id, slug FROM deals WHERE route=? AND region=? ORDER BY updated_at DESC LIMIT 1'
+      ).bind(row.route, row.region).first();
+      const slug = existing?.slug || slugify(row.route);
       const goLive = autoPublish && row.confidence >= 90;
       const status = goLive ? 'live' : 'draft';
 
@@ -179,13 +241,15 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
       const flag = hub?.flag || row.flag || '✈️';
 
       aStmts.push(context.env.DB.prepare(
-        `INSERT INTO deals (flag, route, dates, price, badge, url, slug, region, status, dest_type, ai_copy)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        `INSERT INTO deals (flag, route, dates, price, badge, url, slug, region, status, dest_type, ai_copy, expiry)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
          ON CONFLICT(slug,region) DO UPDATE SET
            price=excluded.price, dates=excluded.dates, badge=excluded.badge,
-           ai_copy=COALESCE(excluded.ai_copy, deals.ai_copy), updated_at=unixepoch()`
+           ai_copy=COALESCE(excluded.ai_copy, deals.ai_copy),
+           expiry=COALESCE(excluded.expiry, deals.expiry), updated_at=unixepoch()`
       ).bind(flag, row.route, row.dates || '', row.price, row.badge || '🔥 Hot',
-             row.source_url, slug, row.region, status, row.dest_type || 'city', row.ai_copy || null));
+             row.source_url, slug, row.region, status, row.dest_type || 'city', row.ai_copy || null,
+             deriveExpiry(row.dates)));
 
       aStmts.push(context.env.DB.prepare(
         'UPDATE scraped_deals SET status=?,updated_at=unixepoch() WHERE id=?'
@@ -196,13 +260,16 @@ Reply with ONLY the JSON array. No explanation, no markdown, no other text.`;
     }
     if (aStmts.length) await context.env.DB.batch(aStmts);
   }
+  if (blockedStmts.length) {
+    try { await context.env.DB.batch(blockedStmts); } catch { /* column may predate migration */ }
+  }
 
-  await logOp(context.env, 'enrich', true, { enriched, auto_approved: autoApproved, auto_published: autoPublished });
+  await finishOp(context.env, runId, 'enrich', true, { enriched, auto_approved: autoApproved, auto_published: autoPublished, blocked: skipped.length, blocked_detail: skipped.slice(0, 5), captions_dropped: captionsDropped, tokens_in: tokensIn, tokens_out: tokensOut });
 
   // How many un-scored deals are still queued — lets the UI drain in one click.
   const left = await context.env.DB.prepare(
     `SELECT COUNT(*) AS n FROM scraped_deals WHERE status='pending' AND confidence IS NULL`
   ).first();
 
-  return Response.json({ enriched, auto_approved: autoApproved, auto_published: autoPublished, remaining: left?.n || 0 });
+  return Response.json({ enriched, auto_approved: autoApproved, auto_published: autoPublished, blocked: skipped, remaining: left?.n || 0 });
 }

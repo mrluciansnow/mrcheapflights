@@ -1,19 +1,22 @@
 # Email-ingest worker — receives newsletters forwarded by Cloudflare Email
-# Routing (deals@mrcheapflights.ie) and files deal candidates into the same
-# D1 database the site uses. Deploy: npx wrangler deploy (from this dir).
+# Routing (deals@mrcheapflights.ie) and POSTs them to the site's
+# /api/ingest/email endpoint, which does the parsing.
+#
+# It deliberately holds NO D1 binding and NO parser. An earlier version
+# hand-duplicated parseDealTitle here and the copy drifted: it kept the
+# fabricated-origin bug ("Cork to Lisbon" → "Dublin → Lisbon") long after the
+# site's own parser was fixed. One parser, one place.
 #
 # ── EMAIL ROUTING SHELL (2 dashboard clicks after deploy) ─────────
 # dash.cloudflare.com → mrcheapflights.ie → Email → Email Routing:
 #   1. Enable Email Routing (adds the MX records for you)
 #   2. Create address deals@mrcheapflights.ie → action: Send to Worker
 #      → mrcheap-email-ingest
-# Then subscribe that address to Jack's Flight Club, Going, etc.
+# Then subscribe that address to Jack's Flight Club, Secret Flying, Going, etc.
 # ──────────────────────────────────────────────────────────────────
 name = "mrcheap-email-ingest"
-main = "worker.js"
+main = "index.js"
 compatibility_date = "2024-11-01"
 
-[[d1_databases]]
-binding = "DB"
-database_name = "mrcheapflights-prod"
-database_id = "9db20f98-9534-4b6c-986e-125ed3f8e95f"
+# Secret (npx wrangler secret put INGEST_SECRET) must match INGEST_SECRET —
+# or CRON_SECRET — on the mrcheap Pages project.

@@ -1,6 +1,7 @@
 import { requireAdmin, resolveMemberTier, isPremiumBadge } from '../_lib/auth.js';
 import { routeSearchUrl } from '../_lib/affiliate.js';
 import { fareMapForDeals, publicFare } from '../_lib/fares.js';
+import { originsCountsForDeals, originsForDeals } from '../_lib/multicity.js';
 
 // Public: list live deals, optionally filtered by region. Mirrors the shape
 // of the old in-memory `deals[]` array so the frontend mapping is 1:1.
@@ -46,6 +47,10 @@ export async function onRequestGet(context) {
     fareMap = await fareMapForDeals(context.env, results.map((d) => d.id));
   } catch { /* fare_checks may not exist yet — listings degrade gracefully */ }
 
+  // Multi-city: public count only (no prices) — the "priced from N cities"
+  // hook. Actual per-city prices are gated exactly like fare details below.
+  const originCounts = await originsCountsForDeals(context.env, results.map((d) => d.id));
+
   const withLinks = results.map((d) => {
     const premiumDeal = isPremiumBadge(d.badge);
     const entitled = tier === 'premium' || (tier === 'free' && !premiumDeal);
@@ -61,12 +66,28 @@ export async function onRequestGet(context) {
               || (rows.travelpayouts && rows.travelpayouts.status === 'verified'))) {
       out.fare_verified = true;
     }
+    if (originCounts[d.id] > 1) out.origin_count = originCounts[d.id];
     if (entitled) {
       const fare = publicFare(d, fareMap[d.id], marker);
       if (fare) out.fare = fare;
     }
     return out;
   });
+
+  // Per-city prices for entitled members only — withheld from the payload for
+  // guests/gated deals, never merely hidden client-side.
+  if (tier !== 'guest') {
+    // ONE query for every entitled deal, not one per deal.
+    const wanted = withLinks.filter((d) => d.fare_gate === 'none' && originCounts[d.id]);
+    if (wanted.length) {
+      const priceByDeal = Object.fromEntries(wanted.map((d) => [d.id, d.price]));
+      const map = await originsForDeals(context.env, wanted.map((d) => d.id), priceByDeal);
+      for (const out of wanted) {
+        const origins = map[out.id];
+        if (origins && origins.length > 1) out.origins = origins;
+      }
+    }
+  }
   // Vary: Cookie — without it, a browser that cached the public (logged-out)
   // response re-serves it to a logged-in admin for 5 minutes, which locked the
   // pipeline page behind its auth gate with stale data.

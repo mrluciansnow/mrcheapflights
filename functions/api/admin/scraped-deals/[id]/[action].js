@@ -9,6 +9,7 @@
 
 import { requireAdmin } from '../../../../_lib/auth.js';
 import { destSlugForText, getDestination } from '../../../../_lib/destinations.js';
+import { deriveExpiry } from '../../../../_lib/scraper.js';
 
 function slugify(s) {
   return String(s).toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').slice(0, 100);
@@ -47,7 +48,7 @@ export async function onRequestPost(context) {
 
   // approve — validate and copy to `deals`
   const row = await context.env.DB.prepare(
-    'SELECT id, source_name, source_url, flag, route, dates, price, badge, region, dest_type, ai_copy FROM scraped_deals WHERE id=?'
+    'SELECT id, source_name, source_url, flag, route, dates, price, badge, region, dest_type, ai_copy, origins_json FROM scraped_deals WHERE id=?'
   ).bind(id).first();
   if (!row) return new Response('Not found', { status: 404 });
 
@@ -62,7 +63,14 @@ export async function onRequestPost(context) {
     return new Response('Scraped deal has missing or invalid source URL — edit before approving', { status: 422 });
   }
 
-  const slug = slugify(row.route) + '-' + String(row.price).replace(/[^0-9]/g, '');
+  // Match on ROUTE+REGION, not slug — the slug used to embed the price, so
+  // re-approving the same route at a new price created a SECOND deal instead of
+  // updating the first. Reuse the existing slug so shared /deals/<slug> links
+  // keep working; only a genuinely new route mints one.
+  const existingDeal = await context.env.DB.prepare(
+    'SELECT slug FROM deals WHERE route=? AND region=? ORDER BY updated_at DESC LIMIT 1'
+  ).bind(row.route, row.region).first();
+  const slug = existingDeal?.slug || slugify(row.route);
 
   // Scraped flags are unreliable (feeds tag wrong countries constantly —
   // "Hawaii" arrived flying a Mexican flag). The destinations registry is the
@@ -75,12 +83,13 @@ export async function onRequestPost(context) {
       // status must be EXPLICIT: the table default is 'live', which would put
       // plain approves straight on the site and skip the Draft Deals stage.
       // (Existing live deals aren't demoted — the conflict clause leaves status alone.)
-      `INSERT INTO deals (flag, route, dates, price, badge, url, slug, region, status, dest_type, ai_copy)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)
+      `INSERT INTO deals (flag, route, dates, price, badge, url, slug, region, status, dest_type, ai_copy, expiry)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)
        ON CONFLICT(slug, region) DO UPDATE SET
          price=excluded.price, dates=excluded.dates, dest_type=excluded.dest_type,
-         ai_copy=COALESCE(excluded.ai_copy, deals.ai_copy), updated_at=unixepoch()`
-    ).bind(flag, row.route, row.dates || '', row.price, row.badge || '🔥 Hot', dealUrl, slug, row.region, row.dest_type || null, row.ai_copy || null),
+         ai_copy=COALESCE(excluded.ai_copy, deals.ai_copy),
+         expiry=COALESCE(excluded.expiry, deals.expiry), updated_at=unixepoch()`
+    ).bind(flag, row.route, row.dates || '', row.price, row.badge || '🔥 Hot', dealUrl, slug, row.region, row.dest_type || null, row.ai_copy || null, deriveExpiry(row.dates)),
     context.env.DB.prepare(
       'UPDATE scraped_deals SET status=?, updated_at=unixepoch() WHERE id=?'
     ).bind('approved', id),
@@ -92,5 +101,26 @@ export async function onRequestPost(context) {
     'SELECT id FROM deals WHERE slug=? AND region=?'
   ).bind(slug, row.region).first();
 
-  return Response.json({ ok: true, dealId: draft?.id || null });
+  // Newsletters often quote one destination from several departure cities.
+  // A candidate can't own deal_origins rows (no deal id yet), so the origins
+  // travel on the candidate as JSON and are unpacked here — the deal arrives
+  // multi-city ready, without waiting for the fan-out cron.
+  let originsSeeded = 0;
+  if (draft?.id && row.origins_json) {
+    try {
+      const origins = JSON.parse(row.origins_json);
+      for (const o of Array.isArray(origins) ? origins.slice(0, 10) : []) {
+        if (!o?.iata || !Number.isFinite(+o.price)) continue;
+        await context.env.DB.prepare(
+          `INSERT INTO deal_origins (deal_id, origin_city, origin_iata, price, currency, source)
+           VALUES (?, ?, ?, ?, ?, 'newsletter')
+           ON CONFLICT(deal_id, origin_iata) DO UPDATE SET
+             price=excluded.price, currency=excluded.currency, checked_at=unixepoch()`
+        ).bind(draft.id, o.city, o.iata, +o.price, o.symbol === '£' ? 'GBP' : 'EUR').run();
+        originsSeeded++;
+      }
+    } catch { /* malformed JSON must not block the approve */ }
+  }
+
+  return Response.json({ ok: true, dealId: draft?.id || null, originsSeeded });
 }

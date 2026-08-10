@@ -103,6 +103,11 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
 .btn-no{background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);color:#f87171;border-radius:6px;padding:5px 9px;font-family:'Bebas Neue',cursive;font-size:9px;letter-spacing:1px;cursor:pointer;}
 .btn-no:hover{background:rgba(248,113,113,0.18);}
 .bulk-bar{display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap;}
+.bulk-sep{width:1px;background:rgba(255,255,255,0.15);margin:0 4px;align-self:stretch}
+.bulk-lbl{font-family:'Bebas Neue',cursive;font-size:10px;letter-spacing:1px;color:rgba(255,255,255,0.4);align-self:center}
+.bulk-num{width:52px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:7px;padding:5px 7px;color:#fff;font-size:11px;font-variant-numeric:tabular-nums}
+.bulk-count{font-size:10px;color:rgba(255,255,255,0.45);align-self:center;font-variant-numeric:tabular-nums}
+.bulk-count.has{color:#FFD700}
 .admin-nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1.1rem;border-bottom:1px solid rgba(255,255,255,0.07);padding-bottom:.8rem;}
 .an-link{font-family:'Bebas Neue',cursive;font-size:12px;letter-spacing:1.5px;color:rgba(255,255,255,0.5);text-decoration:none;padding:6px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);}
 .an-link:hover{color:#fff;border-color:rgba(255,255,255,0.25);}
@@ -251,6 +256,16 @@ body{background:#060b1f;font-family:system-ui,sans-serif;min-height:100vh;paddin
         <button class="act-btn" onclick="approveAllHighConf()">✅ Approve High Conf (≥80)</button>
         <button class="act-btn" onclick="rejectAllLowConf()">🗑️ Reject Low (&lt;40)</button>
         <button class="act-btn" onclick="loadScrapedQueue()">↻ Refresh</button>
+        <span class="bulk-sep"></span>
+        <!-- The 40-79 band had NO bulk action, so anything scoring under 80 sat
+             in the queue for ever — at one point that was the entire queue (24
+             perfectly good deals like Dublin → Peru and London → Barcelona £45).
+             This is the review path for it. -->
+        <label class="bulk-lbl" for="rev-min">Review band</label>
+        <input id="rev-min" class="bulk-num" type="number" min="0" max="100" step="5" value="60"
+               oninput="updateReviewCount()" title="Show candidates scoring at least this"/>
+        <button class="act-btn" onclick="approveReviewBand()" id="rev-btn">👀 Approve reviewed</button>
+        <span id="rev-count" class="bulk-count"></span>
       </div>
       <div class="deal-grid" id="scraped-dg"></div>
     </div><!-- /scraped-pane -->
@@ -501,6 +516,7 @@ function escHtml(s) {
 }
 
 function renderScrapedQueue() {
+  updateReviewCount();
   var grid = document.getElementById('scraped-dg');
   if (!scrapedDeals.length) {
     grid.innerHTML = '<div class="empty-note">Queue empty — click 🔄 Scrape to fetch new deals.</div>';
@@ -624,6 +640,40 @@ async function approveAllHighConf() {
   toast('✅ Approved ' + hi.length + ' deal' + (hi.length > 1 ? 's' : '') + ' → Draft Deals');
 }
 
+// ── Review band (the 40-79 gap) ───────────────────────────────────────────────
+// Auto-approve needs 80+; "reject low" only clears under 40. Everything between
+// had no action at all, so it accumulated silently — the queue once held 24
+// perfectly good deals (Dublin → Peru, London → Barcelona £45) that could
+// neither promote nor be cleared. This surfaces that band and lets it move.
+function reviewBandMin() {
+  var el = document.getElementById('rev-min');
+  var n = el ? parseInt(el.value) : 60;
+  return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 60;
+}
+function reviewBandDeals() {
+  var min = reviewBandMin();
+  return scrapedDeals.filter(function (d) {
+    return d.confidence !== null && d.confidence !== undefined
+      && d.confidence >= min && d.confidence < 80;
+  });
+}
+function updateReviewCount() {
+  var el = document.getElementById('rev-count');
+  if (!el) return;
+  var n = reviewBandDeals().length, min = reviewBandMin();
+  el.textContent = n ? (n + ' in ' + min + '–79 band') : 'none in band';
+  el.className = 'bulk-count' + (n ? ' has' : '');
+}
+async function approveReviewBand() {
+  var band = reviewBandDeals();
+  var min = reviewBandMin();
+  if (!band.length) { toast('Nothing scored ' + min + '–79 right now.', 'warn'); return; }
+  if (!confirm('Approve ' + band.length + ' deal' + (band.length > 1 ? 's' : '') +
+      ' scoring ' + min + '–79?\n\nThese sit below the auto-approve line, so give the list a look first — they go to Draft Deals, not straight live.')) return;
+  for (var i = 0; i < band.length; i++) await approveScraped(band[i].id, { quiet: true });
+  toast('✅ Approved ' + band.length + ' reviewed deal' + (band.length > 1 ? 's' : '') + ' → Draft Deals');
+}
+
 async function rejectAllLowConf() {
   var lo = scrapedDeals.filter(function(d){ return d.confidence !== null && d.confidence !== undefined && d.confidence < 40; });
   if (!lo.length) { toast('No deals scored < 40.', 'warn'); return; }
@@ -669,6 +719,7 @@ async function expressPublish(dealId, channels, icon, opts) {
     var body = { dealIds: [dealId] };
     if (channels) body.channels = channels;
     if (opts.draft) body.draft = true;
+    if (opts.carousel) body.carousel = true;
     var res = await fetch('/api/admin/publish', {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify(body),
@@ -728,7 +779,13 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
 
-async function composePoster(d) {
+// composePoster(d) builds the single 1080² deal poster.
+// composePoster(d, slide) builds ONE SLIDE of a multi-city carousel, where
+// slide = { city, price, index, total }: same template and background, but the
+// headline becomes "<City> → <Dest>" at that city's own price. Every follower
+// sees their own airport in the same post — the format that actually performs
+// for a deals brand.
+async function composePoster(d, slide) {
   await Promise.all([
     document.fonts.load('200px Bangers'), document.fonts.load('84px "Bebas Neue"'),
   ]).catch(function(){});
@@ -787,8 +844,10 @@ async function composePoster(d) {
     ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2;
     roundRect(ctx, 52, y - 54, fw, fh, 10); ctx.stroke();
   }
-  // Route auto-shrinks until it clears the mascot zone (right ~330px)
-  var routeTxt = String(d.route || '').toUpperCase();
+  // Route auto-shrinks until it clears the mascot zone (right ~330px).
+  // On a carousel slide the headline is that slide's own city → destination.
+  var destName = (String(d.route || '').split(/→|->/)[1] || '').trim();
+  var routeTxt = String(slide ? (slide.city + ' → ' + destName) : (d.route || '')).toUpperCase();
   var routeX = 52 + (flagImg ? 118 : 0);
   var maxRouteW = S - routeX - 340;
   var fs = 86;
@@ -809,11 +868,22 @@ async function composePoster(d) {
   // Price block
   ctx.font = '44px "Bebas Neue"'; ctx.fillStyle = 'rgba(255,255,255,0.65)';
   ctx.fillText('RETURN FROM', 56, y + 168);
+  var priceTxt = String((slide ? slide.price : d.price) || '');
   ctx.font = '210px Bangers'; ctx.fillStyle = '#FFD700';
   ctx.shadowColor = 'rgba(0,0,0,0.65)'; ctx.shadowBlur = 14;
-  ctx.fillText(String(d.price || ''), 48, S - 62);
+  ctx.fillText(priceTxt, 48, S - 62);
   ctx.shadowBlur = 0;
-  if (d.was_price) {
+  // Slide counter, so the carousel reads as a set rather than repeats.
+  if (slide && slide.total > 1) {
+    ctx.font = '40px "Bebas Neue"';
+    var st = slide.index + '/' + slide.total;
+    var stw = ctx.measureText(st).width + 34;
+    ctx.fillStyle = 'rgba(6,11,31,0.72)';
+    roundRect(ctx, S - stw - 44, 128, stw, 54, 27); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.fillText(st, S - stw - 27, 166);
+  }
+  if (!slide && d.was_price) {
     var pw = ctx.measureText(String(d.price || '')).width;
     ctx.font = '58px "Bebas Neue"'; ctx.fillStyle = 'rgba(255,255,255,0.55)';
     var wasTxt = 'WAS ' + String(d.was_price).toUpperCase();
@@ -874,6 +944,53 @@ async function makePoster(id, opts) {
   } catch(e) { toast('❌ Network error saving poster', 'err'); return null; }
 }
 
+// Build a multi-city carousel: slide 0 is the deal, then one slide per
+// departure city at that city's own price. Needs deal_origins, which the
+// fan-out cron fills — without it there's nothing to make a series from.
+async function makeCarousel(id) {
+  var d = findDealAnywhere(id);
+  if (!d) { toast('Deal not loaded — refresh the tab.', 'warn'); return null; }
+  if (!d.image_url) { toast('No AI image yet — hit 🎨 Images first, then build the carousel.', 'warn'); return null; }
+
+  var res = await fetch('/api/admin/deal-origins?dealId=' + id, { cache: 'no-store' });
+  if (!res.ok) { toast('❌ Could not load city prices (HTTP ' + res.status + ')', 'err'); return null; }
+  var data = await res.json();
+  var origins = (data.origins || []).slice(0, 7);   // IG allows 10; keep it tight
+  if (origins.length < 2) {
+    toast('Only ' + origins.length + ' city price on file — run the fan-out cron (/api/cron/fan-out) to price this destination from every airport first.', 'warn', 7000);
+    return null;
+  }
+
+  var total = origins.length + 1;
+  toast('🎠 Composing ' + total + ' slides…', 'ok', 3000);
+
+  var urls = [];
+  for (var i = 0; i < total; i++) {
+    var slide = i === 0 ? { index: 1, total: total }
+      : { city: origins[i - 1].origin_city,
+          price: origins[i - 1].symbol + Math.round(origins[i - 1].price),
+          index: i + 1, total: total };
+    // Slide 0 keeps the deal's own headline; the counter still marks it 1/N.
+    var out = await composePoster(d, i === 0 ? Object.assign({}, slide, { city: null }) : slide);
+    if (out.error) { toast('❌ Slide ' + (i + 1) + ': ' + escHtml(out.error), 'err'); return null; }
+    var sr = await fetch('/api/admin/save-poster', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dealId: id, dataUrl: out.dataUrl, slide: i,
+        city: slide.city || null, price: slide.price || d.price }),
+    });
+    if (!sr.ok) { toast('❌ Saving slide ' + (i + 1) + ' failed (HTTP ' + sr.status + ')', 'err'); return null; }
+    var sd = await sr.json();
+    urls.push(sd.url);
+    if (i === 0) { d.poster_url = sd.url; }
+  }
+
+  d.slide_count = urls.length;
+  renderDeals();
+  toast('🎠 Carousel ready — ' + urls.length + ' slides (cheapest: ' + origins[0].origin_city + ' ' + origins[0].symbol + Math.round(origins[0].price) + ')');
+  window.open(urls[0], '_blank', 'noopener');
+  return urls;
+}
+
 // Socials with the branded creative guaranteed: build the poster first when
 // one doesn't exist yet, then fire the social-only publish.
 async function socialsFire(id) {
@@ -892,6 +1009,21 @@ async function socialsDraft(id) {
   if (d && !d.poster_url && d.image_url) { await makePoster(id, { quiet: true }); }
   toast('🧪 Sending a draft to Buffer…', 'ok', 2500);
   await expressPublish(id, ['social'], '🧪', { draft: true });
+}
+
+// Post the multi-city slide set as an Instagram carousel. Builds the series
+// first if it doesn't exist yet, so one click is enough.
+async function socialsCarousel(id, draft) {
+  var have = await fetch('/api/admin/deal-origins?dealId=' + id, { cache: 'no-store' })
+    .then(function(r){ return r.ok ? r.json() : { origins: [] }; }).catch(function(){ return { origins: [] }; });
+  if ((have.origins || []).length < 2) {
+    toast('No multi-city prices yet — run /api/cron/fan-out to price this destination from every airport first.', 'warn', 7000);
+    return;
+  }
+  var urls = await makeCarousel(id);
+  if (!urls) return;                      // makeCarousel already explained why
+  toast((draft ? '🧪 Drafting' : '🎠 Posting') + ' a ' + urls.length + '-slide carousel…', 'ok', 3000);
+  await expressPublish(id, ['social'], draft ? '🧪' : '🎠', { draft: !!draft, carousel: true });
 }
 
 // ── AI Creative Studio ────────────────────────────────────────────────────────
@@ -996,11 +1128,27 @@ async function runEnrich() {
     while (rounds < 8) {
       rounds++;
       var res  = await fetch('/api/admin/enrich-pending', { method: 'POST' });
-      var data = res.ok ? await res.json() : null;
-      if (!data) { toast('❌ Enrich error: HTTP ' + (res ? res.status : '?'), 'err'); break; }
-      if (data.error) { toast('❌ Enrich: ' + escHtml(String(data.error).slice(0, 160)), 'err'); break; }
+      // Read the BODY on failure, not just the status. A 502 from Anthropic
+      // carries the actual reason (rate limit, bad key, unparseable JSON) and
+      // throwing it away is why "enrich signals an error" was undiagnosable
+      // without going and reading server logs.
+      var data = null;
+      try { data = await res.json(); } catch (e) { data = null; }
+      if (!res.ok) {
+        var why = (data && (data.error || data.reason)) || ('HTTP ' + res.status);
+        toast('❌ Enrich failed: ' + escHtml(String(why).slice(0, 200)), 'err', 9000);
+        if (data && data.raw) console.warn('enrich raw response:', data.raw);
+        break;
+      }
+      if (!data) { toast('❌ Enrich: server sent no JSON (HTTP ' + res.status + ')', 'err'); break; }
+      if (data.error) { toast('❌ Enrich: ' + escHtml(String(data.error).slice(0, 200)), 'err', 9000); break; }
       total += data.enriched || 0;
       approved += data.auto_approved || 0;
+      // Things that used to happen silently.
+      if (data.blocked && data.blocked.length) {
+        toast('🚫 ' + data.blocked.length + ' deal(s) could not be promoted: ' +
+              escHtml(data.blocked.map(function (b) { return b.route + ' (' + b.reason + ')'; }).join(', ').slice(0, 160)), 'warn', 9000);
+      }
       if (!data.remaining) {
         if (total === 0) toast('🤖 ' + escHtml(data.reason || 'Queue already scored — nothing new to enrich.'), 'warn');
         break;
@@ -1170,7 +1318,7 @@ async function loadLiveDeals() {
         <div class="deal-meta">${d.dates||''} ${d.region?'· '+d.region.toUpperCase():''}</div>
         ${dealChips(d)}
         <div class="card-actions">
-          <button class="btn-mini" onclick="makePoster(${d.id})" title="Compose the branded ad poster (background + price + flag + mascot). Opens a preview.">🖼 Poster</button>
+          <button class="btn-mini" onclick="makePoster(${d.id})" title="Compose the branded ad poster (background + price + flag + mascot). Opens a preview.">🖼 Poster</button><button class="mini" onclick="makeCarousel(${d.id})" title="Build a multi-city Instagram carousel: one slide per departure city at that city's own price. Needs fan-out prices.">🎠 Carousel</button><button class="mini" onclick="socialsCarousel(${d.id}, true)" title="Build the slide set and send it to Buffer as a DRAFT carousel for review.">🎠🧪 Carousel draft</button>
           <button class="btn-mini" onclick="generateCreative(${d.id})" title="AI Creative Studio: TikTok slideshow brief + IG Reel script for this deal.">🎬 Creative</button>
           <button class="btn-mini" onclick="socialsDraft(${d.id})" title="Safe test: saves a DRAFT to Buffer (nothing goes public). Review + publish it inside Buffer.">🧪 Test draft</button>
           <button class="btn-mini alt" onclick="socialsFire(${d.id})" ${d.published_social?'disabled title="Already posted — idempotency guard will skip it"':'title="Post to Instagram/Facebook right now via Buffer (auto-builds the poster first)"'}>📱 Post now</button>

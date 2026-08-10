@@ -10,7 +10,24 @@ export async function onRequestGet(context) {
   const dest = (params.get('dest') || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 40);
   const scope = dest ? 'alerts' : 'digest';
 
-  if (token && token.length <= 128) {
+  // Rate limit: 20 attempts per IP per hour. member_token is a 48-char hex
+  // capability credential, so guessing one is already impractical — but this
+  // endpoint MUTATES on a bare GET with no other authentication, and it was the
+  // only such route with no limiter at all. A capped attempt rate turns
+  // "impractical" into "not worth trying", and costs a legitimate one-click
+  // unsubscribe nothing.
+  let throttled = false;
+  try {
+    const ip = context.request.headers.get('CF-Connecting-IP') || 'unknown';
+    const hour = Math.floor(Date.now() / 3600000);
+    const row = await context.env.DB.prepare(
+      `INSERT INTO kv_rate_limit (key, count) VALUES (?, 1)
+       ON CONFLICT(key) DO UPDATE SET count = count + 1 RETURNING count`
+    ).bind(`unsub_rl:${ip}:${hour}`).first().catch(() => null);
+    if (row && row.count > 20) throttled = true;
+  } catch { /* table missing — fail open, this must never block a real opt-out */ }
+
+  if (!throttled && token && token.length <= 128) {
     try {
       if (dest) {
         await context.env.DB.prepare(

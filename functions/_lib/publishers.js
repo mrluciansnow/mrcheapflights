@@ -190,7 +190,13 @@ export async function bufferChannels(token) {
 
 async function publishViaBuffer(copy, imageUrl, token, opts = {}) {
   const draft = !!opts.draft;
-  const result = { instagram: false, facebook: false, shellMode: false, draft, detail: [] };
+  // imageUrl stays a single URL for every existing caller. opts.images (an
+  // ordered array) turns the post into an Instagram carousel — one slide per
+  // departure city. The lead slide is always first so a single-image channel
+  // still gets the right picture.
+  const images = (Array.isArray(opts.images) && opts.images.length ? opts.images : (imageUrl ? [imageUrl] : []))
+    .filter(Boolean).slice(0, 10); // IG's carousel cap
+  const result = { instagram: false, facebook: false, shellMode: false, draft, slides: images.length, detail: [] };
 
   const list = await bufferChannels(token);
   if (list.error) { result.detail.push(list.error); return result; }
@@ -205,7 +211,7 @@ async function publishViaBuffer(copy, imageUrl, token, opts = {}) {
     const isFB = svc.includes('facebook');
     if (!isIG && !isFB) { result.detail.push(`${ch.service}: skipped (unsupported)`); continue; }
     // A live IG post needs media; a draft can be image-less (it's a preview).
-    if (isIG && !imageUrl && !draft) { result.detail.push('instagram: skipped — IG requires an image'); continue; }
+    if (isIG && !images.length && !draft) { result.detail.push('instagram: skipped — IG requires an image'); continue; }
 
     const input = {
       channelId: ch.id,
@@ -214,7 +220,10 @@ async function publishViaBuffer(copy, imageUrl, token, opts = {}) {
       // mode is a required ShareMode! — always set it. saveToDraft overrides the
       // behaviour to "save as draft" (lands in Buffer, never published).
       mode: draft ? 'addToQueue' : 'shareNow',
-      assets: imageUrl ? [{ image: { url: imageUrl } }] : [],
+      // One asset = a normal post; several = a carousel (one slide per
+      // departure city). Facebook takes a single image, so it gets the lead
+      // slide only — IG is where the carousel earns its keep.
+      assets: (isIG ? images : images.slice(0, 1)).map((u) => ({ image: { url: u } })),
       source: 'mrcheapflights',
     };
     if (draft) input.saveToDraft = true;

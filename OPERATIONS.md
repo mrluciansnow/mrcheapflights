@@ -38,6 +38,20 @@ but is never uploaded.
 `NEWSLETTER_ENABLED=1` · `CRON_SECRET` · `TRAVELPAYOUTS_MARKER=752435` ·
 `TRAVELPAYOUTS_TOKEN` · `SERPAPI_KEY` · `BUFFER_ACCESS_TOKEN`
 
+`CONVERSIONS_ENABLED` (`1` reports ad-attributed signups to Meta/TikTok; default
+off — see the Conversion events section, it's a GDPR decision).
+
+Ad automation (all optional — absent ⇒ permanent dry-run, nothing is sent):
+`META_ACCESS_TOKEN` · `TIKTOK_ACCESS_TOKEN` · `ADS_LIVE` (`1` permits live
+writes; default off) · `ADS_MAX_DAILY_BUDGET` (hard ceiling, default `20`) ·
+`ADS_ALLOW_SCALE` (`1` allows budget raises; default off) · `ADS_SANDBOX` (`1`
+forces simulation). Ad-account / advertiser ids are non-secret and set in the
+/marketing UI (D1 `ad_accounts`).
+**CURRENT STATE:** `META_ACCESS_TOKEN` / `TIKTOK_ACCESS_TOKEN` hold **filler
+`sandbox…` values** and `ADS_LIVE=1` — the service runs in SIMULATION (fake
+metrics, £0 spend). A token starting with `sandbox` (or `ADS_SANDBOX=1`) = sandbox.
+Replace a token with a real one to take that platform live (see MANUAL-TASKS).
+
 Set/rotate: `echo <value> | npx wrangler pages secret put NAME --project-name=mrcheap`
 then `npm run deploy` (secrets apply on the next deployment).
 
@@ -46,7 +60,7 @@ then `npm run deploy` (secrets apply on the next deployment).
 | Job | Endpoint | Schedule |
 |---|---|---|
 | Scrape deals | /api/admin/trigger-scrape | 07:00 daily |
-| AI enrich + auto-approve | /api/admin/enrich-pending | 09:00 daily |
+| AI enrich + auto-approve | /api/admin/enrich-pending | hourly :05 (3 deals/run) |
 | Admin briefing | /api/admin/daily-digest | 09:15 daily |
 | Deal image backfill | /api/cron/generate-images | 09:20 daily |
 | Daily newsletter | /api/cron/send-newsletter | 09:30 daily |
@@ -55,6 +69,100 @@ then `npm run deploy` (secrets apply on the next deployment).
 | Destination SEO content | /api/admin/generate-destination-content | 03:00 daily |
 | Nightly cleanup | /api/admin/cleanup | 02:00 daily |
 | Health monitor | /api/health | every 10 min (emails on 2 fails) |
+| Multi-city fan-out | /api/cron/fan-out | every 4h :45 |
+| Weekly marketing report | /api/cron/weekly-report | Mondays 08:00 |
+| Ad sync + guardrail | /api/cron/ads-sync | every 6h (dry-run until armed) |
+
+## Ad automation (Meta + TikTok)
+
+Programmatic campaign management, managed at **/marketing → 🤖 Ad automation**.
+D1 is the brain (`ad_campaigns`, `ad_actions`, `ad_accounts`); the platforms are
+the executor. Spend is joined against internal `/c/` signups for a true CPA.
+
+Files: `_lib/ads-meta.js` (Graph v21.0), `_lib/ads-tiktok.js` (Business API
+v1.3), `_lib/ads-engine.js` (orchestrator + guardrails + sandbox),
+`_lib/ads-creative.js` (Haiku ad copy), `api/admin/ads*.js` + `ads-creative.js`
+(UI API), `api/cron/ads-sync.js` (6h sync + auto-pause).
+
+**Sandbox:** a token starting with `sandbox` (or `ADS_SANDBOX=1`) simulates that
+platform — fake campaign ids + fabricated, growing metrics — so the full
+lifecycle is demoable without a real account. It short-circuits before any
+network call, so it can never spend, even with `ADS_LIVE=1`. Prod is in sandbox
+now (filler tokens). "🔄 Sync now" on /marketing advances the simulation.
+
+**Ad creative:** the ✨ button per campaign calls Claude Haiku
+(`ANTHROPIC_API_KEY`) for platform-appropriate ad-copy variants, stored in
+`ad_creatives`. Independent of go-live.
+
+**Creative-level attribution:** each variant has its own tracked link
+`/c/<slug>?v=<n>`; the landing page passes `v` to `/api/signup`, which stores it
+as `subscribers.source_variant` (migration 0025). The creative modal then shows
+per-variant signups and flags the leader once total signups ≥ 5. **Use the
+per-variant link as each ad's destination URL** — a shared `/c/<slug>` link
+attributes to the campaign but not the creative.
+
+**Safety model — four hard invariants (enforced in `ads-engine.js`):**
+1. **Dry-run by default.** No platform write unless `ADS_LIVE=1` *and* that
+   platform is configured (token + account id). Otherwise the intended request
+   is planned + logged to `ad_actions`, never sent.
+2. **Paused-only creation.** Launch creates the campaign PAUSED. The engine
+   never activates — going live is a human action (admin "Activate" click, or in
+   Ads Manager). The cron never activates.
+3. **Hard budget ceiling.** `planCampaign` refuses any daily budget above
+   `ADS_MAX_DAILY_BUDGET` (default €20).
+4. **Guardrail only pauses.** The 6h cron pauses over-target-CPA campaigns
+   (spend ↓, always safe); it never raises budgets unless `ADS_ALLOW_SCALE=1`.
+
+With no tokens set the system is inert (plans/reports only). Prod currently has
+filler sandbox tokens, so it simulates. See MANUAL-TASKS.md → "Go live on the
+ad-automation service" to swap in real tokens.
+
+## Growth loops
+
+- **Custom Audience export** — `/marketing → 📤 Audiences` →
+  `GET /api/admin/audience-export?region=&tier=&format=` (admin). SHA-256-hashes
+  normalised emails (raw never leaves; GDPR-friendly), excludes newsletter
+  opt-outs by default. Download CSV → upload to Meta/TikTok as a Custom Audience
+  → build a Lookalike.
+- **Referral loop** — each subscriber has a dedicated `referral_code` (20 hex):
+  `/r/<code>` (branded capture, drops the `mcf_ref` cookie). On signup,
+  `_lib/referrals.js` credits the referrer; **every 3 referrals = 30 premium
+  days** (time-based, like promo codes). Reward terms in `REFERRAL_TERMS`. Every
+  welcome email carries the subscriber's share link. Stats in the daily digest
+  (🎁 Referrals) and `subscribers.referred_by / referral_count / referral_rewarded`.
+  ⚠️ **Never use `member_token` as a public or shareable identifier.** It is a
+  capability credential — `GET /api/unsubscribe?token=<member_token>` opts a
+  person out with no auth (and `&dest=` kills an alert). That is exactly the bug
+  migration 0024 fixed: referrals get their own non-privileged `referral_code`.
+  Keep `member_token` to emails and the signed `mcf_member` cookie.
+
+## Conversion events (Meta CAPI / TikTok Events API)
+
+Reports ad-attributed signups back to the platform so its optimisation model
+learns. `_lib/conversions.js`, fired from signup's `waitUntil`; audit trail in
+`conversion_events` (migration 0026). Status card on /marketing.
+
+**OFF unless `CONVERSIONS_ENABLED=1`** — this shares hashed subscriber emails
+with an ad platform, which is a GDPR decision for IE/UK subscribers and so is
+deliberately not a default. Scope rules, all enforced in code:
+- only signups with a campaign `source` (organic is never sent, never logged);
+- SHA-256 hashed email only — `conversion_events` has **no email column**;
+- a `sandbox…` token simulates the send and transmits nothing;
+- a platform with no `ad_accounts.pixel_id` is skipped.
+
+Config reuses the ad connection — set the **pixel id** per platform on
+/marketing; no new secrets. `event_id` dedups against a browser pixel, so
+running both counts one conversion.
+
+## Weekly marketing report
+
+`/api/cron/weekly-report` emails the growth picture (signups WoW, campaign CPA,
+winning ad creative, referral loop, ad-automation activity, advisories) to
+`DIGEST_TO_EMAIL`. Files: `_lib/weekly-report.js` (gather + render),
+`api/cron/weekly-report.js` (dual auth).
+
+**`?preview=1` renders it in the browser and sends nothing** — use that to check
+the report any time without waiting for Monday.
 
 ## Monitoring
 
