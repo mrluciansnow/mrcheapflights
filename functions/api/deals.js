@@ -1,4 +1,6 @@
-import { requireAdmin } from '../_lib/auth.js';
+import { requireAdmin, resolveMemberTier, isPremiumBadge } from '../_lib/auth.js';
+import { routeSearchUrl } from '../_lib/affiliate.js';
+import { fareMapForDeals, publicFare } from '../_lib/fares.js';
 
 // Public: list live deals, optionally filtered by region. Mirrors the shape
 // of the old in-memory `deals[]` array so the frontend mapping is 1:1.
@@ -10,12 +12,17 @@ export async function onRequestGet(context) {
   const region = searchParams.get('region');
 
   const columns = session
-    ? 'id, flag, route, dates, price, badge, url, expiry, slug, region, status, pipeline_style, pipeline_copy, was_price, airline, dest_type'
-    : 'id, flag, route, dates, price, badge, url, expiry, slug, region';
+    ? 'id, flag, route, dates, price, badge, url, expiry, slug, region, status, pipeline_style, pipeline_copy, was_price, airline, dest_type, ai_copy, published_email, published_social, image_url'
+    : 'id, flag, route, dates, price, badge, url, expiry, slug, region, was_price, airline, image_url';
   let query = `SELECT ${columns} FROM deals`;
   const conditions = [];
   const binds = [];
-  if (!session) conditions.push(`status = 'live'`);
+  if (!session) {
+    conditions.push(`status = 'live'`);
+    // Auto-retire deals that have been expired for more than 3 days.
+    // Grace period accounts for deals that are still bookable after nominal expiry.
+    conditions.push(`(expiry IS NULL OR date(expiry) >= date('now', '-3 days'))`);
+  }
   if (region) {
     conditions.push('region = ?');
     binds.push(region);
@@ -25,7 +32,50 @@ export async function onRequestGet(context) {
 
   const stmt = context.env.DB.prepare(query);
   const { results } = await (binds.length ? stmt.bind(...binds) : stmt).all();
-  return Response.json(results);
+  // Affiliate layer: derive a "check live fares" search link per deal.
+  // Clean Aviasales link without TRAVELPAYOUTS_MARKER; wrapped once it's set.
+  const marker = context.env.TRAVELPAYOUTS_MARKER || '';
+
+  // ── Fare verification payload — SERVER-SIDE gated ──
+  // guest → no fare data at all, fare_gate tells the client what teaser to
+  // render ('login'); free member → details on free-shelf deals, premium
+  // badges stay gated ('premium'); premium member → everything.
+  const tier = session ? 'premium' : await resolveMemberTier(context);
+  let fareMap = {};
+  try {
+    fareMap = await fareMapForDeals(context.env, results.map((d) => d.id));
+  } catch { /* fare_checks may not exist yet — listings degrade gracefully */ }
+
+  const withLinks = results.map((d) => {
+    const premiumDeal = isPremiumBadge(d.badge);
+    const entitled = tier === 'premium' || (tier === 'free' && !premiumDeal);
+    const out = {
+      ...d,
+      search_url: routeSearchUrl(d.route, d.region, marker),
+      fare_gate: entitled ? 'none' : (tier === 'guest' ? 'login' : 'premium'),
+    };
+    // Public boolean only — "this fare was independently verified" is the
+    // login hook and leaks nothing (no price/dates/airline for the gated).
+    const rows = fareMap[d.id];
+    if (rows && ((rows.google && rows.google.status === 'verified')
+              || (rows.travelpayouts && rows.travelpayouts.status === 'verified'))) {
+      out.fare_verified = true;
+    }
+    if (entitled) {
+      const fare = publicFare(d, fareMap[d.id], marker);
+      if (fare) out.fare = fare;
+    }
+    return out;
+  });
+  // Vary: Cookie — without it, a browser that cached the public (logged-out)
+  // response re-serves it to a logged-in admin for 5 minutes, which locked the
+  // pipeline page behind its auth gate with stale data.
+  // Only the pure-guest response is publicly cacheable: member responses carry
+  // gated fare data and must never land in a shared cache.
+  const cacheHeaders = (session || tier !== 'guest')
+    ? { 'Cache-Control': 'private, no-store', 'Vary': 'Cookie' }
+    : { 'Cache-Control': 'public, max-age=300, stale-while-revalidate=60', 'Vary': 'Cookie' };
+  return Response.json(withLinks, { headers: cacheHeaders });
 }
 
 // Admin: create a deal. Defaults to 'live' (the existing CMS behaviour) --
@@ -38,6 +88,18 @@ export async function onRequestPost(context) {
   const { flag, route, dates, price, badge, url, expiry, slug, region, status, wasPrice, airline, destType } = body;
   if (!route || !price || !slug) {
     return new Response('route, price and slug are required', { status: 400 });
+  }
+  if (slug && !/^[a-z0-9-]{1,120}$/.test(slug)) {
+    return new Response('slug must be lowercase alphanumeric with hyphens (max 120 chars)', { status: 400 });
+  }
+  if (!['ie', 'uk'].includes(region || 'ie')) {
+    return new Response('region must be ie or uk', { status: 400 });
+  }
+  if (url && url !== '#' && !/^https?:\/\/.+/.test(url)) {
+    return new Response('url must be https://...', { status: 400 });
+  }
+  if (expiry && !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) {
+    return new Response('expiry must be YYYY-MM-DD', { status: 400 });
   }
 
   const result = await context.env.DB.prepare(

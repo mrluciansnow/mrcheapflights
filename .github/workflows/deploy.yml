@@ -16,8 +16,9 @@ on:
         type: boolean
         default: true
       branch:
-        description: 'Pages branch to deploy as — use the Pages production branch for a live deploy'
-        type: string
+        description: 'Pages branch to deploy to: main (live) or preview'
+        type: choice
+        options: [main, preview]
         default: main
       url:
         description: 'Site URL to health-check after deploying, e.g. https://mrcheapflights.com (blank to skip)'
@@ -57,12 +58,21 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node tools/migrate.mjs --remote
 
+      # NOT `wrangler pages deploy .` — that uploads the whole repo directory,
+      # ignores .gitignore, and has already published .dev.vars once. The
+      # deploy script stages an explicit allowlist into .dist/ and refuses to
+      # run if a secrets or config file ends up in there.
       - name: Deploy to Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         id: pages
-        run: npx wrangler pages deploy . --branch="${{ inputs.branch }}" --commit-dirty=true
+        run: |
+          if [ "${{ inputs.branch }}" = "preview" ]; then
+            npm run deploy -- --preview
+          else
+            npm run deploy
+          fi
 
       # The deploy is not finished until the online half can actually serve.
       # /api/mp/health answers the three things that go wrong — binding,

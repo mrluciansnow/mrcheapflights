@@ -1,46 +1,92 @@
-// Deal scraper library — fetches public flight-deal pages and stores candidates
-// in the `scraped_deals` table for admin review. Uses Cloudflare's native
-// HTMLRewriter for parsing, which streams HTML without loading it into memory.
+// Deal scraper library — fetches public flight-deal RSS feeds and pages,
+// stores candidates in `scraped_deals` for admin review.
+
+// IE airport keywords: all 6 public airports + common name variants
+const IE_FILTER = /dublin|ireland|irish|cork|shannon|knock|ireland west|kerry|farranfore|waterford|donegal|city of derry/i;
+// UK airport keywords: London (all 6 airports), all major regional airports + country names
+const UK_FILTER = /london|heathrow|gatwick|stansted|luton|london city|manchester|birmingham|glasgow|edinburgh|bristol|newcastle|leeds|bradford|liverpool|john lennon|belfast|international|east midlands|nottingham|cardiff|norwich|exeter|uk|britain|england|scotland|wales/i;
 
 const SOURCES = [
-  {
-    name: 'Secret Flying IE',
-    url: 'https://www.secretflying.com/posts/category/ireland/',
-    region: 'ie',
-    parser: parseSecretFlying,
-  },
-  {
-    name: 'Secret Flying UK',
-    url: 'https://www.secretflying.com/posts/category/united-kingdom/',
-    region: 'uk',
-    parser: parseSecretFlying,
-  },
+  // ── RSS feeds — preferred; reliable structure, light on bandwidth ──────────
   {
     name: 'Fly4Free IE',
-    url: 'https://www.fly4free.com/flight-deals/europe/',
+    url: 'https://www.fly4free.com/feed/',
     region: 'ie',
-    parser: parseFly4Free,
+    type: 'rss',
+    filter: (title) => IE_FILTER.test(title),
   },
   {
     name: 'Fly4Free UK',
-    url: 'https://www.fly4free.com/flight-deals/from-united-kingdom/',
+    url: 'https://www.fly4free.com/feed/',
     region: 'uk',
-    parser: parseFly4Free,
+    type: 'rss',
+    filter: (title) => UK_FILTER.test(title),
   },
+  {
+    name: 'Travel-Dealz IE',
+    url: 'https://www.travel-dealz.eu/feed/',
+    region: 'ie',
+    type: 'rss',
+    filter: (title) => IE_FILTER.test(title),
+  },
+  {
+    name: 'Travel-Dealz UK',
+    url: 'https://www.travel-dealz.eu/feed/',
+    region: 'uk',
+    type: 'rss',
+    filter: (title) => UK_FILTER.test(title),
+  },
+  // The Flight Deal — US-operated but covers transatlantic cheap fares relevant to IE/UK
+  {
+    name: 'The Flight Deal IE',
+    url: 'https://www.theflightdeal.com/feed/',
+    region: 'ie',
+    type: 'rss',
+    filter: (title) => IE_FILTER.test(title),
+  },
+  {
+    name: 'The Flight Deal UK',
+    url: 'https://www.theflightdeal.com/feed/',
+    region: 'uk',
+    type: 'rss',
+    filter: (title) => UK_FILTER.test(title),
+  },
+  // Holiday Pirates — major European deal aggregator with UK/IE-relevant flights
+  {
+    name: 'Holiday Pirates IE',
+    url: 'https://www.holidaypirates.com/feed',
+    region: 'ie',
+    type: 'rss',
+    filter: (title) => IE_FILTER.test(title),
+  },
+  {
+    name: 'Holiday Pirates UK',
+    url: 'https://www.holidaypirates.com/feed',
+    region: 'uk',
+    type: 'rss',
+    filter: (title) => UK_FILTER.test(title),
+  },
+  // NOTE: Secret Flying was removed 2026-07-11 — it hard-blocks Cloudflare
+  // Worker IPs with HTTP 403 on both its HTML pages and RSS feeds. Expanding
+  // deal flow is handled by the email-ingest worker (forwarded newsletters)
+  // rather than fighting bot protection. Add new RSS sources here.
 ];
 
-// Main entry point — scrape all sources and upsert new deals.
+// ── Main entry point ─────────────────────────────────────────────────────────
+
 export async function runScraper(env) {
   const summary = { sources_checked: 0, deals_found: 0, deals_new: 0, errors: [] };
 
   for (const source of SOURCES) {
     summary.sources_checked++;
     try {
-      const deals = await source.parser(source.url, source.region);
+      const deals = source.type === 'rss'
+        ? await parseRss(source.url, source.region, source.filter)
+        : await source.parser(source.url, source.region);
+
       summary.deals_found += deals.length;
 
       for (const deal of deals) {
-        // Dedup on (source_name, route, price) to avoid repeated scrapes.
         const existing = await env.DB.prepare(
           'SELECT id FROM scraped_deals WHERE source_name=? AND route=? AND price=?'
         ).bind(source.name, deal.route, deal.price).first();
@@ -64,92 +110,90 @@ export async function runScraper(env) {
   return summary;
 }
 
-// ── Parsers ───────────────────────────────────────────────────────────────────
+// ── RSS parser ───────────────────────────────────────────────────────────────
+// Delegates to the text-based parser which is more reliable for RSS/XML than
+// HTMLRewriter (which was designed for HTML and struggles with self-closing tags
+// and CDATA sections common in RSS feeds).
+async function parseRss(url, region, filterFn) {
+  return parseRssText(url, region, filterFn);
+}
 
-async function parseSecretFlying(url, region) {
+// Text-based RSS parser — more reliable than HTMLRewriter for XML documents.
+async function parseRssText(url, region, filterFn) {
   const res = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MrCheapFlightsBot/1.0)' },
-    cf: { cacheEverything: true, cacheTtl: 3600 },
+    headers: { 'User-Agent': 'MrCheapFlightsBot/1.0 (+https://mrcheapflights.ie)' },
+    cf: { cacheEverything: true, cacheTtl: 1800 },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-  const deals = [];
-  let currentTitle = '';
-  let currentLink = '';
+  const text = await res.text();
+  const items = [];
 
-  await new HTMLRewriter()
-    .on('h2.entry-title a, h3.entry-title a', {
-      text(chunk) { currentTitle += chunk.text; },
-      element(el) {
-        currentLink = el.getAttribute('href') || '';
-        currentTitle = '';
-      },
-    })
-    .on('h2.entry-title, h3.entry-title', {
-      element() {
-        if (currentTitle && currentLink) {
-          const deal = parseDealTitle(currentTitle.trim(), currentLink, region);
-          if (deal) deals.push(deal);
-        }
-      },
-    })
-    .transform(res)
-    .text(); // consume the stream
+  // Extract <item>...</item> blocks
+  const itemRe = /<item[\s>]([\s\S]*?)<\/item>/gi;
+  let itemMatch;
+  while ((itemMatch = itemRe.exec(text)) !== null) {
+    const block = itemMatch[1];
+    const title = extractTag(block, 'title');
+    const link = extractTag(block, 'link') || extractTag(block, 'guid');
+    const desc = extractTag(block, 'description');
 
-  return deals.slice(0, 20);
+    if (!title) continue;
+    if (filterFn && !filterFn(title + ' ' + (desc || ''))) continue;
+
+    const deal = parseDealTitle(title, link || url, region, desc || '');
+    if (deal) {
+      deal.snippet = (title + ' — ' + (desc || '')).slice(0, 300);
+      items.push(deal);
+    }
+    if (items.length >= 15) break;
+  }
+
+  return items;
 }
 
-async function parseFly4Free(url, region) {
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MrCheapFlightsBot/1.0)' },
-    cf: { cacheEverything: true, cacheTtl: 3600 },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-  const deals = [];
-  let currentTitle = '';
-  let currentLink = '';
-
-  await new HTMLRewriter()
-    .on('article h2 a, .post-title a', {
-      text(chunk) { currentTitle += chunk.text; },
-      element(el) {
-        currentLink = el.getAttribute('href') || '';
-        currentTitle = '';
-      },
-    })
-    .on('article h2, .post-title', {
-      element() {
-        if (currentTitle && currentLink) {
-          const deal = parseDealTitle(currentTitle.trim(), currentLink, region);
-          if (deal) deals.push(deal);
-        }
-      },
-    })
-    .transform(res)
-    .text();
-
-  return deals.slice(0, 20);
+function extractTag(text, tag) {
+  const re = new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\\/${tag}>`, 'i');
+  const m = text.match(re);
+  return m ? m[1].trim().replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"') : null;
 }
 
-// ── Title parser — extracts route and price from a deal headline ──────────────
-// Examples:
+// ── Deal title parser ────────────────────────────────────────────────────────
+// Extracts route and price from a headline like:
 //   "Dublin to Lisbon for €29 return"
 //   "Flights from London to New York from £189"
-//   "🇵🇹 Porto from Dublin €52 return flights"
+//   "Manchester to Barcelona €39 cheap flights"
 
-const PRICE_RE = /[€£$][\d,]+(?:\.\d{1,2})?/;
-const ORIGIN_CITY_RE = /(?:from|departing|ex\.?)\s+([A-Za-z\s]+?)(?:\s+to\s+|\s+[-–]\s+)/i;
-const DEST_CITY_RE = /to\s+([A-Za-z\s]+?)(?:\s+for\s+|\s+from\s+|\s+[€£$]|\s+return|\s*$)/i;
+const PRICE_RE = /([€£$])\s*([\d,]+(?:\.\d{1,2})?)/;
+
+const CITY_ALIASES = {
+  'dub': 'Dublin', 'lon': 'London', 'man': 'Manchester',
+  'lgw': 'London Gatwick', 'lhr': 'London Heathrow',
+};
+
 const COUNTRY_FLAG = {
-  portugal: '🇵🇹', spain: '🇪🇸', italy: '🇮🇹', france: '🇫🇷', greece: '🇬🇷',
-  turkey: '🇹🇷', usa: '🇺🇸', 'united states': '🇺🇸', 'new york': '🇺🇸',
-  canada: '🇨🇦', dubai: '🇦🇪', japan: '🇯🇵', thailand: '🇹🇭', mexico: '🇲🇽',
-  brazil: '🇧🇷', morocco: '🇲🇦', egypt: '🇪🇬', croatia: '🇭🇷', malta: '🇲🇹',
-  cyprus: '🇨🇾', lisbon: '🇵🇹', barcelona: '🇪🇸', madrid: '🇪🇸', rome: '🇮🇹',
-  milan: '🇮🇹', amsterdam: '🇳🇱', paris: '🇫🇷', berlin: '🇩🇪', prague: '🇨🇿',
-  budapest: '🇭🇺', warsaw: '🇵🇱', athens: '🇬🇷', ibiza: '🇪🇸', tenerife: '🇪🇸',
-  lanzarote: '🇪🇸', fuerteventura: '🇪🇸', gran: '🇪🇸', alicante: '🇪🇸',
+  portugal: '🇵🇹', spain: '🇪🇸', italy: '🇮🇹', france: '🇫🇷',
+  greece: '🇬🇷', turkey: '🇹🇷', usa: '🇺🇸', 'united states': '🇺🇸',
+  'new york': '🇺🇸', canada: '🇨🇦', dubai: '🇦🇪', japan: '🇯🇵',
+  thailand: '🇹🇭', mexico: '🇲🇽', brazil: '🇧🇷', morocco: '🇲🇦',
+  egypt: '🇪🇬', croatia: '🇭🇷', malta: '🇲🇹', cyprus: '🇨🇾',
+  lisbon: '🇵🇹', porto: '🇵🇹', barcelona: '🇪🇸', madrid: '🇪🇸',
+  rome: '🇮🇹', milan: '🇮🇹', venice: '🇮🇹', amsterdam: '🇳🇱',
+  paris: '🇫🇷', berlin: '🇩🇪', prague: '🇨🇿', budapest: '🇭🇺',
+  warsaw: '🇵🇱', athens: '🇬🇷', ibiza: '🇪🇸', tenerife: '🇪🇸',
+  lanzarote: '🇪🇸', fuerteventura: '🇪🇸', alicante: '🇪🇸',
+  palma: '🇪🇸', mallorca: '🇪🇸', majorca: '🇪🇸', reykjavik: '🇮🇸',
+  iceland: '🇮🇸', bangkok: '🇹🇭', singapore: '🇸🇬', bali: '🇮🇩',
+  indonesia: '🇮🇩', vietnam: '🇻🇳', india: '🇮🇳', delhi: '🇮🇳',
+  mumbai: '🇮🇳', kenya: '🇰🇪', 'south africa': '🇿🇦', 'cape town': '🇿🇦',
+  australia: '🇦🇺', sydney: '🇦🇺', 'new zealand': '🇳🇿', 'costa rica': '🇨🇷',
+  colombia: '🇨🇴', peru: '🇵🇪', chile: '🇨🇱', argentina: '🇦🇷',
+  miami: '🇺🇸', orlando: '🇺🇸', 'los angeles': '🇺🇸', cancun: '🇲🇽',
+  santorini: '🇬🇷', mykonos: '🇬🇷', rhodes: '🇬🇷', crete: '🇬🇷',
+  split: '🇭🇷', dubrovnik: '🇭🇷', faro: '🇵🇹', malaga: '🇪🇸',
+  seville: '🇪🇸', valencia: '🇪🇸', toulouse: '🇫🇷', nice: '🇫🇷',
+  zurich: '🇨🇭', geneva: '🇨🇭', vienna: '🇦🇹', brussels: '🇧🇪',
+  oslo: '🇳🇴', stockholm: '🇸🇪', copenhagen: '🇩🇰', helsinki: '🇫🇮',
 };
 
 function guessFlag(text) {
@@ -160,30 +204,38 @@ function guessFlag(text) {
   return '✈️';
 }
 
-function guessBadge(price, title) {
+function guessBadge(priceStr, title) {
   const lower = title.toLowerCase();
-  const num = parseFloat(String(price).replace(/[^0-9.]/g, ''));
-  if (lower.includes('mistake') || lower.includes('error fare')) return '⭐ Featured';
-  if (lower.includes('long haul') || lower.includes('transatlantic') || num > 300) return '✈ Long Haul';
-  if (lower.includes('flash') || lower.includes('sale')) return '⚡ Flash';
+  const num = parseFloat(String(priceStr).replace(/[^0-9.]/g, ''));
+  if (lower.includes('mistake') || lower.includes('error fare')) return '⚠️ Mistake Fare';
+  if (lower.includes('business') || lower.includes('premium cabin')) return '⭐ Featured';
+  if (lower.includes('long haul') || lower.includes('transatlantic') || num > 299) return '✈ Long Haul';
+  if (lower.includes('flash') || lower.includes('sale') || lower.includes('only today')) return '⚡ Flash';
   return '🔥 Hot';
 }
 
-function parseDealTitle(title, link, region) {
-  const priceMatch = title.match(PRICE_RE);
+function parseDealTitle(title, link, region, desc) {
+  const fullText = title + ' ' + desc;
+  const priceMatch = fullText.match(PRICE_RE);
   if (!priceMatch) return null;
-  const price = priceMatch[0];
+  const price = priceMatch[1] + priceMatch[2];
 
-  const destMatch = title.match(DEST_CITY_RE);
+  // Extract destination — look for "to <City>" pattern
+  const destMatch = fullText.match(/\bto\s+([A-Z][A-Za-z\s]+?)(?:\s+(?:for|from|return|\d)|[,.]|$)/);
   if (!destMatch) return null;
-  const dest = destMatch[1].trim();
+  const dest = destMatch[1].trim().replace(/\s+/g, ' ');
+  if (dest.split(/\s+/).length > 4) return null; // skip overly long matches
 
-  const originMatch = title.match(ORIGIN_CITY_RE);
-  const origin = originMatch ? originMatch[1].trim() : (region === 'ie' ? 'Dublin' : 'London');
+  // Extract origin — look for "from <City>" pattern
+  const originMatch = fullText.match(/\bfrom\s+([A-Z][A-Za-z\s]+?)\s+to\s/);
+  const defaultOrigin = region === 'ie' ? 'Dublin' : 'London';
+  const origin = originMatch ? originMatch[1].trim() : defaultOrigin;
+
+  if (origin.toLowerCase() === dest.toLowerCase()) return null;
 
   const route = `${origin} → ${dest}`;
-  const flag = guessFlag(title);
-  const badge = guessBadge(price, title);
+  const flag = guessFlag(fullText);
+  const badge = guessBadge(price, fullText);
 
-  return { route, price, flag, badge, url: link, snippet: title.slice(0, 200), region };
+  return { route, price, flag, badge, url: link, region };
 }

@@ -3,7 +3,16 @@
     "allow": [
       "Bash(ls -la \"C:\\\\Users\\\\scath\\\\MrCheapFlights\" 2>&1; echo \"---\"; ls -la \"C:\\\\Users\\\\scath\\\\Downloads\\\\Site\" 2>&1)",
       "Bash(cp \"C:\\\\Users\\\\scath\\\\Downloads\\\\Site\\\\index.html\" \"C:\\\\Users\\\\scath\\\\MrCheapFlights\\\\index.html\")",
-      "Bash(cp \"C:\\\\Users\\\\scath\\\\Downloads\\\\Site\\\\mascot.png\" \"C:\\\\Users\\\\scath\\\\MrCheapFlights\\\\mascot.png\")"
+      "Bash(cp \"C:\\\\Users\\\\scath\\\\Downloads\\\\Site\\\\mascot.png\" \"C:\\\\Users\\\\scath\\\\MrCheapFlights\\\\mascot.png\")",
+      "Bash(curl -s -c /tmp/mcf_cookies.txt -X POST https://mrcheapflights.ie/api/admin/login -H \"Content-Type: application/json\" -d '{\"password\":\"mrcheap2024\"}' -w \"\\\\nHTTP:%{http_code}\\\\n\")",
+      "Bash(curl -s -b /tmp/mcf_cookies.txt https://mrcheapflights.ie/api/admin/social-status -w \"\\\\nHTTP:%{http_code}\\\\n\")",
+      "Bash(curl -s -b /tmp/mcf_cookies.txt https://mrcheapflights.ie/api/admin/scrape-status -w \"\\\\nHTTP:%{http_code}\\\\n\")",
+      "Bash(curl -s -b /tmp/mcf_cookies.txt \"https://mrcheapflights.ie/api/admin/deals\" -w \"\\\\nHTTP:%{http_code}\\\\n\")",
+      "Bash(curl -s -b /tmp/mcf_cookies.txt \"https://mrcheapflights.ie/api/deals?region=ie\" -w \"\\\\nHTTP:%{http_code}\\\\n\")",
+      "Bash(curl -s -b /tmp/mcf_cookies.txt -X POST https://mrcheapflights.ie/api/admin/generate-image -H \"Content-Type: application/json\" -d '{\"dealId\":1}' -w \"\\\\nHTTP:%{http_code}\\\\n\" --max-time 30)",
+      "Bash(curl -sI https://mrcheapflights.ie/images/deals/1-1784498900189.jpg -w \"HTTP:%{http_code}\\\\n\")",
+      "Bash(curl -s -b /tmp/mcf_cookies.txt -X POST https://mrcheapflights.ie/api/admin/generate-image -H \"Content-Type: application/json\" -d '{\"dealId\":4}' -w \"\\\\nHTTP:%{http_code}\\\\n\" --max-time 30)",
+      "Bash(rm -f /tmp/mcf_cookies.txt)"
     ]
   }
 }

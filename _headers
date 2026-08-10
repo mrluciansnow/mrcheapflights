@@ -1,0 +1,11 @@
+# Cloudflare Pages static-asset headers.
+# Applies only to static files — Functions set their own headers, and the
+# D1-served /images/* route already sends immutable 1-year caching.
+
+# Brand mascot art is effectively static (a redesign ships a new filename).
+# 30-day cache with monthly revalidation, up from the 4h Pages default —
+# mascot.png is 1.5MB and mascot-small.jpg loads on every homepage view.
+/mascot.png
+  Cache-Control: public, max-age=2592000
+/mascot-small.jpg
+  Cache-Control: public, max-age=2592000

@@ -1,0 +1,19 @@
+# Email-ingest worker — receives newsletters forwarded by Cloudflare Email
+# Routing (deals@mrcheapflights.ie) and files deal candidates into the same
+# D1 database the site uses. Deploy: npx wrangler deploy (from this dir).
+#
+# ── EMAIL ROUTING SHELL (2 dashboard clicks after deploy) ─────────
+# dash.cloudflare.com → mrcheapflights.ie → Email → Email Routing:
+#   1. Enable Email Routing (adds the MX records for you)
+#   2. Create address deals@mrcheapflights.ie → action: Send to Worker
+#      → mrcheap-email-ingest
+# Then subscribe that address to Jack's Flight Club, Going, etc.
+# ──────────────────────────────────────────────────────────────────
+name = "mrcheap-email-ingest"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mrcheapflights-prod"
+database_id = "9db20f98-9534-4b6c-986e-125ed3f8e95f"

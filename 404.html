@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>404 – Page Not Found | Mr Cheap Flights</title>
+<meta name="description" content="This page doesn't exist — but our flight deals do. Head back and grab one.">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito:wght@400;700;800;900&display=swap" rel="stylesheet" crossorigin>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23FFD200'/><text y='78' x='50' text-anchor='middle' font-size='68'>✈</text></svg>">
+<style>
+:root{--yellow:#FFD200;--hot-pink:#FF2D6B;--navy:#0A1628;--sky:#00AAFF}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;font-family:'Nunito',sans-serif;background:var(--navy);color:#fff;overflow-x:hidden}
+body{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:2rem;background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(0,170,255,.06) 0%,transparent 60%),linear-gradient(165deg,#060e1c 0%,#0a1628 50%,#08121f 100%);text-align:center}
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.025;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");background-size:200px 200px}
+.wrap{position:relative;z-index:1;max-width:520px}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:1.8rem;color:var(--yellow);text-decoration:none;display:inline-block;margin-bottom:2.5rem}
+.logo span{color:var(--hot-pink)}
+.num{font-family:'Bebas Neue',sans-serif;font-size:clamp(7rem,20vw,12rem);line-height:.85;letter-spacing:-.02em;background:linear-gradient(135deg,var(--yellow),#ffaa00);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:.2rem}
+.plane{font-size:3.5rem;display:block;margin:-1rem 0 1rem;animation:float 3s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translateY(0) rotate(-10deg)}50%{transform:translateY(-18px) rotate(5deg)}}
+h1{font-family:'Bebas Neue',sans-serif;font-size:clamp(1.8rem,6vw,3rem);line-height:1;margin-bottom:.8rem}
+p{font-size:1.05rem;font-weight:600;color:rgba(255,255,255,.55);line-height:1.6;margin-bottom:2rem}
+.btn-home{display:inline-flex;align-items:center;gap:.5rem;background:linear-gradient(135deg,var(--yellow),#ffb800);color:var(--navy);padding:14px 32px;border-radius:50px;font-family:'Nunito',sans-serif;font-size:1rem;font-weight:900;text-decoration:none;box-shadow:0 6px 24px rgba(255,210,0,.35);transition:transform .15s,box-shadow .15s}
+.btn-home:hover{transform:translateY(-3px) scale(1.03);box-shadow:0 12px 36px rgba(255,210,0,.45)}
+.btn-home:focus-visible{outline:3px solid var(--yellow);outline-offset:3px}
+.alt-links{margin-top:1.5rem;display:flex;gap:1.5rem;justify-content:center;flex-wrap:wrap}
+.alt-links a{font-size:.9rem;font-weight:700;color:rgba(255,255,255,.35);text-decoration:none;transition:color .2s}
+.alt-links a:hover{color:var(--yellow)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="logo" href="/">MR <span>CHEAP</span> FLIGHTS</a>
+  <div class="num">404</div>
+  <span class="plane">✈️</span>
+  <h1>This page took off without you.</h1>
+  <p>The URL you followed doesn't exist — but we've got hundreds of flight deals that do.</p>
+  <a class="btn-home" href="/">✈ Back to Deals</a>
+  <div class="alt-links">
+    <a href="/#deals">Latest Deals</a>
+    <a href="/#pricing">Pricing</a>
+    <a href="/#how">How It Works</a>
+  </div>
+</div>
+</body>
+</html>

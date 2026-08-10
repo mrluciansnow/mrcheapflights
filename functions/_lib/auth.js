@@ -103,8 +103,12 @@ export function getCookie(request, name) {
   return null;
 }
 
-export function setCookieHeader(name, value, { maxAgeSeconds, httpOnly = true, sameSite = 'Strict' } = {}) {
-  const parts = [`${name}=${encodeURIComponent(value)}`, 'Path=/', 'Secure', `SameSite=${sameSite}`];
+export function setCookieHeader(name, value, { maxAgeSeconds, httpOnly = true, sameSite = 'Strict', secure = true } = {}) {
+  // secure:false exists ONLY for plain-http local dev (wrangler pages dev) —
+  // embedded browsers refuse to store Secure cookies over http, which made the
+  // admin pipeline untestable locally. Production is always https.
+  const parts = [`${name}=${encodeURIComponent(value)}`, 'Path=/', `SameSite=${sameSite}`];
+  if (secure) parts.splice(1, 0, 'Secure');
   if (httpOnly) parts.push('HttpOnly');
   if (maxAgeSeconds != null) parts.push(`Max-Age=${maxAgeSeconds}`);
   return parts.join('; ');
@@ -112,6 +116,30 @@ export function setCookieHeader(name, value, { maxAgeSeconds, httpOnly = true, s
 
 export function clearCookieHeader(name) {
   return `${name}=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0`;
+}
+
+// Resolves the visitor's membership tier from the mcf_member cookie:
+// 'guest' (no valid cookie/subscriber) | 'free' | 'premium' (time-based, same
+// rule as /api/me). Used to gate fare details server-side — gated data is
+// WITHHELD from the payload, never just hidden with CSS.
+export async function resolveMemberTier(context) {
+  const cookie = getCookie(context.request, 'mcf_member');
+  if (!cookie) return 'guest';
+  const session = await verifySession(cookie, context.env.SESSION_SIGNING_SECRET);
+  if (!session) return 'guest';
+  const row = await context.env.DB.prepare(
+    'SELECT current_period_end FROM subscribers WHERE member_token = ?'
+  ).bind(session.sub).first();
+  if (!row) return 'guest';
+  const now = Math.floor(Date.now() / 1000);
+  return row.current_period_end != null && row.current_period_end > now ? 'premium' : 'free';
+}
+
+// Premium-only deal rule — mirror of the client's isGated(): these badges are
+// the premium shelf (error fares are already a premium email perk).
+export function isPremiumBadge(badge) {
+  const b = String(badge || '');
+  return b.includes('Long Haul') || b.includes('Featured') || b.includes('Mistake');
 }
 
 // Verifies the admin session cookie. Returns the session payload, or null if

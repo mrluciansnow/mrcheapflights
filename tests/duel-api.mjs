@@ -1,7 +1,7 @@
 /* End-to-end test of the online duel API against a local Pages dev server.
  *
- *   npm run db:duel          # applies 0006 + 0007 to the local D1
- *   npx wrangler pages dev . --port 8788 --d1 DB=mrcheapflights-prod
+ *   npm run migrate          # applies every migration, in order, once
+ *   npx wrangler pages dev . --port 8788
  *   node tests/duel-api.mjs
  *
  * A duel is a kick with two players in it. The properties that make that work
