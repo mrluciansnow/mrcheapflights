@@ -22,6 +22,30 @@ grant, so Claude can't do them autonomously. Ordered by priority.
 - [ ] **Change the admin password** (`mrcheap2024` is compromised — it shipped
   in old page source). mrcheapflights.ie/admin → Settings → Security.
 
+## 🟠 Croker Flicks online multiplayer (unblocks online play)
+
+The game, the server, the migrations and the deploy workflow are all in and
+tested. These two need a credential, so they are yours. Full runbook:
+`docs/deploy-online.md`.
+
+- [ ] **Add two repository secrets.** GitHub -> Settings -> Secrets and
+  variables -> Actions:
+  `CLOUDFLARE_API_TOKEN` (a token with **Cloudflare Pages: Edit** and
+  **D1: Edit**) and `CLOUDFLARE_ACCOUNT_ID`.
+  *Why only you:* the token must never be pasted into a chat. Once it is a
+  repo secret the workflow holds it and Claude never sees it.
+
+- [ ] **Confirm the Pages project has a D1 binding** named `DB` ->
+  `mrcheapflights-prod`, for **Production** (and Preview if you want previews
+  working). Pages -> mrcheap -> Settings -> Functions -> D1 database bindings.
+  *May already be set.* Don't go looking first - deploy, then hit
+  `https://mrcheapflights.ie/api/mp/health`. It answers definitively:
+  `bound: false` means this task is real, `ok: true` means it never was.
+
+Then: Actions -> **Deploy** -> Run workflow, `migrate` ticked, `branch: main`,
+and put `https://mrcheapflights.ie` in `url` so the run fails loudly if online
+cannot serve. Claude can run that step and read the logs.
+
 ## 🟡 Revenue (unblocks premium)
 
 - [ ] **Create live-mode Stripe products/prices.** Premium checkout is broken:
