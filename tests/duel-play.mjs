@@ -98,7 +98,11 @@ ok('the striker is given a countdown', /\d/.test(clocks[0]), JSON.stringify(cloc
 ok('and so is the keeper, which they never used to be', /\d/.test(clocks[1]),
    JSON.stringify(clocks[1]));
 const secs = clocks.map(t => parseFloat(t));
-ok('and it is the same clock, not two of them', Math.abs(secs[0] - secs[1]) < 1.2,
+/* Within a poll of each other, not to the millisecond. Each client's window
+   opens when that client is shown the kick — which is the fix for a window
+   that used to be mostly gone on arrival — and two measurements taken over
+   two round trips cannot be simultaneous anyway. */
+ok('and it is the same clock, not two of them', Math.abs(secs[0] - secs[1]) < 1.5,
    clocks.join(' / '));
 
 console.log('\nTHE KEEPER IS NOT SHOWN A HUMAN\'S SHOT');
@@ -172,13 +176,39 @@ ok('kick 1 belongs to the other striker',
    !a3.live || a3.live.role === 'keeper', JSON.stringify(a3.live));
 ok('and B has the ball for it', !b3.live || b3.live.role === 'striker', JSON.stringify(b3.live));
 
-console.log('\nWHAT THE KEEPER SEES OF THE STRIKER');
-/* Now the other way round, and the order matters twice over: the striker has
-   to go FIRST, because the kick resolves the instant the second half lands,
-   and it has to happen promptly, because the keeper's window is a real seven
-   seconds and an assertion that dawdles watches it run out. */
+console.log('\nTHE SECOND KICK IS A WHOLE KICK');
+/* The server opens kick n+1 the instant kick n resolves, and both clients then
+   spend several seconds watching kick n play out. A window measured from the
+   server's stamp is therefore mostly gone before anybody is shown anything —
+   and a replay that ran long left none of it, so the striker's clock hit zero
+   on the first frame and rushed the shot while the keeper was recorded as
+   standing up. Neither had touched the screen. */
 await until(B, () => window.CF.net.state.phase === 'AIM' &&
                      window.CF.net.state.live?.kickIndex === 1, 25000, 'B on the ball for kick 1');
+const secondClock = await B.evaluate(() => parseFloat(
+  document.getElementById('shotSecs').textContent));
+ok('the striker gets a real window on the second kick, not the dregs',
+   secondClock > 3.5, secondClock + 's — the window is ' +
+   (await B.evaluate(() => window.CF.net.state.live ? 'open' : 'gone')));
+const aClock = await A.evaluate(() => parseFloat(
+  document.getElementById('keepSecs').textContent));
+ok('and the keeper is given the same one, not a stub',
+   aClock > 3.5, aClock + 's');
+/* The same LENGTH of window, opening within a poll or two of each other —
+   which is the honest claim. Each client's window opens when that client
+   finishes replaying the previous kick, and the resolved kick reaches the two
+   of them a poll apart. What matters to a player is that they get a whole
+   kick and are never submitted for; being able to compare screens to the
+   millisecond is not something either of them can do. */
+ok('and the two windows are the same length, give or take a poll',
+   Math.abs(secondClock - aClock) < 2.5, secondClock + ' / ' + aClock);
+ok('and nobody has been auto-submitted before touching anything',
+   (await st(B)).live?.submitted === false && (await st(A)).live?.submitted === false,
+   JSON.stringify([(await st(B)).live?.submitted, (await st(A)).live?.submitted]));
+
+console.log('\nWHAT THE KEEPER SEES OF THE STRIKER');
+/* The striker has to go FIRST: the kick resolves the instant the second half
+   lands, so in the other order there is nothing left to read. */
 await B.evaluate(() => {
   const ev = k => window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
   ev('ArrowLeft'); ev('ArrowUp'); ev(' ');
