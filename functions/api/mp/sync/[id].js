@@ -12,7 +12,7 @@
 // it, the keeper waits for the swipe to land and saves everything.
 import { resolvePlayer, bad, publicPlayer, now } from '../../../_lib/mp.js';
 import { advance, viewKick, tally, settle, sideOf, codeFor, mergeQueue,
-         queueDepth, readyState, saysSince, LIVE } from '../../../_lib/duel.js';
+         queueDepth, readyState, saysSince, LIVE, whoGone, againState } from '../../../_lib/duel.js';
 
 /* "Everything said after this id." A poll that has seen up to 40 asks for 40
    and gets 41 onwards, so the transcript is never re-sent and never gapped. */
@@ -84,6 +84,12 @@ export async function onRequestGet(context) {
   } : null;
 
   const says = await saysSince(env, params.id, me.id, +url_since(request));
+  /* Two endgame facts the client cannot work out for itself: whether the other
+     player walked away — which is why the match ended early and is worth
+     saying out loud rather than showing an unexplained final score — and
+     whether either of them has asked to go again. */
+  const gone = await whoGone(env, params.id);
+  const again = await againState(env, fresh, me.id);
 
   const c = await codeFor(env, params.id);
   const q = fresh.state === 'waiting' ? await queueDepth(env) : null;
@@ -117,6 +123,9 @@ export async function onRequestGet(context) {
              them: opponent ? opponent.ready : false,
              both: ready.both },
     opponent,
+    // did they walk, and did WE (a second tab, a refresh) — both are useful
+    left: { you: gone.includes(me.id), them: themId ? gone.includes(themId) : false },
+    again: { you: again.you, them: again.them, matchId: again.matchId },
     says,
     serverTime: now(),
     played,

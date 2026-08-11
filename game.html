@@ -295,7 +295,7 @@ body.dragging .betbar,body.dragging .prompt,body.dragging .comm{pointer-events:n
 #mpCodeWrap{margin:.4rem 0 .8rem}
 /* `.hidden` is defined for overlays only (.ov.hidden). Inside one it needs
    its own rule, or every "hide this" in the lobby is a no-op. */
-#ovOnline .hidden{display:none}
+#ovOnline .hidden,#ovEnd .hidden{display:none}
 #mpCode{user-select:all;-webkit-user-select:all}
 
 /* ---- both here, both ready ---- */
@@ -321,6 +321,14 @@ body.dragging .betbar,body.dragging .prompt,body.dragging .comm{pointer-events:n
    needs its own rule or every "hide this" is a no-op. The chat drawer sat open
    on the title screen until this existed. */
 .talk.hidden,.chat.hidden{display:none}
+/* Said out loud, because a poll that keeps failing looks exactly like a game
+   that has frozen. Sits under the HUD, out of the way of the goal. */
+.netwarn{position:absolute;left:50%;top:196px;transform:translate(-50%,-6px);
+  padding:.3rem .7rem;border-radius:20px;font:900 .5rem/1 Nunito,sans-serif;
+  letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;
+  color:#0b1620;background:var(--yellow);opacity:0;pointer-events:none;
+  transition:opacity .25s,transform .25s;z-index:6}
+.netwarn.show{opacity:.95;transform:translate(-50%,0)}
 /* Below the wind gauge, not beside it — at 104px the microphone sat underneath
    the gauge and could not be pressed. */
 .talk{position:absolute;right:8px;top:162px;display:flex;flex-direction:column;
@@ -516,6 +524,9 @@ body.lefty .rankbar{left:88px;right:10px}
 /* Above everything it can be opened from — the title screen and Settings —
    or its buttons sit underneath the ones that opened it and cannot be hit. */
 #ovTut{z-index:9}
+/* above the lobby, because chat is reachable from the ready screen */
+.talk{z-index:10}
+.chat{z-index:10}
 .hint{font-size:.6rem;font-weight:800;opacity:.35;margin-top:.7rem;line-height:1.5;max-width:300px}
 /* ---------- a narrow stage ----------
    A phone held sideways, or a folding one, leaves the stage around 240-340px
@@ -656,6 +667,7 @@ window.addEventListener('error', function(e){
       <button class="tbtn" id="bChatClose" aria-label="Close chat">✕</button>
     </div>
   </div>
+  <div class="netwarn" id="netwarn"></div>
   <div class="fatal" id="fatal" style="display:none"></div>
 </div>
 
@@ -729,6 +741,14 @@ window.addEventListener('error', function(e){
   <!-- Both here, both ready. Nothing opens — and no deadline runs — until
        both have pressed it, so the first kick is never taken off somebody
        still reading the screen. -->
+  <!-- a match this device walked out of. Offered, not resumed on its own -->
+  <div id="mpResume" class="hidden">
+    <div class="gb" id="mpResumeWho">a match in progress</div>
+    <div class="gv w" id="mpResumeScore" style="font-size:1.6rem"></div>
+    <button class="btn" id="bResume2">REJOIN</button>
+    <button class="btn sm" id="bDropIt">GIVE IT UP</button>
+  </div>
+
   <div id="mpReady" class="hidden">
     <div class="rdyrow">
       <div class="rdyman" id="rdyYou"><b>YOU</b><i>not ready</i></div>
@@ -832,6 +852,12 @@ window.addEventListener('error', function(e){
   <div class="gb" id="gb"></div>
   <div class="card" id="gCard"></div>
   <div class="strip" id="gStats"></div>
+  <!-- online only: why it ended, and a rematch with the same person rather
+       than the back of the queue -->
+  <div id="netEnd" class="hidden">
+    <div class="gv w" id="netEndScore" style="font-size:2rem">0 – 0</div>
+    <div class="gb" id="netEndWhy"></div>
+  </div>
   <button class="btn" id="bNext" data-act="menu">BACK TO MENU</button>
   <div class="modes sub2"><button class="btn sm" id="bAgain">PLAY AGAIN</button></div>
   <div class="ft">Croke Park · Championship Sunday</div>
@@ -3526,6 +3552,7 @@ function endMatch(){
   state = ST.OVER; SFX.whistle();
   $('gCard').innerHTML = scorecardHTML();
   $('bAgain').style.display = '';
+  if(mode !== 'online') $('netEnd').classList.add('hidden');
   const tp=total(P), tc=total(C), won = tp>tc;
   const scoreline = CO_P.n.toUpperCase()+' '+line(P)+' ('+tp+')   —   '+line(C)+' ('+tc+') '+CO_C.n.toUpperCase();
 
@@ -3759,12 +3786,23 @@ function updateRoundBar(){
       mode==='daily'        ? 'DAILY · '+spot.label.toUpperCase() :
       mode==='training'     ? 'TRAINING · '+spot.label.toUpperCase() :
       mode==='duel'         ? 'LOCAL · P'+(duelIdx+1)+'/'+duelPlayers.length+' · '+CO_P.n.toUpperCase() :
+      mode==='online'       ? netRoundLabel() :
                               'QUICK MATCH · '+DIFF[difficulty].n;
   $('rbV').textContent = venue.n.toUpperCase()
       + (mode==='championship'||mode==='quick' ? (atHome?' (H)':' (A)') : '')
       + (weather.name!=='Clear' ? ' · '+weather.name.toUpperCase() : '');
-  $('rbS').textContent = streak>1 ? streak+' IN A ROW' : '';
-  $('rbS').style.display = streak>1 ? '' : 'none';
+  /* Online the streak line is worth more as the scoreline: the one thing a
+     player wants at a glance in a match against a person is whether they are
+     ahead, and the bar used to say "QUICK MATCH · Senior" throughout. */
+  if(mode === 'online' && Net.match){
+    const s = Net.score || {you:0, them:0};
+    const lead = s.you > s.them ? ' ▲' : s.you < s.them ? ' ▼' : ' =';
+    $('rbS').textContent = 'YOU ' + s.you + ' – ' + s.them + ' THEM' + lead;
+    $('rbS').style.display = '';
+  } else {
+    $('rbS').textContent = streak>1 ? streak+' IN A ROW' : '';
+    $('rbS').style.display = streak>1 ? '' : 'none';
+  }
   const m=$('rbM');
   const show = state!==ST.TITLE && state!==ST.OVER && shooter==='p' && mustScore();
   m.style.display = show ? '' : 'none';
@@ -4818,8 +4856,45 @@ function quitMatch(){
   $('ovPause').classList.add('hidden');
   if(MP.poll){ clearInterval(MP.poll); MP.poll = null; }
   MP.match = null;
+  /* Tell the other player. Walking out used to leave them playing the rest of
+     the match against a deadline per kick, with nothing on screen saying why. */
+  if(mode === 'online' && Net.match){ netLeave(); talkShow(false); }
+  $('netwarn').classList.remove('show');
   toMenu();
 }
+
+/* ---- the tab going away ----
+ * requestAnimationFrame stops in a hidden tab but the server's deadline does
+ * not, so a player who took a call came back to kicks that had timed out
+ * without ever seeing them. Nothing can be done about the ones already gone;
+ * what can be done is to stop pretending, so the clock is re-read from the
+ * shared reference on the way back in and the poll fires at once rather than
+ * on whatever timer was frozen mid-flight.
+ */
+addEventListener('visibilitychange', () => {
+  if(mode !== 'online' || !Net.match) return;
+  if(document.hidden) return;
+  netPollStart();                     // immediate, not whatever was pending
+  if(Net.live && !Net.live.submitted && netRemain() <= 0){
+    /* The window ran out while we were away. Take the decision rather than
+       leaving somebody looking at a dead clock. */
+    if(state === ST.KEEP && !keepDone) netKeeperDone();
+    else if(state === ST.AIM) rushShot();
+  }
+});
+/* Deliberately NOT announcing on pagehide.
+ *
+ * The first version of this did, and it made resuming impossible: a refresh
+ * fires pagehide, the server retired the match, and the offer to come back was
+ * an offer to rejoin something already ended. A page going away is precisely
+ * the case resume exists for and it cannot be told apart from a crash, a
+ * tunnel, or a phone deciding to reclaim the tab.
+ *
+ * So leaving is only ever something a player DOES — BACK, QUIT, GIVE IT UP —
+ * and disappearing is handled by the two mechanisms that already exist for it:
+ * the deadline takes each kick, and presence goes stale after LIVE seconds,
+ * which the other player is now shown. Neither of them destroys anything you
+ * could have walked back into. */
 
 /* ==================================================================
    FRAME
@@ -5278,15 +5353,37 @@ $('mpJoinCode').addEventListener('keydown', e => {
   if(e.key === 'Enter'){ e.preventDefault(); $('bJoinGo').click(); }
 });
 
+/* A match this device was in the middle of when the page went away. Offered
+   rather than resumed automatically: coming back to a kick already in flight,
+   with a clock running, is not something to do to somebody without asking. */
+async function netOfferResume(){
+  const id = netResumable();
+  if(!id) return false;
+  mpStatus('Checking a match you were in…');
+  try{
+    const st = await mpFetch('/api/mp/sync/' + id);
+    if(st.state !== 'in_progress' || (st.left && st.left.them)){ netForget(); return false; }
+    $('mpPick').classList.add('hidden');
+    $('mpResume').classList.remove('hidden');
+    $('mpResumeWho').textContent = st.opponent && st.opponent.name
+      ? 'against ' + st.opponent.name : 'a match in progress';
+    $('mpResumeScore').textContent = st.score ? st.score.you + ' – ' + st.score.them : '';
+    mpStatus('You left a match unfinished.');
+    return true;
+  }catch{ netForget(); return false; }
+}
+
 function openOnline(){
   if(!gate('quick')) return;
   $('ovOnline').classList.remove('hidden');
+  $('mpResume').classList.add('hidden');
   $('mpPick').classList.remove('hidden');
   $('mpCodeWrap').classList.add('hidden');
   $('mpJoinCode').classList.add('hidden');
   $('bJoinGo').classList.add('hidden');
   $('mpJoinCode').value = '';
   mpStatus('One kick, two people, both live at once.');
+  netOfferResume();
 }
 
 /* Open, host or join — one path, because the difference is only which
@@ -5330,9 +5427,21 @@ function netShowReady(){
   $('mpCodeWrap').classList.add('hidden');
   $('mpReady').classList.remove('hidden');
   mpStatus('Found an opponent.');
+  /* Chat is reachable from here, not only once the kicks start. "Ready?" is
+     the single most likely thing either of them wants to say, and it is the
+     one moment the old build had no way to say it. */
+  talkShow(true);
   netRoom();
 }
 function netRoom(){
+  netAgainPaint();                    // the rematch offer lives on the end card
+  /* They walked. Say so at once rather than letting the match end on an
+     unexplained scoreline a few polls later. */
+  if(Net.left && Net.left.them && mode === 'online' && !netOver){
+    netMsg = 'They left the match.';
+    $('prompt').style.display = '';
+    $('prompt').textContent = netMsg;
+  }
   if($('mpReady').classList.contains('hidden')) return;
   const you = $('rdyYou'), them = $('rdyThem');
   you.querySelector('b').textContent = (profile.name || 'YOU').toUpperCase();
@@ -5387,6 +5496,31 @@ function netWaitForOpponent(inQueue){
   }, 900);
 }
 
+$('bResume2').onclick = async ()=>{
+  const id = netResumable();
+  if(!id) return;
+  $('mpResume').classList.add('hidden');
+  mpStatus('Rejoining…');
+  try{
+    await netPlay({matchId: id, resume: true});
+    /* Straight back in: the kick clock is the server's and it did not stop
+       while we were away, so there is nothing to agree on again. */
+    $('ovOnline').classList.add('hidden');
+    talkShow(true);
+  }catch(e){
+    netForget();
+    mpStatus('That match has gone — ' + e.message, true);
+    $('mpPick').classList.remove('hidden');
+  }
+};
+$('bDropIt').onclick = ()=>{
+  const id = netResumable();
+  if(id) mpFetch('/api/mp/leave', 'POST', {matchId: id}).catch(()=>{});
+  netForget();
+  $('mpResume').classList.add('hidden');
+  $('mpPick').classList.remove('hidden');
+  mpStatus('Left it. Start a new one.');
+};
 $('bReadyUp').onclick = ()=>{
   $('bReadyUp').disabled = true;
   $('bReadyUp').textContent = 'WAITING FOR THEM…';
@@ -5397,7 +5531,10 @@ $('bReadyUp').onclick = ()=>{
   });
 };
 $('bOnlineClose').onclick = ()=>{ $('ovOnline').classList.add('hidden');
-  $('mpReady').classList.add('hidden'); talkShow(false); netLeave();
+  $('mpReady').classList.add('hidden'); $('mpResume').classList.add('hidden');
+  /* netLeave now tells the server, so backing out of a lobby retires it
+     instead of leaving a corpse in the queue for the next player to join. */
+  talkShow(false); netLeave();
   if(MP.poll){ clearInterval(MP.poll); MP.poll=null; } MP.match=null; };
 $('bNext').onclick  = ()=>{ ($('bNext').dataset.act==='next' ? nextRound : toMenu)(); };
 $('bKit').onclick   = openKit;
@@ -5433,7 +5570,23 @@ function replayCurrent(){
   }
   startMatch();
 }
-$('bAgain').onclick = ()=>{ $('ovEnd').classList.add('hidden'); replayCurrent(); };
+$('bAgain').onclick = ()=>{
+  /* Online, "play again" means the same two people, not the same settings —
+     so it asks the other player rather than restarting anything. */
+  if(mode === 'online' && Net.match){
+    $('bAgain').disabled = true;
+    $('bAgain').textContent = 'WAITING FOR THEM…';
+    netAgain()
+      .then(r => { if(r.again) Net.again = {...Net.again, ...r.again};
+                   if(r.matchId) Net.again.matchId = r.matchId;
+                   netAgainPaint(); })
+      .catch(e => { $('bAgain').disabled = false;
+                    $('bAgain').textContent = 'PLAY AGAIN';
+                    $('netEndWhy').textContent = 'Could not ask them — ' + e.message; });
+    return;
+  }
+  $('ovEnd').classList.add('hidden'); replayCurrent();
+};
 
 /* ==================================================================
    ONLINE MULTIPLAYER — client fundamentals
@@ -5608,17 +5761,32 @@ const Net = {
   ready: {you:false, them:false, both:false},
   opponent: null,     // {name, here, seenAgo, ready} — is anybody over there
   since: 0,           // highest chat/signal id seen, so a poll never re-reads
+  left: {you:false, them:false},
+  again: {you:false, them:false, matchId:null},
+  misses: 0,          // consecutive failed polls — the network, not the game
   onLive: null,       // (live)   -> it is your turn, in this role, until then
   onKick: null,       // (kick)   -> a resolved kick, with both halves, to show
   onEnd: null,        // (final)  -> the duel is over
   onRoom: null,       // (state)  -> ready/presence changed while we wait
   onSay: null,        // (msgs)   -> chat lines and signalling, in server order
+  onWire: null,       // (state)  -> the connection's health changed
 };
 
 /* Open a duel and wait, join a specific one, or take whatever is open. */
 async function netOpen(opts){
   const body = Object.assign({kicks:10, difficulty:'senior'}, opts||{});
-  const m = await mpFetch('/api/mp/duel', 'POST', body);
+  /* Walking back into a match that already exists — a refresh, a rematch —
+     is a read, not a join: `/api/mp/duel` would try to put us in it as a new
+     player and be told it is full. Sync knows us by our device token. */
+  let m;
+  if(body.resume){
+    const st = await mpFetch('/api/mp/sync/' + body.matchId);
+    m = {matchId: st.matchId, seed: st.seed, kicks: st.kicks, turnMs: st.turnMs,
+         difficulty: st.difficulty, weather: st.weather, state: st.state,
+         side: st.side, you: st.you, code: st.code};
+  } else {
+    m = await mpFetch('/api/mp/duel', 'POST', body);
+  }
   Net.match = m; Net.state = m.state; Net.played = []; Net.seen = -1;
   Net.live = null; Net.err = null;
   /* The server's seed and the server's weather, not ours. Everything either
@@ -5707,14 +5875,24 @@ async function netSync(){
       srcStriker = st.live.role === 'striker' ? 'local' : 'remote';
       srcKeeper  = st.live.role === 'keeper'  ? 'local' : 'remote';
     }
+    if(st.left) Net.left = st.left;
+    if(st.again) Net.again = st.again;
     if(st.state === 'settled' || st.state === 'resolved'){
       netPollStop();
       if(Net.onEnd) Net.onEnd(st);
     }
     Net.err = null;
+    Net.misses = 0;
+    if(Net.onWire) Net.onWire(Net);
     return st;
   }catch(e){
-    Net.err = e.message;              // a dropped poll is not fatal
+    /* One dropped poll is weather. Four in a row is the connection, and a
+       player staring at a screen that has stopped changing deserves to be told
+       which — silence here read as the game having frozen, and that is exactly
+       what it was reported as. */
+    Net.err = e.message;
+    Net.misses++;
+    if(Net.onWire) Net.onWire(Net);
     return null;
   }finally{ Net.busy = false; }
 }
@@ -5759,10 +5937,33 @@ async function netSubmit(half, payload){
   if(!Net.match || !Net.live) throw new Error('no kick is open');
   const body = {matchId: Net.match.matchId, kickIndex: Net.live.kickIndex};
   body[half] = payload;
-  const r = await mpFetch('/api/mp/kick', 'POST', body);
-  if(r.kick) Net.live = r.kick;
-  netSync();                          // a resolved kick should show at once
-  return r;
+  /* Retried, because losing this is losing the kick.
+   *
+   * A submission that failed to send left the player sitting in "waiting for
+   * the other end" until the server's deadline took the kick off them, with a
+   * one-line message they had already scrolled past. The server has made the
+   * write idempotent from the beginning — whoever gets there first keeps the
+   * submission — precisely so that a client can be stubborn about it, and
+   * this one was not. Three quick goes fit comfortably inside the deadline.
+   *
+   * A 4xx is not retried: a rejected swipe is rejected on every attempt, and
+   * hammering the server over it helps nobody. */
+  let err = null;
+  for(let go = 0; go < 3; go++){
+    try{
+      const r = await mpFetch('/api/mp/kick', 'POST', body);
+      if(r.kick) Net.live = r.kick;
+      netSync();                      // a resolved kick should show at once
+      return r;
+    }catch(e){
+      err = e;
+      if(/\b4\d\d\b/.test(e.message) || /invalid|already|not your/i.test(e.message)) break;
+      netMsg = 'Sending… (' + (go + 2) + ' of 3)';
+      $('prompt').textContent = netMsg;
+      await new Promise(r => setTimeout(r, 400 * (go + 1)));
+    }
+  }
+  throw err || new Error('could not send');
 }
 /* The four numbers of a swipe, plus WHEN it was struck. The time is what
    makes the keeper's half a duel rather than a guess. */
@@ -5779,6 +5980,18 @@ const netDive = () => netSubmit('dive',
   (keeper && keeper.committed && keeper.ai === false && keeper.diveAt !== undefined)
     ? { x:+keeper.tx.toFixed(4), y:+keeper.ty.toFixed(4), t:+netKickT().toFixed(3) }
     : null);
+
+/* ---- COMING BACK ----
+ * A refresh, a phone that killed the tab, a tunnel: the match id lived only in
+ * memory, so any of those ended the match with no way back and the other
+ * player left playing out deadlines. It costs one localStorage key to make
+ * every one of those survivable, and the server needed nothing — sync is by
+ * match id and device token, both of which outlive the page.
+ */
+const RESUME_KEY = 'crokerFlicks.duel';
+const netRemember = id => { try{ localStorage.setItem(RESUME_KEY, id || ''); }catch{} };
+const netForget   = () => { try{ localStorage.removeItem(RESUME_KEY); }catch{} };
+const netResumable = () => { try{ return localStorage.getItem(RESUME_KEY) || ''; }catch{ return ''; } };
 
 /* "I am here." Idempotent at the server, so pressing it twice — or retrying
    after a dropped connection — is the same as pressing it once. */
@@ -5798,14 +6011,43 @@ const netSay = (kind, body) => Net.match
   ? mpFetch('/api/mp/say', 'POST', {matchId: Net.match.matchId, kind, body})
   : Promise.reject(new Error('not in a match'));
 
-function netLeave(){
+/* Tell the server you are going, so the other player is not left playing out a
+   deadline per remaining kick against somebody who has closed the tab. Best
+   effort by nature — it is sent from a page that may be in the middle of
+   dying — which is why the server treats it as idempotent and why the LIVE
+   window still exists as the backstop for the times it never arrives. */
+function netTellLeaving(){
+  if(!Net.match || MP.base === null) return;
+  /* `keepalive`, not sendBeacon. Both outlive the page, but sendBeacon cannot
+     set a header, which would mean putting the device token in the query
+     string — a bearer credential in every access log between here and the
+     edge. Not worth it for a message this small. */
+  try{
+    fetch(MP.base + '/api/mp/leave', {
+      method: 'POST', keepalive: true,
+      headers: {'X-CF-Device': mpToken(), 'Content-Type': 'application/json'},
+      body: JSON.stringify({matchId: Net.match.matchId}),
+    }).catch(()=>{});
+  }catch{}
+}
+
+function netLeave(announce){
+  if(announce !== false) netTellLeaving();
   netPollStop();
+  netForget();
   Net.match = null; Net.live = null; Net.played = []; Net.seen = -1;
   Net.state = 'idle';
   Net.ready = {you:false, them:false, both:false};
   Net.opponent = null; Net.since = 0;
+  Net.left = {you:false, them:false};
+  Net.again = {you:false, them:false, matchId:null};
   srcStriker = 'ai'; srcKeeper = 'ai';
 }
+/* Same again. Both have to ask; the server hands back the new match when the
+   second one does. */
+const netAgain = () => Net.match
+  ? mpFetch('/api/mp/again', 'POST', {matchId: Net.match.matchId})
+  : Promise.reject(new Error('not in a match'));
 /* seconds left on the kick in front of you, for the bar that already exists */
 const netLeft = () => (Net.live && Net.match)
   ? Math.max(0, Net.live.deadline - Math.floor(Date.now()/1000)) : 0;
@@ -5866,10 +6108,36 @@ async function netPlay(opts){
   Net.onEnd  = () => netPump();
   Net.onRoom = () => netRoom();
   Net.onSay  = msgs => talkHeard(msgs);
+  Net.onWire = () => netWire();
+  netRemember(m.matchId);             // so a refresh can walk back into it
   talkReset();
   startMatch();
   netIdle();                                  // until the server opens a kick
   return m;
+}
+
+/* "ONLINE · v NAME · KICK 3/10". The bar used to say "QUICK MATCH · Senior"
+   for the whole of an online duel, which named neither the person you were
+   playing nor how far through it you were. */
+function netRoundLabel(){
+  const who = Net.opponent && Net.opponent.name
+    ? ' · v ' + String(Net.opponent.name).toUpperCase().slice(0, 12) : '';
+  const total = (Net.match && Net.match.kicks) || 10;
+  const at = Math.min(total, (Net.live ? Net.live.kickIndex : Net.seen) + 1);
+  return 'ONLINE' + who + ' · KICK ' + Math.max(1, at) + '/' + total;
+}
+
+/* The connection, said out loud. A poll that keeps failing used to look
+   exactly like a game that had frozen — which is what it was reported as —
+   because nothing on screen distinguished "nothing has happened yet" from
+   "nothing can happen". */
+function netWire(){
+  const bad = Net.misses >= 3;
+  const el = $('netwarn');
+  el.classList.toggle('show', bad);
+  if(bad) el.textContent = Net.misses >= 8
+    ? 'Still trying to reach the server…'
+    : 'Connection trouble — reconnecting…';
 }
 
 /* Between kicks. Not a turn being taken elsewhere — usually just the round
@@ -6090,8 +6358,56 @@ function netFinish(){
   if(netOver) return;
   netOver = true;
   netForced = null; netMsg = '';
+  netForget();                        // nothing left to come back to
+  $('netwarn').classList.remove('show');
   talkShow(false);
   endMatch();
+  netEndCard();
+}
+
+/* The end of an online match needs two things the solo one does not: a reason,
+   when it ended early because somebody walked, and a way to go again that is
+   not the main menu and the back of the queue. */
+function netEndCard(){
+  const wrap = $('netEnd');
+  if(!wrap) return;
+  wrap.classList.remove('hidden');
+  const s = Net.score || {you:0, them:0};
+  $('netEndScore').textContent = s.you + ' – ' + s.them;
+  $('netEndWhy').textContent = Net.left && Net.left.them
+    ? 'They left. The match was called on the score as it stood.'
+    : s.you === s.them ? 'Level. Nothing between you.'
+    : s.you > s.them ? 'You had the better of it.' : 'They had the better of it.';
+  netAgainPaint();
+}
+function netAgainPaint(){
+  const b = $('bAgain');
+  if(!b) return;
+  const a = Net.again || {you:false, them:false, matchId:null};
+  /* Their asking first is worth showing: it turns a button into an invitation
+     somebody has actually made. */
+  b.textContent = a.you ? 'WAITING FOR THEM…' : a.them ? 'THEY WANT ANOTHER — GO ON' : 'PLAY AGAIN';
+  b.disabled = !!a.you && !a.matchId;
+  b.classList.toggle('alt', !!a.them && !a.you);
+  if(a.matchId && !netAgainPaint.going){
+    netAgainPaint.going = true;
+    netStartAgain(a.matchId);
+  }
+}
+/* Both asked, so the server made a new duel. Walk into it exactly as if it had
+   come from the queue — same ready gate, same everything. */
+async function netStartAgain(id){
+  $('netEnd').classList.add('hidden');
+  $('ovEnd').classList.add('hidden');
+  netAgainPaint.going = false;
+  try{
+    await netPlay({matchId: id, join: false, resume: true});
+    netShowReady();
+  }catch(e){
+    mpStatus('Could not start the rematch — ' + e.message, true);
+    $('ovOnline').classList.remove('hidden');
+    $('mpPick').classList.remove('hidden');
+  }
 }
 
 /* ==================================================================
@@ -6557,6 +6873,10 @@ if(new URLSearchParams(location.search).has('debug')){
                            kickT:+netKickT().toFixed(3), skew:+Net.skew.toFixed(3),
                            sources:{striker:srcStriker, keeper:srcKeeper},
                            ready:Net.ready, opponent:Net.opponent,
+                           /* `left` is already taken, by the seconds on the
+                              clock — a second one silently won and cost an
+                              afternoon. This is who walked out. */
+                           walked:Net.left, again:Net.again, misses:Net.misses,
                            tell:netTell, struck:netStruck(),
                            tendency:netTendency(),
                            mic:Talk.mic, chat:$('chatLog').children.length,
