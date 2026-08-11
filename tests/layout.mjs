@@ -141,6 +141,17 @@ for(const vp of [{width:344,height:882,n:'folding phone'},
     document.getElementById('mpReady').classList.add('hidden');
     document.getElementById('mpPick').classList.remove('hidden');
     panel('talk');
+    /* The microphone spent a release underneath the wind gauge, where it was
+       drawn, measurable, and impossible to press. */
+    {
+      const t = document.getElementById('talk');
+      t.classList.remove('hidden');
+      const r = t.getBoundingClientRect();
+      const w = document.getElementById('gWind').getBoundingClientRect();
+      out.talkVsWind = {clash: !(r.right <= w.left || w.right <= r.left ||
+                                 r.bottom <= w.top || w.bottom <= r.top)};
+      t.classList.add('hidden');
+    }
     panel('chatWrap', () => {
       const log = document.getElementById('chatLog');
       for(let i=0;i<8;i++){
@@ -161,6 +172,7 @@ for(const vp of [{width:344,height:882,n:'folding phone'},
     if(v.screens > 1.5){ problems++; console.log('  PANEL NEEDS ' + v.screens + ' SCREENS: ' + k); }
     if(v.outside){ problems++; console.log('  PANEL OUTSIDE THE STAGE: ' + k); }
     if(v.tall){ problems++; console.log('  PANEL SWALLOWS THE PITCH: ' + k); }
+    if(v.clash){ problems++; console.log('  BURIED UNDER THE HUD: ' + k); }
   }
   if(panels.scroll){ problems++; console.log('  A PANEL MADE THE PAGE SCROLL'); }
   await page.close();

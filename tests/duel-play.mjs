@@ -195,6 +195,14 @@ ok('with the moment it happened, so acting on it is acting late',
    aRead.tell && typeof aRead.tell.at === 'number', JSON.stringify(aRead.tell));
 ok('and nothing that would let the shot be reconstructed',
    !/curl|elev|"power"/.test(JSON.stringify(aRead.tell)), JSON.stringify(aRead.tell));
+/* The read a keeper can actually use is the one that is there before the ball
+   is: where this opponent has put their previous kicks. On kick 1 the only
+   kick played is A's OWN, so there is nothing yet — and inventing a history
+   out of your own kicks would be worse than having none. */
+const tend = (await st(A)).tendency;
+ok('a keeper is not handed a history built from their own kicks',
+   tend === null, JSON.stringify(tend));
+
 ok('the goal says so on screen rather than only in the transport',
    await A.evaluate(() => document.getElementById('keepLbl').textContent.includes('BALL AWAY')),
    await A.evaluate(() => document.getElementById('keepLbl').textContent));

@@ -120,6 +120,10 @@ ok('each is told the other is actually there', await until(A, () => {
    return /here|ready/i.test(t.querySelector('i').textContent);
 }, 10000, 'A to see B'), await A.evaluate(() =>
    document.getElementById('rdyThem').querySelector('i').textContent));
+/* The chat drawer is not an overlay, so `.hidden` on it does nothing unless a
+   rule says so. It sat open on the title screen once. */
+ok('the chat drawer is not open before anybody asked for it',
+   await A.evaluate(() => getComputedStyle(document.getElementById('chatWrap')).display === 'none'));
 ok('and no kick has opened yet', !(await st(A)).live, JSON.stringify((await st(A)).live));
 
 await A.click('#bReadyUp');
