@@ -32,16 +32,33 @@ const node = args => execFileSync(process.execPath, args, { cwd: ROOT, stdio: 'i
 step(1, 'migrating the database');
 node([join('tools', 'migrate.mjs'), '--remote']);
 
-/* ---------------------------------------------------------------- 2 --- */
+/* ---------------------------------------------------------------- 2 ---
+   The deploy runs its own smoke suite afterwards, and that suite is about the
+   WEBSITE — homepage copy, the deals API, guests not being handed fare data.
+   A red check there is worth knowing about and is nothing to do with whether
+   the online half is serving.
+
+   It used to end the release anyway, which meant an empty region in the deals
+   table could hide the answer to "did the thing I just shipped come up?".
+   Two different questions, so: remember it, keep going, and fail at the end
+   with whichever of them actually went wrong. */
 step(2, 'deploying the site');
-node([join('scripts', 'deploy.mjs'), ...(PREVIEW ? ['--preview'] : [])]);
+let siteRed = false;
+try {
+  node([join('scripts', 'deploy.mjs'), ...(PREVIEW ? ['--preview'] : [])]);
+} catch {
+  siteRed = true;
+  console.error('\n⚠️  The site smoke checks came back red (see above).');
+  console.error('   The deploy IS live. Carrying on to check the online half,');
+  console.error('   which is a separate question — this run will still fail at the end.');
+}
 
 /* ---------------------------------------------------------------- 3 ---
    A deploy is not finished until the thing it deployed answers. Pages
    propagates in seconds, so a few tries covers it. */
 if (!SITE) {
   console.log('\n── 3. health check skipped (no SITE_URL for a preview deploy)');
-  process.exit(0);
+  process.exit(siteRed ? 1 : 0);
 }
 step(3, 'checking ' + SITE + ' is actually serving');
 
@@ -58,6 +75,11 @@ for (let i = 1; i <= 6; i++) {
         console.log('\n✅  online is serving');
         console.log('    tables : ' + Object.keys(body.tables || {}).join(', '));
         console.log('    lobbies: ' + (body.openLobbies ?? 0) + ' waiting');
+        if (siteRed) {
+          console.error('\n❌  …but the site smoke checks are red. Scroll up for the one');
+          console.error('    that failed: it is about the website, not the game.');
+          process.exit(1);
+        }
         process.exit(0);
       }
       console.log('  attempt ' + i + ': not ready — ' + (body.error || 'unknown'));
