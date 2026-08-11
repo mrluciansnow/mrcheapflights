@@ -2613,6 +2613,11 @@ function beginKeep(){
   $('keepLbl').firstChild.nodeValue = 'HE STRIKES IN ';
   $('keepTally').textContent = keepFaced ? '· ' + matchSaves + '/' + keepFaced : '';
   $('keepbar').classList.add('show');
+  // same reason as startShotClock: never show the bar without its number
+  if(mode === 'online' && Net.live){
+    keepT = netRemain();
+    paintClock('keep', keepT, keepT / netWindow(), false);
+  }
   showBetBar(false);
 }
 /* Throw yourself. Legal at any point in the kick — before he strikes, as he
@@ -4720,7 +4725,32 @@ const SHOT_CLOCK = 5.0;
 const NET_WINDOW = 7.0;
 const netWindow = () => Math.max(3, Math.min(NET_WINDOW,
   ((Net.match && Net.match.turnMs) || 25000)/1000 - 2));
-const netRemain = () => Math.max(0, netWindow() - netKickT());
+/* Counted from the moment this client PUT THE KICK IN FRONT OF YOU, not from
+   the moment the server wrote the row.
+ *
+ * Those are not the same instant and the gap is not small: the server opens
+ * kick n+1 the instant kick n resolves, and both clients then spend several
+ * seconds watching kick n play out. Measured from the server's stamp, every
+ * kick after the first arrived with most of its window already spent — and a
+ * replay that ran a little long arrived with none, so the striker's clock hit
+ * zero on the first frame and rushed the shot, and the keeper was recorded as
+ * standing up, neither of them having touched the screen. That is what
+ * "freezes mid game" was.
+ *
+ * Submissions are still stamped against `openedAt` — they have to be, it is
+ * the one instant both players share and it is what makes a dive comparable
+ * to a strike. This is the playing window, which is a different thing, and
+ * both clients open it after the same replay of the same kick, so they still
+ * see the same number to within a poll.
+ *
+ * The server's deadline stays the backstop: never offer time we do not have. */
+let netKickBeganAt = 0;
+function netRemain(){
+  if(!Net.live) return 0;
+  const left = netWindow() - Math.max(0, netNow() - netKickBeganAt);
+  const untilDeadline = Net.live.deadline - netNow() - 0.75;
+  return Math.max(0, Math.min(left, untilDeadline));
+}
 let shotT = 0;
 const clockRuns = () => state === ST.AIM && !paused && mode !== 'training' && !holding();
 /* One place decides what the bars say, so the two of them cannot drift. */
@@ -4732,12 +4762,15 @@ function paintClock(el, secs, frac, tight){
   bar.classList.toggle('tight', tight);
 }
 function startShotClock(){
-  shotT = SHOT_CLOCK;
+  shotT = mode === 'online' && Net.live ? netRemain() : SHOT_CLOCK;
   const bar = $('shotbar');
   if(mode === 'training'){ bar.classList.remove('show'); return; }
   bar.classList.remove('tight');
-  $('shotFill').style.width = '100%';
   bar.classList.add('show');
+  /* Painted here as well as in the frame loop: the bar is shown the instant
+     the kick opens and the first update is a frame away, so without this it
+     appears for that frame carrying no number — or worse, the last kick's. */
+  paintClock('shot', shotT, shotT / (mode === 'online' ? netWindow() : SHOT_CLOCK), false);
 }
 function stopShotClock(){ $('shotbar').classList.remove('show', 'tight'); }
 /* Time up: he takes it on anyway, off balance and with no pace. The kick is
@@ -5320,9 +5353,12 @@ function netRoom(){
     : Net.ready.you ? 'Your half is in — nothing starts until they press it too.'
     : gone ? 'They have dropped out. Give it a moment, or go back.'
     : 'No clock is running yet. Press it when you are set.';
-  if(Net.ready.both){
+  /* Once, not once per poll — this runs on every sync now. */
+  if(Net.ready.both && !netRoom.closing){
+    netRoom.closing = true;
     $('bReadyUp').disabled = true;
     setTimeout(()=>{
+      netRoom.closing = false;
       $('ovOnline').classList.add('hidden');
       $('mpReady').classList.add('hidden');
       talkShow(true);
@@ -5630,9 +5666,18 @@ async function netSync(){
                                     Net.opponent && Net.opponent.ready]);
     if(st.ready) Net.ready = st.ready;
     if(st.opponent !== undefined) Net.opponent = st.opponent;
-    if(Net.onRoom && JSON.stringify([Net.ready, Net.opponent && Net.opponent.here,
-                                     Net.opponent && Net.opponent.ready]) !== wasRoom)
-      Net.onRoom(Net);
+    /* Fires on every sync, not only on a change.
+     *
+     * Change-detection here had a hole with somebody's name on it: whoever
+     * pressed READY second had their own copy of `ready` updated by the POST's
+     * reply, so the next poll saw nothing new, never called back, and left
+     * them sitting on the lobby screen while the match started without them.
+     * Repainting a panel that is usually hidden costs nothing; missing the one
+     * edge that matters costs a player their game. The comparison stays, but
+     * only to decide whether this is worth logging as a change. */
+    const changed = JSON.stringify([Net.ready, Net.opponent && Net.opponent.here,
+                                    Net.opponent && Net.opponent.ready]) !== wasRoom;
+    if(Net.onRoom) Net.onRoom(Net, changed);
     if(st.says && st.says.length){
       for(const s of st.says) Net.since = Math.max(Net.since, s.id);
       if(Net.onSay) Net.onSay(st.says);
@@ -5688,7 +5733,17 @@ function netPollStart(){
     if(!Net.poll) return;
     const live = Net.live && !Net.live.submitted;
     const waiting = Net.live && Net.live.submitted;
-    Net.poll = setTimeout(tick, live ? 350 : waiting ? 1000 : 2500);
+    /* Between kicks is not idle time — it is the moment the next window opens,
+       and the window now starts when a client is SHOWN the kick. Polling
+       slowly here meant one player's clock could start a couple of seconds
+       after the other's, so they were told two different numbers for the same
+       kick. In a live match there is no cheap moment to be lazy. */
+    const between = Net.state === 'in_progress' && !Net.live;
+    /* `waiting` is not idle either: the resolved kick lands on this poll, and
+       how late it lands is how late the replay starts, which is how late the
+       NEXT window opens. Slow polling here is what put the two players'
+       clocks a second and a half apart. */
+    Net.poll = setTimeout(tick, live ? 350 : waiting ? 500 : between ? 450 : 2500);
   };
   Net.poll = setTimeout(tick, 0);
 }
@@ -5731,6 +5786,7 @@ async function netReadyUp(){
   if(!Net.match) throw new Error('not in a match');
   const r = await mpFetch('/api/mp/ready', 'POST', {matchId: Net.match.matchId});
   if(r.ready) Net.ready = {you:r.ready.you, them:r.ready.them, both:r.ready.both};
+  netRoom();                          // repaint from OUR answer, not the next poll's
   netSync();
   return r;
 }
@@ -5833,7 +5889,16 @@ function netIdle(){
 function netBeginKick(live){
   if(!live || mode !== 'online') return;
   netBegun = live.kickIndex;
+  netKickBeganAt = netNow();                  // the window starts HERE — see netRemain
   kickIndex = live.kickIndex;
+  /* A kick must never start behind the lobby. If the ready panel is somehow
+     still up when one opens, the player is being handed a shot clock they
+     cannot see, which is worse than any overlay bug on its own. */
+  if(!$('ovOnline').classList.contains('hidden')){
+    $('ovOnline').classList.add('hidden');
+    $('mpReady').classList.add('hidden');
+    talkShow(true);
+  }
   netForced = null;
   netMsg = '';
   netTell = null;                             // last kick's read is not this one's

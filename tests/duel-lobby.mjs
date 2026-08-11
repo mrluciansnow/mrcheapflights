@@ -135,10 +135,17 @@ ok('the button says what it is waiting for',
    await A.evaluate(() => document.getElementById('bReadyUp').textContent));
 await B.click('#bReadyUp');
 
+/* B presses second, and that is the case that used to strand somebody: their
+   own copy of `ready` was updated by the POST's reply, so the next poll saw
+   nothing new, never called back, and left them sitting on the lobby while
+   the match started without them. The one who presses SECOND is the test. */
 ok('once both have, the overlay closes for the host', await until(A, () =>
    document.getElementById('ovOnline').classList.contains('hidden'), 8000, 'A overlay to close'));
-ok('and for the joiner', await until(B, () =>
+ok('and for the joiner, who pressed it second', await until(B, () =>
    document.getElementById('ovOnline').classList.contains('hidden'), 8000, 'B overlay to close'));
+ok('neither is left looking at a lobby while the other plays',
+   await A.evaluate(() => document.getElementById('mpReady').classList.contains('hidden')) &&
+   await B.evaluate(() => document.getElementById('mpReady').classList.contains('hidden')));
 ok('and the way to talk to each other appears', await until(A, () =>
    !document.getElementById('talk').classList.contains('hidden'), 5000, 'A talk buttons'));
 
