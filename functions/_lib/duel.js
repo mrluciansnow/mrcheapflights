@@ -117,7 +117,7 @@ export async function assignCode(env, matchId) {
         'INSERT INTO cf_duel_codes (code, match_id, created_at) VALUES (?, ?, ?)'
       ).bind(code, matchId, now()).run();
       return code;
-    } catch { /* taken — draw again */ }
+    } catch { /* taken, or the table is not there yet — draw again, then give up */ }
   }
   return null;                                   // playable, just not shareable
 }
@@ -205,12 +205,24 @@ export async function mergeQueue(env, match, meId) {
   return older.id;
 }
 
-export const codeFor = (env, matchId) => env.DB.prepare(
+/* ---- codes are a convenience, not a dependency ----
+ *
+ * cf_duel_codes arrived later than the rest of the duel schema, so a
+ * deployment whose migrations have not caught up does not have it. Unguarded,
+ * that turned a nicety into a total outage: every poll of /api/mp/sync threw
+ * on the missing table, so nobody could find an opponent, join a game, or
+ * finish one — because they could not be told a five-character code.
+ *
+ * Every read of it is allowed to come back empty. Without the table you lose
+ * "play a friend"; you do not lose online. */
+const tolerant = async (q) => { try { return await q; } catch { return null; } };
+
+export const codeFor = (env, matchId) => tolerant(env.DB.prepare(
   'SELECT code FROM cf_duel_codes WHERE match_id = ?'
-).bind(matchId).first();
-export const matchForCode = (env, code) => env.DB.prepare(
+).bind(matchId).first());
+export const matchForCode = (env, code) => tolerant(env.DB.prepare(
   'SELECT match_id FROM cf_duel_codes WHERE code = ?'
-).bind(String(code || '').trim().toUpperCase()).first();
+).bind(String(code || '').trim().toUpperCase()).first());
 
 /* Open kick `i`, if it is not already open. Racing callers are fine: the
    primary key makes the second insert a no-op. */
