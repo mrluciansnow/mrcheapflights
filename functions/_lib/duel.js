@@ -387,6 +387,45 @@ const PURSE_WIN = 250, PURSE_PLAY = 60, PURSE_DRAW = 120;
 /* Settle once, when every kick has been decided. The ledger's unique index on
  * (player, match, reason) is the real guard — this can be called on every
  * poll from both players and still pay out once. */
+/* ---- SUDDEN DEATH ----
+ *
+ * A shootout that ends level ends nothing, and this one did: ten kicks, same
+ * score, "nothing between you", back to the menu. Real shootouts go a pair at
+ * a time until one of them blinks, and the machinery for that already exists —
+ * a duel is a kick count and the sides alternate, so another pair is `kicks +
+ * 2` and nothing else changes.
+ *
+ * A pair, not a kick, because a single extra kick would hand the win to
+ * whoever happened to be striking. Capped, because two evenly matched players
+ * are perfectly capable of missing all afternoon and a match that cannot end
+ * is worse than one that ends level. */
+export const MAX_KICKS = 20;
+
+/* Level after every kick, and there is room for another pair? Then it is not
+   finished. Returns true if the duel was extended. */
+async function suddenDeath(env, match, duel, scores) {
+  if (scores.a !== scores.b) return false;
+  if (duel.kicks >= MAX_KICKS) return false;       // a hard stop, deliberately
+  /* Nobody took the last pair. Two players who have both stopped playing are
+     level for a reason that another pair will not settle, and extending anyway
+     walks the match to the cap one twenty-five-second deadline at a time —
+     four minutes of a screen doing nothing. Level by absence is just level. */
+  const last = await env.DB.prepare(
+    `SELECT outcome FROM cf_kicks WHERE match_id = ? AND kick_index >= ?
+      ORDER BY kick_index`
+  ).bind(match.id, Math.max(0, duel.kicks - 2)).all();
+  if (last.results.length && last.results.every(k => k.outcome === 'timeout')) return false;
+  const res = await env.DB.prepare(
+    'UPDATE cf_duels SET kicks = kicks + 2 WHERE match_id = ? AND kicks = ?'
+  ).bind(match.id, duel.kicks).run();
+  if (res.meta.changes !== 1) return false;        // somebody else extended it
+  await openKick(env, match, { ...duel, kicks: duel.kicks + 2 }, duel.kicks);
+  await env.DB.prepare('UPDATE cf_duels SET kick_index = ? WHERE match_id = ?')
+    .bind(duel.kicks, match.id).run();
+  await env.DB.prepare('UPDATE cf_matches SET updated_at = ? WHERE id = ?')
+    .bind(now(), match.id).run();
+  return true;
+}
 export async function settle(env, match, duel) {
   const done = await env.DB.prepare(
     'SELECT COUNT(*) AS n FROM cf_kicks WHERE match_id = ? AND resolved_at IS NOT NULL'
@@ -394,6 +433,11 @@ export async function settle(env, match, duel) {
   if (done.n < duel.kicks) return null;
 
   const scores = await tally(env, match);
+  /* Level, and neither of them has walked away? Then it is not over. A player
+     who has gone gets the result as it stands rather than extra time they are
+     not there for. */
+  if (!(await whoGone(env, match.id)).length &&
+      await suddenDeath(env, match, duel, scores)) return null;
   const winner = scores.a === scores.b ? null
                : (scores.a > scores.b ? match.a_player : match.b_player);
 

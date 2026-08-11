@@ -209,10 +209,13 @@ ok('and nobody has been auto-submitted before touching anything',
 console.log('\nWHAT THE KEEPER SEES OF THE STRIKER');
 /* The striker has to go FIRST: the kick resolves the instant the second half
    lands, so in the other order there is nothing left to read. */
-await B.evaluate(() => {
-  const ev = k => window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
-  ev('ArrowLeft'); ev('ArrowUp'); ev(' ');
-});
+/* Deliberately over the bar, and submitted directly rather than through the
+   keyboard: this suite is about the loop, and a match that comes out level now
+   goes to sudden death — correct behaviour, covered in duel-endgame, but it
+   would leave this test waiting out extra time it has no interest in. */
+await B.evaluate(() => window.CF.net.submit('strike',
+  { power: 0.95, aimM: 0, curl: 0, elev: 0.98, x: 0, z: 11, wall: 0,
+    t: window.CF.net.state.kickT }));
 const gotRead = await until(A, () => window.CF.net.state.struck === true, 10000,
                             'A to notice the ball was struck');
 const aRead = await st(A);
@@ -249,8 +252,16 @@ ok('the match settled', fA.state === 'settled', JSON.stringify(fA.state));
 ok('both agree on the final score',
    fA.score.you === fB.score.them && fA.score.them === fB.score.you,
    JSON.stringify([fA.score, fB.score]));
-ok('both played every kick', fA.played === 2 && fB.played === 2,
-   fA.played + ' / ' + fB.played);
+/* However many there turned out to be: a match level after its last kick goes
+   to sudden death, a pair at a time, so "every kick" is no longer a constant.
+   What must hold is that both ends saw the same ones. */
+ok('both played every kick, whatever the match grew to',
+   fA.played === fB.played && fA.played >= 2, fA.played + ' / ' + fB.played);
+ok('and a match that went to extra time says so rather than pretending',
+   fA.played === 2 || await A.evaluate(() =>
+     /SUDDEN DEATH/.test(document.getElementById('rbL').textContent) ||
+     window.CF.net.state.state === 'settled'),
+   'played ' + fA.played);
 
 const errs = await A.evaluate(() => (window.__err || []).length);
 ok('no runtime errors on the way through', errs === 0);

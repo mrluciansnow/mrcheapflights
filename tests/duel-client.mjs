@@ -133,8 +133,11 @@ ok('and B on the ball', b3.live?.role === 'striker' && b3.sources.striker === 'l
 
 console.log('\nTHE DUEL ENDS');
 await A.evaluate(() => window.CF.net.submit('dive', null));
+/* Over the bar on purpose. Two scored kicks come out level, and level now
+   goes to sudden death rather than settling, so a test that wants an ENDED
+   match has to produce a decisive one. */
 await B.evaluate(() => window.CF.net.submit('strike',
-  { power: 0.6, aimM: -2.2, curl: -0.3, elev: 0.3, x: 0, z: 11, wall: 0 }));
+  { power: 0.95, aimM: 0, curl: 0, elev: 0.98, x: 0, z: 11, wall: 0 }));
 await A.evaluate(() => window.CF.net.sync());
 const fin = await st(A);
 ok('the match settles', fin.state === 'settled', JSON.stringify(fin));

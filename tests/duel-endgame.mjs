@@ -34,9 +34,9 @@ const ready = (d, id) => api('/api/mp/ready', d, 'POST', { matchId: id });
 const leave = (d, id) => api('/api/mp/leave', d, 'POST', { matchId: id });
 const again = (d, id) => api('/api/mp/again', d, 'POST', { matchId: id });
 
-async function playing(tag, kicks = 6) {
+async function playing(tag, kicks = 6, turnMs) {
   const A = dev(tag + 'a'), B = dev(tag + 'b');
-  const a = await api('/api/mp/duel', A, 'POST', { kicks, join: false });
+  const a = await api('/api/mp/duel', A, 'POST', { kicks, join: false, turnMs });
   await api('/api/mp/duel', B, 'POST', { kicks, matchId: a.json.matchId });
   await ready(A, a.json.matchId); await ready(B, a.json.matchId);
   return { A, B, id: a.json.matchId };
@@ -102,14 +102,18 @@ ok('so nobody can join a corpse', ghost.json.state === 'expired',
 
 console.log('\nGOING AGAIN — both have to want it');
 const q = await playing('again', 2);
-/* play it out */
+/* Played out DECISIVELY. Two identical kicks come out level, and level is no
+   longer the end of a match — it goes to sudden death — so a rematch test that
+   drew would sit in extra time forever. One scores, one puts it over. */
+const SCORES = { power: 0.8, aimM: 2.2, curl: 0, elev: 0.35, x: 0, z: 11, wall: 0, t: 1 };
+const MISSES = { power: 0.95, aimM: 0, curl: 0, elev: 0.98, x: 0, z: 11, wall: 0, t: 1 };
 for (let i = 0; i < 2; i++) {
   const s = await sync(q.A, q.id);
   if (!s.json.live) break;
   const sd = s.json.live.role === 'striker' ? q.A : q.B;
   const kd = s.json.live.role === 'striker' ? q.B : q.A;
   await api('/api/mp/kick', sd, 'POST', { matchId: q.id, kickIndex: i,
-    strike: { power: 0.75, aimM: 1.8, curl: 0, elev: 0.4, x: 0, z: 11, wall: 0, t: 1 } });
+    strike: i === 0 ? SCORES : MISSES });
   await api('/api/mp/kick', kd, 'POST', { matchId: q.id, kickIndex: i, dive: null });
 }
 const done = await sync(q.A, q.id);
@@ -149,6 +153,111 @@ ok('sides swapped, so the same person does not kick first twice',
    newA.json.side !== done.json.side, done.json.side + ' -> ' + newA.json.side);
 ok('and it has not started — the ready gate applies to a rematch too',
    !newA.json.live && newA.json.ready.both === false, JSON.stringify(newA.json.live));
+
+console.log('\nA NAME, SO IT IS SOMEBODY RATHER THAN "PLAYER"');
+const named = dev('named');
+const setName = await api('/api/mp/name', named, 'POST', { name: '  Scath  ' });
+ok('a name is accepted and tidied', setName.json.you && setName.json.you.handle === 'Scath',
+   JSON.stringify(setName.json.you && setName.json.you.handle));
+const longName = await api('/api/mp/name', named, 'POST', { name: 'x'.repeat(40) });
+ok('an over-long one is cut, not refused', longName.json.you.handle.length === 14,
+   JSON.stringify(longName.json.you.handle));
+const nasty = await api('/api/mp/name', named, 'POST', { name: '<img src=x>Bob' });
+ok('and markup is stripped rather than stored',
+   !/[<>]/.test(nasty.json.you.handle), JSON.stringify(nasty.json.you.handle));
+const bidi = await api('/api/mp/name', named, 'POST', { name: 'ab\u202Ecd' });
+ok('so are the characters that rearrange the line they are printed on',
+   !/[\u202A-\u202E]/.test(bidi.json.you.handle), JSON.stringify(bidi.json.you.handle));
+const empty = await api('/api/mp/name', named, 'POST', { name: '   ' });
+ok('a name of nothing is refused', empty.status === 400, String(empty.status));
+
+/* and it reaches the other player, which is the whole point */
+const n1 = dev('n1'), n2 = dev('n2');
+await api('/api/mp/name', n1, 'POST', { name: 'Aoife' });
+const nm = await api('/api/mp/duel', n1, 'POST', { kicks: 2, join: false });
+await api('/api/mp/duel', n2, 'POST', { kicks: 2, matchId: nm.json.matchId });
+const seen = await sync(n2, nm.json.matchId);
+ok('the other end is told who they are playing',
+   seen.json.opponent && seen.json.opponent.handle === 'Aoife',
+   JSON.stringify(seen.json.opponent && seen.json.opponent.handle));
+
+console.log('\nSUDDEN DEATH — level is not finished');
+/* Two kicks, and both of them missed on purpose, so it comes out level. */
+const sd = await playing('sd', 2);
+async function bothMiss(id, i, A, B){
+  const s = await sync(A, id);
+  if(!s.json.live) return false;
+  const sdev = s.json.live.role === 'striker' ? A : B;
+  const kdev = s.json.live.role === 'striker' ? B : A;
+  // straight over the bar: a miss whoever is in goal
+  await api('/api/mp/kick', sdev, 'POST', { matchId: id, kickIndex: i,
+    strike: { power: 0.95, aimM: 0, curl: 0, elev: 0.98, x: 0, z: 11, wall: 0, t: 1 } });
+  await api('/api/mp/kick', kdev, 'POST', { matchId: id, kickIndex: i, dive: null });
+  return true;
+}
+await bothMiss(sd.id, 0, sd.A, sd.B);
+await bothMiss(sd.id, 1, sd.A, sd.B);
+const afterTwo = await sync(sd.A, sd.id);
+ok('level after the last kick does not end the match',
+   afterTwo.json.state === 'in_progress', JSON.stringify(afterTwo.json.state));
+ok('another PAIR is added, not another kick — one would hand it to whoever kicks',
+   afterTwo.json.kicks === 4, String(afterTwo.json.kicks));
+ok('and the next one is open and waiting', afterTwo.json.live &&
+   afterTwo.json.live.kickIndex === 2, JSON.stringify(afterTwo.json.live));
+ok('with the sides still alternating',
+   (await sync(sd.B, sd.id)).json.live.role !== afterTwo.json.live.role);
+
+/* Now one of them scores in extra time: that ends it. */
+const s2 = await sync(sd.A, sd.id);
+const winDev = s2.json.live.role === 'striker' ? sd.A : sd.B;
+const loseDev = s2.json.live.role === 'striker' ? sd.B : sd.A;
+await api('/api/mp/kick', winDev, 'POST', { matchId: sd.id, kickIndex: 2,
+  strike: { power: 0.8, aimM: 2.2, curl: 0, elev: 0.35, x: 0, z: 11, wall: 0, t: 1 } });
+await api('/api/mp/kick', loseDev, 'POST', { matchId: sd.id, kickIndex: 2, dive: null });
+await bothMiss(sd.id, 3, sd.A, sd.B);
+const done2 = await sync(sd.A, sd.id);
+ok('a pair that is not level ends it', done2.json.state === 'settled',
+   JSON.stringify({ state: done2.json.state, scores: done2.json.scores }));
+ok('and somebody won', !!done2.json.winner, JSON.stringify(done2.json.winner));
+
+console.log('\nTWO PLAYERS WHO HAVE BOTH STOPPED ARE JUST LEVEL');
+/* Extending on a pair nobody took walks the match to the cap one
+   twenty-five-second deadline at a time — four minutes of a screen doing
+   nothing — and settles nothing, because neither of them is there. */
+/* A blitz deadline, because this one has to sit through two of them: a pair is
+   two kicks and each gets its own clock. */
+const quit = await playing('quit', 2, 6000);
+await bothMiss(quit.id, 0, quit.A, quit.B);
+await bothMiss(quit.id, 1, quit.A, quit.B);
+const inET = await sync(quit.A, quit.id);
+ok('level after normal time still goes to extra time', inET.json.kicks === 4,
+   String(inET.json.kicks));
+/* now nobody plays the extra pair: let BOTH of its kicks time out */
+console.log('  ..  waiting out a pair nobody takes');
+let gaveUp = null;
+for (let i = 0; i < 20; i++) {
+  await new Promise(r => setTimeout(r, 2000));
+  gaveUp = await sync(quit.A, quit.id);
+  if (gaveUp.json.state === 'settled') break;
+}
+ok('a pair nobody took ends it rather than buying another',
+   gaveUp.json.state === 'settled', JSON.stringify({state: gaveUp.json.state, kicks: gaveUp.json.kicks}));
+ok('and it is allowed to be a draw', gaveUp.json.winner === null,
+   JSON.stringify(gaveUp.json.winner));
+
+console.log('\nSUDDEN DEATH CANNOT RUN FOREVER');
+/* Two players perfectly capable of missing all afternoon. The cap is the only
+   thing between them and a match that never ends. */
+const cap = await playing('cap', 2);
+for (let i = 0; i < 40; i++) {
+  if (!(await bothMiss(cap.id, i, cap.A, cap.B))) break;
+}
+const capped = await sync(cap.A, cap.id);
+ok('it stops rather than extending forever', capped.json.state === 'settled',
+   JSON.stringify({ state: capped.json.state, kicks: capped.json.kicks }));
+ok('at the cap, and level is finally allowed to be level',
+   capped.json.kicks <= 20 && capped.json.winner === null,
+   JSON.stringify({ kicks: capped.json.kicks, winner: capped.json.winner }));
 
 console.log('\n' + (fail ? 'DUEL ENDGAME: ' + fail + ' FAILED'
                          : 'DUEL ENDGAME: ALL ' + pass + ' PASSED'));

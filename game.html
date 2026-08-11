@@ -287,6 +287,12 @@ body.dragging .betbar,body.dragging .prompt,body.dragging .comm{pointer-events:n
 .keeplbl b.secs{display:inline-block;min-width:2.1em;color:#fff;opacity:1;
   font-variant-numeric:tabular-nums;letter-spacing:.02em}
 #shotbar.tight .secs,.keepbar.tight .secs{color:var(--hot-pink)}
+#mpNameIn{display:block;margin:.2rem auto .7rem;padding:.5rem .7rem;width:min(240px,78%);
+  text-align:center;font:900 .8rem/1 Nunito,sans-serif;letter-spacing:.06em;
+  color:#fff;background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.25);border-radius:12px}
+#mpNameIn:focus{outline:none;border-color:var(--sky)}
+#mpNameIn::placeholder{color:rgba(255,255,255,.4);letter-spacing:.1em}
 #mpJoinCode{display:block;margin:.5rem auto;padding:.6rem .8rem;width:min(260px,80%);
   text-align:center;font:900 1.1rem/1 Nunito,sans-serif;letter-spacing:.14em;
   text-transform:uppercase;color:#fff;background:rgba(255,255,255,.08);
@@ -723,6 +729,12 @@ window.addEventListener('error', function(e){
   <div class="sub">Online</div>
   <div class="gv w" style="font-size:2rem">PLAY SOMEBODY</div>
   <div class="gb" id="mpMsg">One kick, two people, both live at once.</div>
+  <!-- who you are, to the person at the other end. Everybody was "Player",
+       which made a duel against a stranger read as a duel against nobody. -->
+  <div id="mpName">
+    <input id="mpNameIn" maxlength="14" placeholder="Your name"
+           autocomplete="nickname" spellcheck="false">
+  </div>
   <div id="mpPick">
     <button class="btn" id="bFindGame">FIND AN OPPONENT</button>
     <button class="btn sm" id="bHostGame">PLAY A FRIEND</button>
@@ -2930,7 +2942,7 @@ const freshProfile = () => ({
   bestStreak:0, bestRound:0, bestFree:0, bestSurvival:0,
   unlocked: COUNTIES.slice(0,STARTER).map(c=>c.n),
   xp:0, money:500, kit:'std', kits:['std'], awards:[], bestWin:0,
-  seenCoach:false, seenTut:false, daily:null, bestTrain:0,
+  seenCoach:false, seenTut:false, name:'', daily:null, bestTrain:0,
   gk:'gk-std', gks:['gk-std'], ball:'ball-std', balls:['ball-std'],
   saves:0, faced:0,
 });
@@ -5365,12 +5377,26 @@ async function netOfferResume(){
     if(st.state !== 'in_progress' || (st.left && st.left.them)){ netForget(); return false; }
     $('mpPick').classList.add('hidden');
     $('mpResume').classList.remove('hidden');
-    $('mpResumeWho').textContent = st.opponent && st.opponent.name
-      ? 'against ' + st.opponent.name : 'a match in progress';
+    const who = st.opponent && (st.opponent.handle || st.opponent.name);
+    $('mpResumeWho').textContent = who && who !== 'Player'
+      ? 'against ' + who : 'a match in progress';
     $('mpResumeScore').textContent = st.score ? st.score.you + ' – ' + st.score.them : '';
     mpStatus('You left a match unfinished.');
     return true;
   }catch{ netForget(); return false; }
+}
+
+/* Tell the server what to call us, once, before anything is opened — so the
+   other player's lobby has a name in it from the moment they are paired
+   rather than after the first poll. Failure is survivable: you are "Player",
+   which is what everybody was until now. */
+async function netSetName(){
+  const raw = ($('mpNameIn').value || '').trim().slice(0, 14);
+  if(!raw || raw === profile.name) return;
+  profile.name = raw;
+  saveProfile();
+  try{ await mpFetch('/api/mp/name', 'POST', {name: raw}); }
+  catch(e){ /* a name is not worth failing a match over */ }
 }
 
 function openOnline(){
@@ -5378,6 +5404,8 @@ function openOnline(){
   $('ovOnline').classList.remove('hidden');
   $('mpResume').classList.add('hidden');
   $('mpPick').classList.remove('hidden');
+  $('mpName').classList.remove('hidden');
+  $('mpNameIn').value = profile.name || '';
   $('mpCodeWrap').classList.add('hidden');
   $('mpJoinCode').classList.add('hidden');
   $('bJoinGo').classList.add('hidden');
@@ -5389,6 +5417,8 @@ function openOnline(){
 /* Open, host or join — one path, because the difference is only which
    argument goes to the server. */
 async function netStart(opts){
+  await netSetName();                 // before the other end is told about us
+  $('mpName').classList.add('hidden');
   $('mpPick').classList.add('hidden');
   $('mpJoinCode').classList.add('hidden');
   $('bJoinGo').classList.add('hidden');
@@ -5444,11 +5474,11 @@ function netRoom(){
   }
   if($('mpReady').classList.contains('hidden')) return;
   const you = $('rdyYou'), them = $('rdyThem');
-  you.querySelector('b').textContent = (profile.name || 'YOU').toUpperCase();
+  you.querySelector('b').textContent = (profile.name || 'YOU').toUpperCase().slice(0, 14);
   you.querySelector('i').textContent = Net.ready.you ? 'ready' : 'not ready';
   you.classList.toggle('on', !!Net.ready.you);
   const o = Net.opponent;
-  them.querySelector('b').textContent = o ? (o.name || 'OPPONENT').toUpperCase() : '—';
+  them.querySelector('b').textContent = o ? (netThem() || 'OPPONENT').toUpperCase() : '—';
   /* Three states, and the middle one matters most: somebody who is connected
      but has not pressed it is not the same as somebody who has gone. */
   const gone = o && o.here === false;
@@ -5826,6 +5856,12 @@ async function netSync(){
     Net.state = st.state;
     Net.queue = st.queue;
     Net.score = st.score;
+    /* The kick count GROWS. A duel level after its last kick goes to sudden
+       death, a pair at a time, so anything holding "of 10" has to be told. */
+    if(Net.match && typeof st.kicks === 'number' && st.kicks !== Net.match.kicks){
+      Net.match.kicks = st.kicks;
+      ROUNDS = Math.max(1, st.kicks >> 1);
+    }
     /* Who is at the other end, whether they are still there, and whether both
        of us have said we are. An older deployment sends none of this, so the
        absence of an answer has to read as "no reason to think otherwise"
@@ -6119,11 +6155,22 @@ async function netPlay(opts){
 /* "ONLINE · v NAME · KICK 3/10". The bar used to say "QUICK MATCH · Senior"
    for the whole of an online duel, which named neither the person you were
    playing nor how far through it you were. */
+/* The server calls it `handle`; every one of these read `name`, which does not
+   exist on the wire — so the opponent's name was blank everywhere it was
+   supposed to appear. One accessor now, so there is one place to be wrong. */
+const netThem = () => {
+  const o = Net.opponent;
+  const n = o && (o.handle || o.name);
+  return n && n !== 'Player' ? String(n) : '';
+};
 function netRoundLabel(){
-  const who = Net.opponent && Net.opponent.name
-    ? ' · v ' + String(Net.opponent.name).toUpperCase().slice(0, 12) : '';
+  const who = netThem() ? ' · v ' + netThem().toUpperCase().slice(0, 12) : '';
   const total = (Net.match && Net.match.kicks) || 10;
   const at = Math.min(total, (Net.live ? Net.live.kickIndex : Net.seen) + 1);
+  /* Past the tenth kick a duel is in sudden death, and saying "KICK 13/14"
+     hides the only thing that matters about it. */
+  if(total > 10 && at > 10)
+    return 'ONLINE' + who + ' · SUDDEN DEATH · PAIR ' + Math.ceil((at - 10) / 2);
   return 'ONLINE' + who + ' · KICK ' + Math.max(1, at) + '/' + total;
 }
 
