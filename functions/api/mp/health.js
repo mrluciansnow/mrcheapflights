@@ -12,7 +12,12 @@
 //
 // It reports schema presence, never data. There is nothing here that is not
 // already implied by the endpoints existing.
-const NEED = ['cf_players', 'cf_matches', 'cf_turns', 'cf_ledger', 'cf_duels', 'cf_kicks'];
+/* Every table the online half reads. Keeping this list right IS the endpoint's
+   job, and it drifted once already: cf_duel_codes arrived with the lobby and
+   was not added, so health reported ok:true while every sync threw on the
+   missing table. Add a table, add it here. */
+const NEED = ['cf_players', 'cf_matches', 'cf_turns', 'cf_ledger',
+              'cf_duels', 'cf_kicks', 'cf_duel_codes'];
 
 export async function onRequestGet(context) {
   const { env } = context;

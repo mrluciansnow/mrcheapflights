@@ -140,5 +140,42 @@ if (!local) {
      gone.json.state === 'expired', JSON.stringify(gone.json.state));
 }
 
+console.log('\nA DEPLOYMENT BEHIND ON ITS MIGRATIONS');
+/* cf_duel_codes arrived later than the rest of the duel schema, so a site that
+   has deployed new code without re-running migrations does not have it. That
+   must cost you the five-character code and nothing else — unguarded, it took
+   the whole of online down, because every poll of sync read that table. */
+if (!local) {
+  console.log('  ..  skipped against a remote deployment: needs direct DB access');
+} else {
+  const { execFileSync } = await import('node:child_process');
+  const d1 = sql => execFileSync('npx',
+    ['wrangler', 'd1', 'execute', 'mrcheapflights-prod', '--local', '--command', sql],
+    { stdio: 'ignore' });
+  d1('DROP TABLE IF EXISTS cf_duel_codes');
+  try {
+    const P = dev('p'), Q = dev('q');
+    const hosted = await api('/api/mp/duel', P, 'POST', { kicks: 2, join: false });
+    ok('a duel still opens without the codes table', hosted.status === 200,
+       JSON.stringify(hosted.json).slice(0, 140));
+    ok('it simply has no code to share', hosted.json.code === null || hosted.json.code === undefined,
+       JSON.stringify(hosted.json.code));
+    const found = await find(Q);
+    ok('and FIND AN OPPONENT still pairs', found.status === 200 &&
+       found.json.matchId === hosted.json.matchId,
+       JSON.stringify(found.json).slice(0, 140));
+    const s1 = await sync(P, hosted.json.matchId);
+    ok('sync does not throw — this is what took online down',
+       s1.status === 200 && s1.json.state === 'in_progress', JSON.stringify(s1.status));
+    const health = await api('/api/mp/health', P);
+    ok('and health says the migrations are behind rather than ok',
+       health.status === 503 && (health.json.missing || []).includes('cf_duel_codes'),
+       JSON.stringify({ status: health.status, missing: health.json.missing }));
+  } finally {
+    execFileSync('npx', ['wrangler', 'd1', 'execute', 'mrcheapflights-prod', '--local',
+      '--file', 'migrations/0033_duel_code.sql'], { stdio: 'ignore' });
+  }
+}
+
 console.log('\n' + (fail ? 'DUEL QUEUE: ' + fail + ' FAILED' : 'DUEL QUEUE: ALL ' + pass + ' PASSED'));
 process.exit(fail ? 1 : 0);
