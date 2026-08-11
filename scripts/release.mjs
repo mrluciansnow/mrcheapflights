@@ -21,18 +21,20 @@ const SITE = process.env.SITE_URL ||
   (PREVIEW ? null : 'https://mrcheapflights.ie');
 
 const step = (n, what) => console.log('\n── ' + n + '. ' + what + ' ' + '─'.repeat(Math.max(0, 56 - what.length)));
-const sh = (cmd, args) => execFileSync(cmd, args, { cwd: ROOT, stdio: 'inherit' });
+/* process.execPath, not 'node': on Windows there is no guarantee `node` is the
+   one running this, and on a stripped PATH there may be no `node` at all. */
+const node = args => execFileSync(process.execPath, args, { cwd: ROOT, stdio: 'inherit' });
 
 /* ---------------------------------------------------------------- 1 ---
    Schema first, always. Code that reads a table the database does not have
    is the failure mode that took online down: a five-character join code
    nobody could live without turned out to be one every request depended on. */
 step(1, 'migrating the database');
-sh('node', ['tools/migrate.mjs', '--remote']);
+node([join('tools', 'migrate.mjs'), '--remote']);
 
 /* ---------------------------------------------------------------- 2 --- */
 step(2, 'deploying the site');
-sh('node', [join('scripts', 'deploy.mjs'), ...(PREVIEW ? ['--preview'] : [])]);
+node([join('scripts', 'deploy.mjs'), ...(PREVIEW ? ['--preview'] : [])]);
 
 /* ---------------------------------------------------------------- 3 ---
    A deploy is not finished until the thing it deployed answers. Pages
