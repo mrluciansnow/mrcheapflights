@@ -62,6 +62,8 @@ const MUST_SHIP = [
   'functions/api/mp/sync/[id].js',
   'functions/api/mp/ready.js',    // no ready gate means the first kick is lost
   'functions/api/mp/say.js',
+  'functions/api/mp/leave.js',
+  'functions/api/mp/again.js',
 ];
 for (const required of MUST_SHIP) {
   if (!existsSync(join(dist, required))) {

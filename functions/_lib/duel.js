@@ -24,8 +24,10 @@
    replay the identical kick from them.
    ========================================================================== */
 
-import { simulate, validateRecord, scoreValue, xpValue, DIFF, mulberry32, hash2 } from './sim.js';
+import { simulate, validateRecord, scoreValue, xpValue, DIFF, mulberry32, hash2,
+         WEATHERS } from './sim.js';
 import { now, credit, addXp } from './mp.js';
+import { randomHex } from './auth.js';
 
 /* A keeper who never commits stands on his line — which is a legal, and
    sometimes correct, thing to do. `simulate` treats an absent dive as "play
@@ -345,6 +347,12 @@ export async function resolveKick(env, match, duel, kick) {
  * the critical path and a match cannot stall because a sweeper is late. */
 export async function advance(env, match, duel) {
   if (!match.b_player) return null;                  // nobody to duel yet
+  /* One of them has gone. Close the match out now rather than making the one
+     who stayed sit through a deadline per remaining kick. */
+  if ((await whoGone(env, match.id)).length) {
+    await abandon(env, match, duel);
+    return null;
+  }
   /* Nothing opens until both of them are here and have said so. Only checked
      while the duel is still on its first kick — once a kick has been taken,
      both were plainly present, and a mid-match check would be a query per
@@ -551,6 +559,108 @@ export async function saysSince(env, matchId, meId, sinceId) {
     .filter(r => !(r.kind === 'rtc' && r.player_id === meId))
     .map(r => ({ id: r.id, mine: r.player_id === meId, kind: r.kind,
                  body: r.body, at: r.at }));
+}
+
+/* ---- WALKING AWAY ----
+ *
+ * Somebody closing the tab used to cost the other player the rest of the
+ * match in twenty-five-second silences, one per remaining kick, with nothing
+ * on screen to say why. A duel should end when one of the two people in it
+ * stops being there.
+ *
+ * The rule is the plain one: the match ends immediately, on the score as it
+ * stands. Not a forfeit — if you were behind when they went, you were behind.
+ * That needs no special case in the ledger and no argument about intent,
+ * because a dropped connection and a rage-quit look identical from here and
+ * only one of them deserves a penalty.
+ *
+ * Mechanically it is "resolve everything outstanding as a timeout", which is
+ * what the deadline would have done anyway, just without the waiting. `settle`
+ * then fires on its own, exactly as it does for a match played out.
+ */
+export const markGone = (env, matchId, playerId) => tolerant(env.DB.prepare(
+  'INSERT OR IGNORE INTO cf_duel_gone (match_id, player_id, at) VALUES (?, ?, ?)'
+).bind(matchId, playerId, now()).run());
+
+export async function whoGone(env, matchId) {
+  const rows = await tolerantAll(env.DB.prepare(
+    'SELECT player_id FROM cf_duel_gone WHERE match_id = ?').bind(matchId).all());
+  return rows ? rows.results.map(r => r.player_id) : [];
+}
+
+/* Close out every kick that has not been decided. Idempotent: the guarded
+   UPDATE means a second caller changes nothing. */
+export async function abandon(env, match, duel) {
+  const t = now();
+  for (let i = duel.kick_index; i < duel.kicks; i++) {
+    await openKick(env, match, duel, i);
+    await env.DB.prepare(
+      `UPDATE cf_kicks SET outcome = 'timeout', value = 0, xp = 0, resolved_at = ?
+        WHERE match_id = ? AND kick_index = ? AND resolved_at IS NULL`
+    ).bind(t, match.id, i).run();
+  }
+  await env.DB.prepare('UPDATE cf_duels SET kick_index = ? WHERE match_id = ?')
+    .bind(duel.kicks, match.id).run();
+  await settle(env, match, { ...duel, kick_index: duel.kicks });
+}
+
+/* ---- GOING AGAIN ----
+ *
+ * Both have to want it. The second request to arrive is the one that creates
+ * the new duel, and it writes the id onto BOTH rows so the first player picks
+ * it up on their next sync rather than being told to ask again.
+ *
+ * Sides swap, so a rematch is not the same match twice: whoever kicked first
+ * last time is in goal first this time.
+ */
+export const markAgain = (env, matchId, playerId) => tolerant(env.DB.prepare(
+  'INSERT OR IGNORE INTO cf_duel_again (match_id, player_id, at) VALUES (?, ?, ?)'
+).bind(matchId, playerId, now()).run());
+
+export async function againState(env, match, meId) {
+  const rows = await tolerantAll(env.DB.prepare(
+    'SELECT player_id, next_match FROM cf_duel_again WHERE match_id = ?').bind(match.id).all());
+  if (!rows) return { you: false, them: false, matchId: null };
+  const mine = rows.results.find(r => r.player_id === meId);
+  const theirs = rows.results.find(r => r.player_id !== meId);
+  return {
+    you: !!mine, them: !!theirs,
+    matchId: (mine && mine.next_match) || (theirs && theirs.next_match) || null,
+  };
+}
+
+/* Create the rematch, exactly once. Returns the new match id either way. */
+export async function makeAgain(env, match, duel, meId) {
+  const st = await againState(env, match, meId);
+  if (st.matchId) return st.matchId;
+  if (!(st.you && st.them)) return null;
+
+  const id = 'm_' + randomHex(10);
+  const seed = new Uint32Array(1);
+  crypto.getRandomValues(seed);
+  const weather = seed[0] % WEATHERS.length;
+  const t = now();
+  /* Sides swap: last match's b_player opens this one, so the first kick of the
+     rematch belongs to whoever was in goal for the first kick of the last. */
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO cf_matches (id, a_player, b_player, state, seed, difficulty, created_at, updated_at)
+       VALUES (?, ?, ?, 'in_progress', ?, ?, ?, ?)`
+    ).bind(id, match.b_player, match.a_player, seed[0] >>> 0, match.difficulty, t, t),
+    env.DB.prepare(
+      `INSERT INTO cf_duels (match_id, kicks, kick_index, turn_ms, weather, created_at)
+       VALUES (?, ?, 0, ?, ?, ?)`
+    ).bind(id, duel.kicks, duel.turn_ms, weather, t),
+  ]);
+  /* Whoever gets here first wins the race and their id is the one both read.
+     The guard is `next_match IS NULL`, so a simultaneous second caller writes
+     nothing and then reads this row. */
+  const claim = await env.DB.prepare(
+    'UPDATE cf_duel_again SET next_match = ? WHERE match_id = ? AND next_match IS NULL'
+  ).bind(id, match.id).run();
+  if (claim.meta.changes === 0) return (await againState(env, match, meId)).matchId;
+  await assignCode(env, id);
+  return id;
 }
 
 /* A submission is one side of one kick. Returns an error string, or null. */

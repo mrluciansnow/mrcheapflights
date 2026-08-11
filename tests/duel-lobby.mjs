@@ -159,6 +159,60 @@ ok('one is on the ball and the other in goal',
 ok('inside the same kick', a1.live?.kickIndex === b1.live?.kickIndex);
 ok('on the same clock', a1.live?.openedAt === b1.live?.openedAt);
 
+console.log('\nTHE HUD KNOWS IT IS AN ONLINE MATCH');
+/* The round bar used to say "QUICK MATCH · Senior" for the whole of a duel,
+   naming neither the person you were playing nor how far through it you were,
+   and the streak line said nothing at all where the scoreline should be. */
+await until(A, () => /ONLINE/.test(document.getElementById('rbL').textContent),
+            8000, 'the bar to say ONLINE');
+const bar = await A.evaluate(() => ({
+  line: document.getElementById('rbL').textContent,
+  score: document.getElementById('rbS').textContent,
+}));
+ok('the bar says it is online and which kick', /ONLINE/.test(bar.line) && /KICK \d+\/\d+/.test(bar.line),
+   JSON.stringify(bar.line));
+ok('and carries the scoreline rather than a streak', /YOU \d+ – \d+ THEM/.test(bar.score),
+   JSON.stringify(bar.score));
+
+console.log('\nCHAT IS REACHABLE, NOT BURIED');
+ok('the way to talk is on screen during a match',
+   await A.evaluate(() => !document.getElementById('talk').classList.contains('hidden')));
+
+console.log('\nCOMING BACK AFTER THE PAGE GOES AWAY');
+/* The match id lived only in memory, so a refresh ended the match with no way
+   back — and left the other player waiting on somebody who could not return. */
+const remembered = await A.evaluate(() => localStorage.getItem('crokerFlicks.duel'));
+ok('the match is remembered across a reload', !!remembered, JSON.stringify(remembered));
+await A.reload({ waitUntil: 'domcontentloaded' });
+await A.waitForTimeout(700);
+await A.click('#bOnline');
+await A.waitForTimeout(300);
+if(await shown(A, 'ovTut')) await A.click('#bTutSkip');
+ok('and coming back offers to rejoin it rather than starting from scratch',
+   await until(A, () => !document.getElementById('mpResume').classList.contains('hidden'),
+               12000, 'the rejoin offer'),
+   await A.evaluate(() => document.getElementById('mpMsg').textContent));
+ok('naming who it is against',
+   /against|in progress/i.test(await A.evaluate(() =>
+     document.getElementById('mpResumeWho').textContent)),
+   await A.evaluate(() => document.getElementById('mpResumeWho').textContent));
+await A.click('#bResume2');
+ok('rejoining puts you back in the match',
+   await until(A, () => window.CF.net.state.state === 'in_progress', 15000, 'A to rejoin'),
+   JSON.stringify((await st(A)).state));
+
+console.log('\nGIVING UP TELLS THE OTHER PLAYER');
+await A.evaluate(() => window.CF.net.leave());
+const told = await until(B, () => window.CF.net.state.walked && window.CF.net.state.walked.them === true,
+                         15000, 'B to be told A left');
+if(!told) console.log('  ..  B state: ' + JSON.stringify(await st(B)).slice(0, 400));
+ok('the one who stayed is told, rather than playing out deadlines', told,
+   JSON.stringify((await st(B)).walked));
+ok('and the match is over for them at once',
+   await until(B, () => ['settled', 'resolved'].includes(window.CF.net.state.state),
+               15000, 'B match to end'),
+   JSON.stringify((await st(B)).state));
+
 console.log('\nA BAD CODE IS SURVIVABLE');
 const C = await client('c');
 await C.click('#bOnline');
