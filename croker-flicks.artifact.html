@@ -5137,12 +5137,23 @@ async function mpFetch(path, method, body){
     headers: {'X-CF-Device': mpToken(), 'Content-Type': 'application/json'},
     body: body ? JSON.stringify(body) : undefined,
   });
-  /* Served from somewhere that is not the site — a preview host, an embed —
-     the request lands on someone else's 404 page. Say that, rather than
-     showing a raw status code and leaving the player to guess. */
-  const type = res.headers.get('content-type') || '';
-  if(!type.includes('json'))
-    throw new Error('this copy is not connected to the server — play online from the site itself');
+  /* A non-JSON reply means the request never reached the game's API. That has
+     three quite different causes and the old message covered them with one
+     sentence — "not connected to the server" — which told a player nothing and
+     told me nothing either when it was reported. Name what actually happened:
+       404  the API is not on this host: an artifact, an embed, a copy of the
+            file, or a site whose functions have not been deployed
+       5xx  it is there and it failed
+       else something else answered — a proxy, a login wall, a parked page */
+  const type = (res.headers.get('content-type') || '').split(';')[0] || 'no content-type';
+  if(!type.includes('json')){
+    const where = location.hostname || 'this page';
+    if(res.status === 404)
+      throw new Error('no game server at ' + where + ' — ' + path + ' returned 404. '
+        + 'Play from the deployed site; a saved copy or a preview has no API.');
+    throw new Error(where + ' answered ' + res.status + ' with ' + type
+      + ' instead of JSON for ' + path);
+  }
   const json = await res.json().catch(()=>({}));
   if(!res.ok) throw new Error(json.error || ('HTTP ' + res.status));
   return json;
