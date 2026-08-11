@@ -164,7 +164,11 @@ ok('a keeper may decide not to go', held.status === 200 && held.json.accepted,
 const stillLive = await sync(A, MID);
 ok('and that counts as submitted', stillLive.json.live?.submitted === true,
    JSON.stringify(stillLive.json.live));
-const subB1 = await api('/api/mp/kick', B, 'POST', { matchId: MID, kickIndex: 1, strike: SWIPE });
+/* Deliberately put OVER the bar. Both players hitting the same corner comes
+   out level, and level is no longer the end of a match — it goes to sudden
+   death — so a settlement test that drew would sit in extra time. */
+const OVER = { power: 0.95, aimM: 0, curl: 0, elev: 0.98, x: 0, z: 11, wall: 0 };
+const subB1 = await api('/api/mp/kick', B, 'POST', { matchId: MID, kickIndex: 1, strike: OVER });
 ok('the striker then resolves it', subB1.json.kick?.resolved === true, JSON.stringify(subB1.json));
 
 console.log('\nSETTLEMENT');

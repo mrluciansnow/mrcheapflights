@@ -64,6 +64,7 @@ const MUST_SHIP = [
   'functions/api/mp/say.js',
   'functions/api/mp/leave.js',
   'functions/api/mp/again.js',
+  'functions/api/mp/name.js',
 ];
 for (const required of MUST_SHIP) {
   if (!existsSync(join(dist, required))) {
