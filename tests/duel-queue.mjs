@@ -124,10 +124,12 @@ if (!local) {
   console.log('  ..  skipped against a remote deployment: needs direct DB access');
 } else {
   const { execFileSync } = await import('node:child_process');
-  execFileSync('npx', ['wrangler', 'd1', 'execute', 'mrcheapflights-prod', '--local',
-    '--command', "UPDATE cf_players SET last_seen = last_seen - 600 " +
-                 "WHERE id = (SELECT a_player FROM cf_matches WHERE id = '" +
-                 ghost.json.matchId.replace(/'/g, "") + "')"],
+  const { wranglerArgv } = await import('../tools/wrangler-bin.mjs');
+  execFileSync(process.execPath, wranglerArgv(
+    ['d1', 'execute', 'mrcheapflights-prod', '--local',
+     '--command', "UPDATE cf_players SET last_seen = last_seen - 600 " +
+                  "WHERE id = (SELECT a_player FROM cf_matches WHERE id = '" +
+                  ghost.json.matchId.replace(/'/g, "") + "')"]),
     { stdio: 'ignore' });
 
   const F = dev('f');
@@ -149,8 +151,9 @@ if (!local) {
   console.log('  ..  skipped against a remote deployment: needs direct DB access');
 } else {
   const { execFileSync } = await import('node:child_process');
-  const d1 = sql => execFileSync('npx',
-    ['wrangler', 'd1', 'execute', 'mrcheapflights-prod', '--local', '--command', sql],
+  const { wranglerArgv } = await import('../tools/wrangler-bin.mjs');
+  const d1 = sql => execFileSync(process.execPath, wranglerArgv(
+    ['d1', 'execute', 'mrcheapflights-prod', '--local', '--command', sql]),
     { stdio: 'ignore' });
   d1('DROP TABLE IF EXISTS cf_duel_codes');
   try {
@@ -172,8 +175,9 @@ if (!local) {
        health.status === 503 && (health.json.missing || []).includes('cf_duel_codes'),
        JSON.stringify({ status: health.status, missing: health.json.missing }));
   } finally {
-    execFileSync('npx', ['wrangler', 'd1', 'execute', 'mrcheapflights-prod', '--local',
-      '--file', 'migrations/0033_duel_code.sql'], { stdio: 'ignore' });
+    execFileSync(process.execPath, wranglerArgv(
+      ['d1', 'execute', 'mrcheapflights-prod', '--local',
+       '--file', 'migrations/0033_duel_code.sql']), { stdio: 'ignore' });
   }
 }
 

@@ -11,10 +11,11 @@
 // ALLOWLIST, not denylist: anything not listed is never published. Add new
 // served files here on purpose.
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { rmSync, mkdirSync, cpSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { wranglerArgv } from '../tools/wrangler-bin.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, '.dist');
@@ -79,8 +80,9 @@ for (const forbidden of ['.dev.vars', 'wrangler.toml', 'package.json']) {
 
 const branch = process.argv.includes('--preview') ? 'preview' : 'main';
 console.log(`🚀 Deploying .dist/ to ${branch} …`);
-execSync(
-  `npx wrangler pages deploy .dist --project-name=mrcheap --branch=${branch} --commit-dirty=true`,
+execFileSync(process.execPath,
+  wranglerArgv(['pages', 'deploy', '.dist', '--project-name=mrcheap',
+                `--branch=${branch}`, '--commit-dirty=true']),
   { cwd: root, stdio: 'inherit' }
 );
 console.log('✅ Deployed (clean — no secrets/tooling uploaded).');
@@ -93,7 +95,7 @@ if (!process.argv.includes('--no-verify') && branch === 'main') {
   // Pages needs a moment to roll new Functions out to the edge.
   await new Promise((r) => setTimeout(r, 20000));
   try {
-    execSync('node scripts/smoke.mjs', { cwd: root, stdio: 'inherit' });
+    execFileSync(process.execPath, ['scripts/smoke.mjs'], { cwd: root, stdio: 'inherit' });
   } catch {
     console.error('\n⚠️  Smoke checks FAILED against production (see above).');
     console.error('   The deploy is live — decide whether to fix forward or roll back:');

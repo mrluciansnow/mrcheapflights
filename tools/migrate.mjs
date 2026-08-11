@@ -26,6 +26,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { wranglerArgv } from './wrangler-bin.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DIR = join(ROOT, 'migrations');
@@ -35,7 +36,8 @@ const DRY = process.argv.includes('--dry');
 const WHERE = REMOTE ? '--remote' : '--local';
 
 function wrangler(args) {
-  return execFileSync('npx', ['wrangler', 'd1', 'execute', DB, WHERE, ...args],
+  return execFileSync(process.execPath,
+    wranglerArgv(['d1', 'execute', DB, WHERE, ...args]),
     { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 32 << 20 });
 }
 function query(sql) {

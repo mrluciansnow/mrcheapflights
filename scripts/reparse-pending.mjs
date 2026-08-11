@@ -17,11 +17,12 @@
 // Rejection sets status='rejected' — it never deletes, so it stays auditable
 // and reversible.
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseDealTitle } from '../functions/_lib/scraper.js';
+import { wranglerArgv } from '../tools/wrangler-bin.mjs';
 
 const APPLY = process.argv.includes('--apply');
 const DB = 'mrcheapflights-prod';
@@ -30,8 +31,8 @@ const tmp = mkdtempSync(join(tmpdir(), 'mcf-reparse-'));
 // Reads MUST go through --command: --file uploads the SQL and returns
 // execution statistics rather than the selected rows.
 function d1Query(sql) {
-  const out = execSync(
-    `npx wrangler d1 execute ${DB} --remote --json --command "${sql.replace(/"/g, '\\"')}"`,
+  const out = execFileSync(process.execPath,
+    wranglerArgv(['d1', 'execute', DB, '--remote', '--json', '--command', sql]),
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 }
   );
   // wrangler interleaves progress lines (which contain their own brackets)
@@ -50,7 +51,8 @@ function d1Query(sql) {
 function d1Exec(sql) {
   const file = join(tmp, 'w.sql');
   writeFileSync(file, sql);
-  return execSync(`npx wrangler d1 execute ${DB} --remote --file="${file}"`,
+  return execFileSync(process.execPath,
+    wranglerArgv(['d1', 'execute', DB, '--remote', '--file', file]),
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 32 * 1024 * 1024 });
 }
 
