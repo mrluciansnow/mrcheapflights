@@ -62,6 +62,20 @@ ok('B joins it', joined.matchId === opened.matchId, JSON.stringify(joined));
 ok('both are in online mode',
    (await st(A)).mode === 'online' && (await st(B)).mode === 'online');
 
+console.log('\nBOTH HERE, BOTH READY');
+/* The ready gate is part of entering a match now: no kick opens until both
+   have pressed it, so the first kick is never taken off somebody still
+   reading the screen. The client does it through the same button a player
+   would press. */
+await until(A, () => !!window.CF.net.state.opponent, 20000, 'A sees an opponent');
+const roomA = await st(A);
+ok('each end is told who is over there', !!roomA.opponent, JSON.stringify(roomA.opponent));
+ok('and that they are actually connected', roomA.opponent.here === true,
+   JSON.stringify(roomA.opponent));
+ok('no kick opens before both are ready', !roomA.live, JSON.stringify(roomA.live));
+await A.evaluate(() => window.CF.net.ready());
+await B.evaluate(() => window.CF.net.ready());
+
 console.log('\nSIMULTANEOUS — one kick, two ends, both live');
 await until(A, () => window.CF.net.state.phase === 'AIM', 20000, 'A on the ball');
 await until(B, () => window.CF.net.state.phase === 'KEEP', 20000, 'B in goal');
@@ -74,6 +88,18 @@ ok('neither is waiting on the other to finish first',
    a1.phase !== 'NET_WAIT' && b1.phase !== 'NET_WAIT');
 ok('both clocks run from the same instant', a1.live?.openedAt === b1.live?.openedAt,
    a1.live?.openedAt + ' / ' + b1.live?.openedAt);
+
+console.log('\nBOTH SIDES SEE THE SAME CLOCK');
+/* Two people acting at once who are shown two different numbers do not
+   believe either of them. */
+const clocks = [await A.evaluate(() => document.getElementById('shotSecs').textContent),
+                await B.evaluate(() => document.getElementById('keepSecs').textContent)];
+ok('the striker is given a countdown', /\d/.test(clocks[0]), JSON.stringify(clocks[0]));
+ok('and so is the keeper, which they never used to be', /\d/.test(clocks[1]),
+   JSON.stringify(clocks[1]));
+const secs = clocks.map(t => parseFloat(t));
+ok('and it is the same clock, not two of them', Math.abs(secs[0] - secs[1]) < 1.2,
+   clocks.join(' / '));
 
 console.log('\nTHE KEEPER IS NOT SHOWN A HUMAN\'S SHOT');
 const tell = await B.evaluate(() => window.CF.telegraph);
@@ -96,7 +122,27 @@ ok('and it was stamped after the kick opened', b2.kickT > 0, String(b2.kickT));
 
 const a2 = await st(A);
 ok('A is still on the ball, untouched by any of that', a2.phase === 'AIM', JSON.stringify(a2));
-ok('A was not told the keeper had gone', a2.live?.submitted === false, JSON.stringify(a2.live));
+ok('and A\'s own half is still out', a2.live?.submitted === false, JSON.stringify(a2.live));
+
+/* The striker's half of the read. The ask was explicit: never show the kicker
+   where the goalkeeper is going — only that they are moving, and roughly which
+   way they are leaning. So a direction arrives, and nothing else does. */
+console.log('\nWHAT THE STRIKER SEES OF THE KEEPER');
+await until(A, () => !!window.CF.net.state.tell, 8000, 'A to notice the keeper move');
+const aTell = (await st(A)).tell;
+ok('the striker is told the keeper has moved', !!aTell, JSON.stringify(aTell));
+ok('and given a lean, not a dive',
+   aTell && [-1, 0, 1].includes(aTell.dir) &&
+   aTell.x === undefined && aTell.y === undefined,
+   JSON.stringify(aTell));
+ok('nothing that reconstructs where they actually went',
+   !JSON.stringify(aTell).includes('"x"') && !JSON.stringify(aTell).includes('"y"'),
+   JSON.stringify(aTell));
+ok('and the keeper on screen is leaning with it, not diving',
+   await A.evaluate(() => {
+     const k = window.CF.keeper;
+     return !!k && k.committed !== true && typeof k.arm === 'number';
+   }), 'the drawn keeper should signal, never commit');
 
 await A.evaluate(() => {
   // drive the striker's half the way the keyboard does
@@ -126,12 +172,40 @@ ok('kick 1 belongs to the other striker',
    !a3.live || a3.live.role === 'keeper', JSON.stringify(a3.live));
 ok('and B has the ball for it', !b3.live || b3.live.role === 'striker', JSON.stringify(b3.live));
 
-// play it out so the match settles
+console.log('\nWHAT THE KEEPER SEES OF THE STRIKER');
+/* Now the other way round, and the order matters twice over: the striker has
+   to go FIRST, because the kick resolves the instant the second half lands,
+   and it has to happen promptly, because the keeper's window is a real seven
+   seconds and an assertion that dawdles watches it run out. */
+await until(B, () => window.CF.net.state.phase === 'AIM' &&
+                     window.CF.net.state.live?.kickIndex === 1, 25000, 'B on the ball for kick 1');
 await B.evaluate(() => {
   const ev = k => window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
   ev('ArrowLeft'); ev('ArrowUp'); ev(' ');
 });
-await until(A, () => window.CF.net.state.state === 'settled', 40000, 'the match settles');
+const gotRead = await until(A, () => window.CF.net.state.struck === true, 10000,
+                            'A to notice the ball was struck');
+const aRead = await st(A);
+ok('the keeper is told the ball has gone', gotRead, JSON.stringify(aRead.tell));
+ok('and given a direction, not a shot',
+   aRead.tell && [-1, 0, 1].includes(aRead.tell.dir) &&
+   aRead.tell.aimM === undefined && aRead.tell.power === undefined,
+   JSON.stringify(aRead.tell));
+ok('with the moment it happened, so acting on it is acting late',
+   aRead.tell && typeof aRead.tell.at === 'number', JSON.stringify(aRead.tell));
+ok('and nothing that would let the shot be reconstructed',
+   !/curl|elev|"power"/.test(JSON.stringify(aRead.tell)), JSON.stringify(aRead.tell));
+ok('the goal says so on screen rather than only in the transport',
+   await A.evaluate(() => document.getElementById('keepLbl').textContent.includes('BALL AWAY')),
+   await A.evaluate(() => document.getElementById('keepLbl').textContent));
+
+// let A finish its half so the match settles
+await A.evaluate(() => window.CF.keepAt(1.8, 1.0));
+/* Both ends have to be waited on, not just one. They converge on the server's
+   answer within a poll of each other, and reading the loser of that race a
+   moment too early is the test's mistake, not the game's. */
+await until(A, () => window.CF.net.state.state === 'settled', 40000, 'the match settles for A');
+await until(B, () => window.CF.net.state.state === 'settled', 40000, 'the match settles for B');
 const fA = await st(A), fB = await st(B);
 ok('the match settled', fA.state === 'settled', JSON.stringify(fA.state));
 ok('both agree on the final score',

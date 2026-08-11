@@ -12,7 +12,15 @@
 // it, the keeper waits for the swipe to land and saves everything.
 import { resolvePlayer, bad, publicPlayer, now } from '../../../_lib/mp.js';
 import { advance, viewKick, tally, settle, sideOf, codeFor, mergeQueue,
-         queueDepth } from '../../../_lib/duel.js';
+         queueDepth, readyState, saysSince, LIVE } from '../../../_lib/duel.js';
+
+/* "Everything said after this id." A poll that has seen up to 40 asks for 40
+   and gets 41 onwards, so the transcript is never re-sent and never gapped. */
+const url_since = request => {
+  const v = new URL(request.url).searchParams.get('since');
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+};
 
 export async function onRequestGet(context) {
   const { env, request, params } = context;
@@ -51,13 +59,31 @@ export async function onRequestGet(context) {
   const mySide = sideOf(fresh, me.id);
 
   const played = kicks.results.map(k => {
-    const v = viewKick(k, me.id);
+    const v = viewKick(k, me.id, fresh.seed);
     v.strikerSide = sideOf(fresh, k.striker);
     return v;
   });
 
   const player = await env.DB.prepare('SELECT * FROM cf_players WHERE id = ?')
     .bind(me.id).first();
+
+  /* Who is here, and have they said they are ready. Both halves of "is there
+     actually somebody at the other end", which is the question a player asks
+     first and which nothing answered before. */
+  const ready = await readyState(env, fresh);
+  const themId = fresh.a_player === me.id ? fresh.b_player : fresh.a_player;
+  const them = themId ? await env.DB.prepare('SELECT * FROM cf_players WHERE id = ?')
+    .bind(themId).first() : null;
+  const t = now();
+  const opponent = them ? {
+    ...publicPlayer(them),
+    // last_seen is refreshed by every request they make, so this is presence
+    here: (t - them.last_seen) < LIVE,
+    seenAgo: Math.max(0, t - them.last_seen),
+    ready: fresh.a_player === themId ? ready.a : ready.b,
+  } : null;
+
+  const says = await saysSince(env, params.id, me.id, +url_since(request));
 
   const c = await codeFor(env, params.id);
   const q = fresh.state === 'waiting' ? await queueDepth(env) : null;
@@ -82,9 +108,16 @@ export async function onRequestGet(context) {
     scores,
     // your score first, so the HUD never has to work out which way round it is
     score: { you: scores[mySide], them: scores[mySide === 'a' ? 'b' : 'a'] },
-    // the kick in front of you: your role, your deadline, and whether your own
-    // half is already in. Never anything about theirs.
-    live: live ? viewKick(live, me.id) : null,
+    // the kick in front of you: your role, your deadline, whether your own
+    // half is already in, and the one coarse, unreliable thing you are allowed
+    // to notice about theirs once they have gone. Never their submission.
+    live: live ? viewKick(live, me.id, fresh.seed) : null,
+    // both must say they are there before the first kick opens
+    ready: { you: fresh.a_player === me.id ? ready.a : ready.b,
+             them: opponent ? opponent.ready : false,
+             both: ready.both },
+    opponent,
+    says,
     serverTime: now(),
     played,
   });

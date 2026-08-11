@@ -24,7 +24,7 @@
    replay the identical kick from them.
    ========================================================================== */
 
-import { simulate, validateRecord, scoreValue, xpValue, DIFF } from './sim.js';
+import { simulate, validateRecord, scoreValue, xpValue, DIFF, mulberry32, hash2 } from './sim.js';
 import { now, credit, addXp } from './mp.js';
 
 /* A keeper who never commits stands on his line — which is a legal, and
@@ -199,9 +199,8 @@ export async function mergeQueue(env, match, meId) {
       WHERE id = ? AND state = 'waiting' AND b_player IS NULL`
   ).bind(now(), match.id).run();
 
-  const duel = await env.DB.prepare('SELECT * FROM cf_duels WHERE match_id = ?')
-    .bind(older.id).first();
-  await openKick(env, { ...older, b_player: meId }, duel, duel.kick_index);
+  /* No kick is opened here either: the merged pair still has to say they are
+     ready, exactly like a pair that found each other any other way. */
   return older.id;
 }
 
@@ -216,6 +215,7 @@ export async function mergeQueue(env, match, meId) {
  * Every read of it is allowed to come back empty. Without the table you lose
  * "play a friend"; you do not lose online. */
 const tolerant = async (q) => { try { return await q; } catch { return null; } };
+const tolerantAll = tolerant;
 
 export const codeFor = (env, matchId) => tolerant(env.DB.prepare(
   'SELECT code FROM cf_duel_codes WHERE match_id = ?'
@@ -223,6 +223,34 @@ export const codeFor = (env, matchId) => tolerant(env.DB.prepare(
 export const matchForCode = (env, code) => tolerant(env.DB.prepare(
   'SELECT match_id FROM cf_duel_codes WHERE code = ?'
 ).bind(String(code || '').trim().toUpperCase()).first());
+
+/* ---- READY ----
+ *
+ * A duel used to begin the instant the queue paired two strangers, which put
+ * the first kick — deadline and all — in front of a player who was still
+ * reading the word "found". That is not a slow start, it is a lost kick.
+ *
+ * So both say when they are there. Until they have, the match is in progress
+ * and no kick is open, which is a state the client already understands
+ * because it is the same one it sits in between kicks.
+ */
+export const markReady = (env, matchId, playerId) => env.DB.prepare(
+  'INSERT OR IGNORE INTO cf_duel_ready (match_id, player_id, ready_at) VALUES (?, ?, ?)'
+).bind(matchId, playerId, now()).run();
+
+/* Who has said they are ready. Tolerant of a database that has not had 0034
+   applied yet: an unmigrated deployment treats everybody as ready, which is
+   exactly the behaviour it had before this existed. */
+export async function readyState(env, match) {
+  const blank = { a: !!match.a_player, b: !!match.b_player, both: true, known: false };
+  const rows = await tolerantAll(env.DB.prepare(
+    'SELECT player_id FROM cf_duel_ready WHERE match_id = ?').bind(match.id).all());
+  if (!rows) return blank;
+  const said = new Set(rows.results.map(r => r.player_id));
+  const a = !!match.a_player && said.has(match.a_player);
+  const b = !!match.b_player && said.has(match.b_player);
+  return { a, b, both: a && b, known: true };
+}
 
 /* Open kick `i`, if it is not already open. Racing callers are fine: the
    primary key makes the second insert a no-op. */
@@ -317,6 +345,14 @@ export async function resolveKick(env, match, duel, kick) {
  * the critical path and a match cannot stall because a sweeper is late. */
 export async function advance(env, match, duel) {
   if (!match.b_player) return null;                  // nobody to duel yet
+  /* Nothing opens until both of them are here and have said so. Only checked
+     while the duel is still on its first kick — once a kick has been taken,
+     both were plainly present, and a mid-match check would be a query per
+     poll for an answer that cannot change. */
+  if (duel.kick_index === 0) {
+    const opened = await getKick(env, match.id, 0);
+    if (!opened && !(await readyState(env, match)).both) return null;
+  }
   for (let guard = 0; guard <= duel.kicks; guard++) {
     let cur = await env.DB.prepare(
       `SELECT * FROM cf_kicks WHERE match_id = ? AND resolved_at IS NULL
@@ -384,7 +420,7 @@ export async function tally(env, match) {
 
    The one thing both sides are told about a live kick is the deadline, which
    they need in order to play at all. */
-export function viewKick(kick, viewerId) {
+export function viewKick(kick, viewerId, seed) {
   if (!kick) return null;
   const mine = kick.striker === viewerId ? 'striker'
              : kick.keeper === viewerId ? 'keeper' : null;
@@ -403,6 +439,8 @@ export function viewKick(kick, viewerId) {
       ...base,
       // your own submission, so a reconnecting client knows not to send again
       submitted: mine === 'striker' ? !!kick.strike : mine === 'keeper' ? !!kick.dive : false,
+      // one of three, often wrong, and expensive to act on — see readFor
+      read: readFor(kick, mine, seed),
     };
   }
   return {
@@ -419,6 +457,100 @@ export function viewKick(kick, viewerId) {
       : ROOTED,
     strikerSide: null,   // filled in by the endpoint, which knows the match
   };
+}
+
+/* ==========================================================================
+   THE READ — what one player is allowed to notice about the other, live
+   ==========================================================================
+   Blindness used to run until the kick resolved, and it made the goalkeeper's
+   half a coin toss: three zones, no information, dive. Nobody wants to be the
+   goalkeeper in that game.
+
+   A real keeper is not blind. They watch the run-up, the plant foot, the hips,
+   and they are wrong often enough that strikers keep scoring. That is the
+   thing to model, so blindness now ends at the moment a half is submitted —
+   and what is released is deliberately coarse and deliberately unreliable:
+
+     ONE OF THREE       left, middle, right. Never a coordinate, never the
+                        power, never the curl.
+     OFTEN WRONG        the tell lies at a fixed rate, drawn from the match
+                        seed so it cannot be resampled by asking twice.
+     COSTS YOU          acting on it means acting after they went, and `at` is
+                        relative to the strike — the simulation already prices
+                        a late dive in reach and an early one in being read.
+
+   That last property is what keeps both halves honest, and it is symmetric.
+   The keeper who waits for the tell dives late. The keeper who goes early
+   hands the striker a tell of their own, and the striker rolls it the other
+   way. Neither waiting nor going first is free, which is the whole game.
+
+   The striker's tell is the weaker of the two on purpose: the ask was that a
+   kicker never be shown where the goalkeeper is going — only that they are
+   moving, and roughly which way they are leaning.
+   ========================================================================== */
+export const TELL_TRUTH = { keeper: 0.68, striker: 0.55 };
+
+/* Which third of the goal, from a placement in metres. */
+const thirdOf = x => (x < -0.9 ? -1 : x > 0.9 ? 1 : 0);
+
+/* The tell, lie included. Drawn from its own stream — seeded from the match
+   and the kick, but derived apart from the simulation's, so adding a tell can
+   never shift a single number on the outcome path. Two draws, fixed order:
+   the keeper's read first, then the striker's. */
+function tellDirs(seed, kickIndex) {
+  const rnd = mulberry32(hash2((seed >>> 0) ^ 0x9E3779B9, kickIndex));
+  return { keeper: rnd(), striker: rnd() };
+}
+const lieTo = (truth, roll, dir) => {
+  if (roll < truth) return dir;
+  /* wrong, but plausibly wrong: one of the other two thirds, not a coin flip
+     between "right" and "some other answer" */
+  const others = [-1, 0, 1].filter(d => d !== dir);
+  return others[roll < (truth + (1 - truth) / 2) ? 0 : 1];
+};
+
+/* What `viewer` may notice about the half they did not submit, or null.
+   Called only for a live kick — once it resolves both halves are public. */
+export function readFor(kick, mine, seed) {
+  if (!mine || kick.resolved_at) return null;
+  const rolls = tellDirs(seed, kick.kick_index);
+  if (mine === 'keeper') {
+    if (!kick.strike) return null;                    // he has not gone yet
+    const s = JSON.parse(kick.strike);
+    return { dir: lieTo(TELL_TRUTH.keeper, rolls.keeper, thirdOf(+s.aimM || 0)),
+             at: typeof s.t === 'number' ? s.t : 0, what: 'strike' };
+  }
+  if (mine === 'striker') {
+    if (!kick.dive) return null;                      // still on his line
+    const d = JSON.parse(kick.dive);
+    return { dir: lieTo(TELL_TRUTH.striker, rolls.striker, d.held ? 0 : thirdOf(+d.x || 0)),
+             at: typeof d.t === 'number' ? d.t : 0, what: 'dive' };
+  }
+  return null;
+}
+
+/* ---- TALK ----
+   Text between the two players, and the four or five messages two browsers
+   trade before audio can flow between them. Same shape, one table: an ordered
+   log read by "everything after id N". The server never looks inside either —
+   signalling is delivery, and the audio itself goes peer to peer. */
+export const say = (env, matchId, from, to, kind, body) => tolerant(env.DB.prepare(
+  'INSERT INTO cf_duel_says (match_id, player_id, to_player, kind, body, at) VALUES (?,?,?,?,?,?)'
+).bind(matchId, from, to || null, kind, body, now()).run());
+
+export async function saysSince(env, matchId, meId, sinceId) {
+  const rows = await tolerantAll(env.DB.prepare(
+    `SELECT id, player_id, to_player, kind, body, at FROM cf_duel_says
+      WHERE match_id = ? AND id > ? AND (to_player IS NULL OR to_player = ? OR player_id = ?)
+      ORDER BY id LIMIT 60`
+  ).bind(matchId, sinceId | 0, meId, meId).all());
+  if (!rows) return [];
+  /* Your own chat comes back to you so both screens show one transcript in one
+     order — the server's. Your own signalling does not: you sent it. */
+  return rows.results
+    .filter(r => !(r.kind === 'rtc' && r.player_id === meId))
+    .map(r => ({ id: r.id, mine: r.player_id === meId, kind: r.kind,
+                 body: r.body, at: r.at }));
 }
 
 /* A submission is one side of one kick. Returns an error string, or null. */

@@ -60,6 +60,8 @@ const MUST_SHIP = [
   'functions/api/mp/health.js',   // online answers here, or it is not online
   'functions/api/mp/duel.js',
   'functions/api/mp/sync/[id].js',
+  'functions/api/mp/ready.js',    // no ready gate means the first kick is lost
+  'functions/api/mp/say.js',
 ];
 for (const required of MUST_SHIP) {
   if (!existsSync(join(dist, required))) {

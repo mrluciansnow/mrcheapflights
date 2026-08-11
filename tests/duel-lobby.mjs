@@ -57,9 +57,21 @@ const shown = (p, id) => p.evaluate(i => {
 
 const A = await client('a'), B = await client('b');
 
-console.log('\nTHE BUTTON OPENS A LOBBY');
+console.log('\nTHE FIRST TIME, THE RULES FIRST');
+/* Online has rules the offline game does not — both ends live at once, and a
+   read that lies to you — so the way in explains them once before the lobby. */
 await A.click('#bOnline');
 await A.waitForTimeout(300);
+ok('a first-timer is shown how it works', await shown(A, 'ovTut'));
+ok('and can leave on the first tap',
+   await A.evaluate(() => !document.getElementById('bTutSkip').classList.contains('hidden')));
+await A.click('#bTutSkip');
+await A.waitForTimeout(250);
+ok('skipping drops straight into the lobby', await shown(A, 'ovOnline'));
+ok('and it is remembered, so it is shown once',
+   await A.evaluate(() => JSON.parse(localStorage.getItem('crokerFlicks.v2')).seenTut === true));
+
+console.log('\nTHE BUTTON OPENS A LOBBY');
 ok('ONLINE opens the lobby', await shown(A, 'ovOnline'));
 ok('and offers the three ways in',
    await shown(A, 'mpPick') &&
@@ -82,6 +94,8 @@ ok('the host is in an online match already',
 console.log('\nTYPING THE CODE GETS YOU IN');
 await B.click('#bOnline');
 await B.waitForTimeout(250);
+if(await shown(B, 'ovTut')) await B.click('#bTutSkip');
+await B.waitForTimeout(250);
 await B.click('#bJoinGame');
 await B.waitForTimeout(250);
 ok('the code box appears', await shown(B, 'mpJoinCode'));
@@ -93,11 +107,36 @@ ok('and the host is told, without touching anything',
    await until(A, () => window.CF.net.state.state === 'in_progress', 20000, 'A to notice'),
    JSON.stringify((await st(A)).state));
 
-console.log('\nTHE LOBBY GETS OUT OF THE WAY');
-ok('the overlay closes for the host', await until(A, () =>
+console.log('\nBOTH HERE, BOTH READY');
+/* The lobby does not get out of the way on its own any more. A deadline that
+   starts the moment a stranger is found runs while somebody is still reading
+   the screen, so both press READY and nothing opens until they have. */
+ok('the host is shown the ready panel', await until(A, () =>
+   !document.getElementById('mpReady').classList.contains('hidden'), 8000, 'A ready panel'));
+ok('and so is the joiner', await until(B, () =>
+   !document.getElementById('mpReady').classList.contains('hidden'), 8000, 'B ready panel'));
+ok('each is told the other is actually there', await until(A, () => {
+   const t = document.getElementById('rdyThem');
+   return /here|ready/i.test(t.querySelector('i').textContent);
+}, 10000, 'A to see B'), await A.evaluate(() =>
+   document.getElementById('rdyThem').querySelector('i').textContent));
+ok('and no kick has opened yet', !(await st(A)).live, JSON.stringify((await st(A)).live));
+
+await A.click('#bReadyUp');
+await A.waitForTimeout(400);
+ok('one of them pressing it does not start anything',
+   !(await st(A)).live, JSON.stringify((await st(A)).live));
+ok('the button says what it is waiting for',
+   /waiting/i.test(await A.evaluate(() => document.getElementById('bReadyUp').textContent)),
+   await A.evaluate(() => document.getElementById('bReadyUp').textContent));
+await B.click('#bReadyUp');
+
+ok('once both have, the overlay closes for the host', await until(A, () =>
    document.getElementById('ovOnline').classList.contains('hidden'), 8000, 'A overlay to close'));
 ok('and for the joiner', await until(B, () =>
    document.getElementById('ovOnline').classList.contains('hidden'), 8000, 'B overlay to close'));
+ok('and the way to talk to each other appears', await until(A, () =>
+   !document.getElementById('talk').classList.contains('hidden'), 5000, 'A talk buttons'));
 
 console.log('\nAND THEY ARE BOTH IN THE SAME KICK');
 await until(A, () => ['AIM', 'KEEP'].includes(window.CF.net.state.phase), 20000, 'A into the kick');
@@ -112,6 +151,8 @@ ok('on the same clock', a1.live?.openedAt === b1.live?.openedAt);
 console.log('\nA BAD CODE IS SURVIVABLE');
 const C = await client('c');
 await C.click('#bOnline');
+await C.waitForTimeout(250);
+if(await shown(C, 'ovTut')) await C.click('#bTutSkip');
 await C.waitForTimeout(250);
 await C.click('#bJoinGame');
 await C.waitForTimeout(200);

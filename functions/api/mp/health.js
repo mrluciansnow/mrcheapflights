@@ -17,7 +17,8 @@
    was not added, so health reported ok:true while every sync threw on the
    missing table. Add a table, add it here. */
 const NEED = ['cf_players', 'cf_matches', 'cf_turns', 'cf_ledger',
-              'cf_duels', 'cf_kicks', 'cf_duel_codes'];
+              'cf_duels', 'cf_kicks', 'cf_duel_codes',
+              'cf_duel_ready', 'cf_duel_says'];
 
 export async function onRequestGet(context) {
   const { env } = context;
