@@ -20,7 +20,8 @@
     "test:balance": "node tests/balance.mjs",
     "test:keeper": "node tests/keeper.mjs",
     "test:api": "node tests/mp-api.mjs",
-    "test": "npm run test:site && npm run test:game"
+    "test": "npm run test:site && npm run test:game",
+    "release": "node scripts/release.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

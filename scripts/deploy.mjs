@@ -49,6 +49,26 @@ for (const d of SERVED_DIRS) {
 }
 console.log(`   staged ${staged} entries`);
 
+/* Hard guard the other way: the site is not the site without these. The
+   allowlist has already lost game.html once — it was added on one branch and
+   the other branch's copy won a merge — and nothing noticed until the game was
+   missing from production. A deploy that cannot serve is worth failing. */
+const MUST_SHIP = [
+  'index.html',
+  'game.html',
+  'functions/api/mp/health.js',   // online answers here, or it is not online
+  'functions/api/mp/duel.js',
+  'functions/api/mp/sync/[id].js',
+];
+for (const required of MUST_SHIP) {
+  if (!existsSync(join(dist, required))) {
+    console.error(`💥 ABORT: ${required} is missing from .dist/ — this build cannot serve it.`);
+    console.error('   Check SERVED_FILES / SERVED_DIRS above.');
+    process.exit(1);
+  }
+}
+console.log(`   verified ${MUST_SHIP.length} required entries are present`);
+
 // Hard guard: never let a secrets/config file into the deploy.
 for (const forbidden of ['.dev.vars', 'wrangler.toml', 'package.json']) {
   if (existsSync(join(dist, forbidden))) {

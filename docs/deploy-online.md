@@ -4,6 +4,27 @@ Everything in the repository is done and tested. What is left is hosting, and
 hosting is the part nobody can automate from in here: it needs credentials and
 it touches production. This is the whole of it.
 
+## Putting it live: one command
+
+```
+npm run release
+```
+
+Migrates the database, deploys the site, then polls `/api/mp/health` until it
+answers — and **fails the run if it never does**. A green release means online
+serves, not that files were uploaded.
+
+The order matters and is why this exists. Schema first: code that reads a table
+the database does not have is exactly what took online down once, when a
+five-character join code nobody could live without turned out to be one every
+request depended on. And the check at the end matters because every failure so
+far has been one of those three steps quietly not happening — schema behind the
+code, code behind the branch, or nobody looking at the result.
+
+`npm run deploy` on its own still works and now refuses to ship a build that is
+missing `game.html` or the `/api/mp` functions, rather than uploading a site
+that cannot serve them.
+
 ## The manual tasks
 
 **1. Two repository secrets.** Settings → Secrets and variables → Actions:
