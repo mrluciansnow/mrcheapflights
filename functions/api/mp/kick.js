@@ -84,7 +84,7 @@ export async function onRequestPost(context) {
   return Response.json({
     accepted: !already,
     duplicate: already,
-    kick: viewKick(after, me.id),
+    kick: viewKick(after, me.id, match.seed),
     matchOver: !!outcome,
   });
 }

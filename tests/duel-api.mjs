@@ -65,6 +65,10 @@ ok('and the same weather, which neither of them chose',
    JSON.stringify([dA.json.weather, dB.json.weather]));
 ok('they are on opposite sides', dA.json.side === 'a' && dB.json.side === 'b');
 const MID = dA.json.matchId;
+/* Being paired is not being ready — see tests/duel-room.mjs. Nothing opens,
+   and no deadline runs, until both have said they are there. */
+const ready = (d, id) => api('/api/mp/ready', d, 'POST', { matchId: id });
+await ready(A, MID); await ready(B, MID);
 const SEED = dA.json.seed >>> 0;
 
 console.log('\nROLES');
@@ -182,6 +186,7 @@ const wA = await api('/api/mp/duel', A, 'POST', { kicks: 2, turnMs: 8000, join: 
 const wB = await api('/api/mp/duel', B, 'POST', { matchId: wA.json.matchId });
 ok('a blitz duel pairs up', wA.json.matchId === wB.json.matchId, JSON.stringify([wA.json, wB.json]));
 const WID = wA.json.matchId;
+await ready(A, WID); await ready(B, WID);
 const w0 = await sync(A, WID);
 const wait = Math.max(0, w0.json.live.deadline - w0.json.serverTime) + 2;
 console.log('  ..  waiting ' + wait + 's for the deadline');

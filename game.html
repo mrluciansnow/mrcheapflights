@@ -282,6 +282,11 @@ body.dragging .betbar,body.dragging .prompt,body.dragging .comm{pointer-events:n
 .keeplbl{font-size:.56rem;font-weight:900;letter-spacing:.18em;color:var(--sky);
   text-shadow:0 2px 8px rgba(0,0,0,.8)}
 .keeplbl b{color:#fff;opacity:.75;letter-spacing:.06em}
+/* The number, not just the bar. Online both ends run the same clock from the
+   same instant, and seeing the same digit is what makes that believable. */
+.keeplbl b.secs{display:inline-block;min-width:2.1em;color:#fff;opacity:1;
+  font-variant-numeric:tabular-nums;letter-spacing:.02em}
+#shotbar.tight .secs,.keepbar.tight .secs{color:var(--hot-pink)}
 #mpJoinCode{display:block;margin:.5rem auto;padding:.6rem .8rem;width:min(260px,80%);
   text-align:center;font:900 1.1rem/1 Nunito,sans-serif;letter-spacing:.14em;
   text-transform:uppercase;color:#fff;background:rgba(255,255,255,.08);
@@ -292,6 +297,64 @@ body.dragging .betbar,body.dragging .prompt,body.dragging .comm{pointer-events:n
    its own rule, or every "hide this" in the lobby is a no-op. */
 #ovOnline .hidden{display:none}
 #mpCode{user-select:all;-webkit-user-select:all}
+
+/* ---- both here, both ready ---- */
+/* Sized in fractions, not in pixels: a phone held sideways gives the stage a
+   244px column, and two 104px cards plus a gap does not fit in it. */
+.rdyrow{display:flex;align-items:center;justify-content:center;gap:.5rem;
+  margin:.7rem auto 1rem;width:100%;max-width:300px;padding:0 10px}
+.rdyman{flex:1 1 0;min-width:0;padding:.55rem .4rem;border-radius:12px;
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16)}
+.rdyman b,.rdyman i{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rdyman b{display:block;font-size:.72rem;font-weight:900;letter-spacing:.08em;color:#fff}
+.rdyman i{display:block;margin-top:.2rem;font-size:.5rem;font-style:normal;
+  font-weight:900;letter-spacing:.1em;opacity:.7;text-transform:uppercase}
+.rdyman.on{background:rgba(0,200,120,.16);border-color:rgba(0,220,130,.6)}
+.rdyman.on i{color:#3BE08F;opacity:1}
+.rdyman.gone{background:rgba(255,60,90,.12);border-color:rgba(255,80,110,.5)}
+.rdyman.gone i{color:var(--hot-pink);opacity:1}
+.rdyv{font:900 .7rem/1 Nunito,sans-serif;opacity:.45;letter-spacing:.1em}
+#ovTut .hidden{display:none}
+
+/* ---- talking to the other end ---- */
+/* `.hidden` is only defined as `.ov.hidden`, so anything outside an overlay
+   needs its own rule or every "hide this" is a no-op. The chat drawer sat open
+   on the title screen until this existed. */
+.talk.hidden,.chat.hidden{display:none}
+/* Below the wind gauge, not beside it — at 104px the microphone sat underneath
+   the gauge and could not be pressed. */
+.talk{position:absolute;right:8px;top:162px;display:flex;flex-direction:column;
+  gap:6px;z-index:5}
+.tbtn{width:34px;height:34px;border-radius:50%;border:1px solid rgba(255,255,255,.22);
+  background:rgba(6,18,30,.72);color:#fff;font-size:.82rem;line-height:1;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+.tbtn:active{transform:scale(.93)}
+.tbtn.on{background:rgba(0,200,120,.3);border-color:#3BE08F}
+.tbtn.pending{opacity:.55}
+.tdot{position:absolute;right:-1px;top:-1px;width:9px;height:9px;border-radius:50%;
+  background:var(--hot-pink);box-shadow:0 0 6px var(--hot-pink)}
+.chat{position:absolute;left:8px;right:8px;bottom:8px;z-index:8;
+  background:rgba(4,13,22,.93);border:1px solid rgba(255,255,255,.16);
+  border-radius:14px;padding:8px;backdrop-filter:blur(6px)}
+.chatlog{max-height:120px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;
+  margin-bottom:6px}
+.chatlog p{margin:0;font-size:.58rem;font-weight:800;line-height:1.35;
+  padding:.28rem .5rem;border-radius:9px;max-width:82%;word-break:break-word}
+.chatlog p.me{align-self:flex-end;background:rgba(0,170,255,.22);color:#DFF3FF}
+.chatlog p.them{align-self:flex-start;background:rgba(255,255,255,.1);color:#fff}
+.chatlog p.sys{align-self:center;background:none;opacity:.55;font-size:.5rem;
+  letter-spacing:.08em;text-transform:uppercase}
+.chatquick{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.chatquick button{padding:.24rem .5rem;font:900 .5rem/1 Nunito,sans-serif;
+  letter-spacing:.06em;color:#fff;background:rgba(255,255,255,.09);
+  border:1px solid rgba(255,255,255,.16);border-radius:20px;cursor:pointer}
+.chatrow{display:flex;gap:5px;align-items:center}
+#chatIn{flex:1;min-width:0;padding:.44rem .6rem;font:800 .62rem/1.2 Nunito,sans-serif;
+  color:#fff;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);
+  border-radius:10px}
+#chatIn:focus{outline:none;border-color:var(--sky)}
+.tutart{margin:.5rem auto;width:min(230px,72%);height:104px;border-radius:12px;
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12)}
 /* an eye on the bar while the forward can still see you leave. It fades as
    the strike closes in, which is the cue to hold your dive. */
 .keepbar.watched .keeptrack::after{content:'👁 HE CAN SEE YOU';display:block;
@@ -450,6 +513,9 @@ body.lefty .rankbar{left:88px;right:10px}
 .pips.them{margin-top:2px}
 
 #ovPause{z-index:8}#ovSet{z-index:8}#ovCab{z-index:8}
+/* Above everything it can be opened from — the title screen and Settings —
+   or its buttons sit underneath the ones that opened it and cannot be hit. */
+#ovTut{z-index:9}
 .hint{font-size:.6rem;font-weight:800;opacity:.35;margin-top:.7rem;line-height:1.5;max-width:300px}
 /* ---------- a narrow stage ----------
    A phone held sideways, or a folding one, leaves the stage around 240-340px
@@ -559,11 +625,11 @@ window.addEventListener('error', function(e){
   <button class="stake spotbtn" id="bSpot">NEXT SPOT ▸</button>
   <div class="award" id="award"></div>
   <div class="keepbar" id="shotbar">
-    <div class="keeplbl" id="shotlbl">TAKE IT ON</div>
+    <div class="keeplbl" id="shotlbl">TAKE IT ON <b class="secs" id="shotSecs"></b></div>
     <div class="keeptrack"><span id="shotFill"></span></div>
   </div>
   <div class="keepbar" id="keepbar">
-    <div class="keeplbl" id="keepLbl">HE STRIKES IN <b id="keepTally"></b></div>
+    <div class="keeplbl" id="keepLbl">HE STRIKES IN <b id="keepTally"></b><b class="secs" id="keepSecs"></b></div>
     <div class="keeptrack"><span id="keepFill"></span></div>
   </div>
   <div class="prompt" id="prompt">Swipe the shot you want</div>
@@ -571,6 +637,25 @@ window.addEventListener('error', function(e){
   <div class="res" id="res"><div class="big"></div><div class="sub"></div></div>
   <button class="pausebtn" id="bPause" aria-label="Pause">⏸</button>
   <button class="mute" id="bMute" aria-label="Toggle sound">🔊</button>
+
+  <!-- Talking to the other end. Only ever shown in an online match. The mic
+       asks for permission on the tap, not on load: a game that grabs the
+       microphone as it opens is a game people close. -->
+  <div class="talk hidden" id="talk">
+    <button class="tbtn" id="bMic" aria-label="Microphone">🎤</button>
+    <button class="tbtn" id="bChat" aria-label="Chat">💬</button>
+    <span class="tdot hidden" id="talkDot"></span>
+  </div>
+  <div class="chat hidden" id="chatWrap">
+    <div class="chatlog" id="chatLog"></div>
+    <div class="chatquick" id="chatQuick"></div>
+    <div class="chatrow">
+      <input id="chatIn" maxlength="240" placeholder="Say something…"
+             autocomplete="off" spellcheck="false">
+      <button class="tbtn" id="bChatSend" aria-label="Send">▸</button>
+      <button class="tbtn" id="bChatClose" aria-label="Close chat">✕</button>
+    </div>
+  </div>
   <div class="fatal" id="fatal" style="display:none"></div>
 </div>
 
@@ -591,6 +676,7 @@ window.addEventListener('error', function(e){
   <div class="sub">Settings</div>
   <div class="ttl" style="font-size:2.2rem">OPTIONS</div>
   <div class="opts" id="optList"></div>
+  <button class="btn sm" id="bSetTut">HOW TO PLAY</button>
   <button class="btn" id="bSetClose">DONE</button>
   <div class="hint">Keyboard: ← → aim · ↑ ↓ power · Q E curl · Space to strike · Esc to pause</div>
 </div>
@@ -639,8 +725,37 @@ window.addEventListener('error', function(e){
   <input id="mpJoinCode" class="hidden" maxlength="24" placeholder="ABC12"
          autocomplete="off" autocapitalize="characters" spellcheck="false">
   <button class="btn sm hidden" id="bJoinGo">JOIN</button>
+
+  <!-- Both here, both ready. Nothing opens — and no deadline runs — until
+       both have pressed it, so the first kick is never taken off somebody
+       still reading the screen. -->
+  <div id="mpReady" class="hidden">
+    <div class="rdyrow">
+      <div class="rdyman" id="rdyYou"><b>YOU</b><i>not ready</i></div>
+      <div class="rdyv">v</div>
+      <div class="rdyman" id="rdyThem"><b>—</b><i>connecting…</i></div>
+    </div>
+    <button class="btn" id="bReadyUp">I'M READY</button>
+    <div class="gb" id="rdyNote" style="opacity:.75">Press it when you are.</div>
+  </div>
+
   <button class="btn" id="bOnlineClose">BACK</button>
   <div class="ft">Anonymous — no sign-up needed</div>
+</div>
+
+<!-- Shown once, the first time somebody plays. Four cards, skippable on the
+     first tap, and reachable again from Settings — a tutorial you cannot leave
+     is worse than no tutorial, and one you cannot get back to is worse still. -->
+<div class="ov hidden" id="ovTut">
+  <div class="sub" id="tutStep">1 of 4</div>
+  <div class="gv w" id="tutTitle" style="font-size:1.8rem">TAKING A KICK</div>
+  <div class="tutart" id="tutArt"></div>
+  <div class="gb" id="tutBody"></div>
+  <div class="modes sub2">
+    <button class="btn sm" id="bTutBack">BACK</button>
+    <button class="btn" id="bTutNext">NEXT</button>
+  </div>
+  <button class="btn sm" id="bTutSkip">SKIP</button>
 </div>
 
 <div class="ov hidden" id="ovKit">
@@ -2784,7 +2899,7 @@ const freshProfile = () => ({
   bestStreak:0, bestRound:0, bestFree:0, bestSurvival:0,
   unlocked: COUNTIES.slice(0,STARTER).map(c=>c.n),
   xp:0, money:500, kit:'std', kits:['std'], awards:[], bestWin:0,
-  seenCoach:false, daily:null, bestTrain:0,
+  seenCoach:false, seenTut:false, daily:null, bestTrain:0,
   gk:'gk-std', gks:['gk-std'], ball:'ball-std', balls:['ball-std'],
   saves:0, faced:0,
 });
@@ -4028,7 +4143,7 @@ function refreshAimUI(){
 function move(e){
   if(!dragging) return;
   if(keepDrag){
-    dragPath.push(samp(e));
+    dragPath.push(smoothed(samp(e)));
     if(dragPath.length>70) dragPath.shift();
     const sw = readSwipe(dragPath);
     /* Slow along the line is a shuffle; quick in a direction is a dive. The
@@ -4049,7 +4164,7 @@ function move(e){
     e.preventDefault();
     return;
   }
-  dragPath.push(samp(e));
+  dragPath.push(smoothed(samp(e)));
   if(dragPath.length>70) dragPath.shift();
   const sw = readSwipe(dragPath);
   if(sw){
@@ -4058,6 +4173,22 @@ function move(e){
     refreshAimUI();
   }
   e.preventDefault();
+}
+/* Fingers are noisy and touch screens quantise. Reading the swipe straight off
+   the raw points made the reticle twitch, which reads as the game being unsure
+   rather than as the hand being unsteady — and it is worse for anyone whose
+   hands are not steady to begin with.
+ *
+ * One pole of smoothing on the PATH, not on the values read from it, so what
+ * is drawn and what is struck are the same swipe. Smoothing the outputs
+ * instead would put the reticle somewhere the ball was never going. */
+const PATH_SMOOTH = 0.55;
+function smoothed(p){
+  const prev = dragPath[dragPath.length-1];
+  if(!prev) return p;
+  return {...p,
+    x: prev.x + (p.x - prev.x) * PATH_SMOOTH,
+    y: prev.y + (p.y - prev.y) * PATH_SMOOTH};
 }
 function up(e){
   if(!dragging) return;
@@ -4100,7 +4231,7 @@ function kbExit(){
 }
 addEventListener('keydown', e => {
   if(e.key === 'Escape'){
-    const stack = [['ovSet','bSetClose'], ['ovCab','bCabClose'],
+    const stack = [['ovTut','bTutSkip'], ['ovSet','bSetClose'], ['ovCab','bCabClose'],
                    ['ovKit','bKitClose'], ['ovOnline','bOnlineClose']];
     for(const [ov, btn] of stack){
       if(!$(ov).classList.contains('hidden')){ $(btn).click(); return; }
@@ -4396,7 +4527,12 @@ function drawTelegraph(){
   }
 }
 
-/* Where you have chosen to go, drawn on the goal you are defending. */
+/* Where you are about to go. It used to appear only once a swipe had begun,
+   which meant the answer to "where am I diving?" was a blank goal until the
+   moment you had already decided. Standing on your line is a choice too, and
+   an unmade choice should look like the choice it is. */
+const keepAim = () => keepPick || (keeper ? {x: keeper.wx0, y: 1.35, resting: true}
+                                          : {x: 0, y: 1.35, resting: true});
 function drawKeepPick(){
   if(state !== ST.KEEP && !keepLive()) return;
   const L = prj(-HW, 0, 0), R = prj(HW, 0, 0), T = prj(0, CFG.BAR_H, 0), B = prj(0, 0, 0);
@@ -4407,7 +4543,12 @@ function drawKeepPick(){
   ctx.strokeRect(L.x, T.y, R.x-L.x, B.y-T.y);
   ctx.setLineDash([]);
   drawZoneGrid();
-  if(keepPick){
+  drawTendency(L, R, T, B);        // before the ball: what they have done before
+  drawReadCue(L, R, T, B);         // after it: that it has gone, and roughly where
+  {
+    const keepPick = keepAim();
+    const resting = !!keepPick.resting;
+    ctx.globalAlpha = resting ? 0.5 : 1;      // where you are, vs where you chose
     const z = zoneOf(clamp(keepPick.x, -HW+0.01, HW-0.01), Math.min(keepPick.y, CFG.BAR_H-0.01));
     if(z) fillZone(z, 'rgba(0,170,255,' + (0.13 + 0.05*Math.sin(now*0.008)) + ')',
                       'rgba(0,170,255,.75)');
@@ -4427,7 +4568,95 @@ function drawKeepPick(){
     ctx.moveTo(q.x-rad-7, q.y); ctx.lineTo(q.x-rad+2, q.y);
     ctx.moveTo(q.x+rad-2, q.y); ctx.lineTo(q.x+rad+7, q.y);
     ctx.stroke();
+    ctx.globalAlpha = 1;
+    if(resting){
+      ctx.font = '900 9px Nunito, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(255,255,255,.6)';
+      ctx.fillText('ON YOUR LINE', q.x, q.y + rad + 13);
+    }
   }
+  ctx.restore();
+}
+
+/* ---- THE READ THAT ARRIVES IN TIME ----
+ * The directional tell is honest but it is not a reaction cue, and pretending
+ * otherwise would be selling the keeper something that cannot be cashed: a
+ * poll lands up to a third of a second after the strike, a person needs
+ * another quarter to move, and the ball is at the line in about four tenths.
+ * Anything learned at contact is learned too late to dive on.
+ *
+ * So the read a keeper can actually use has to be there BEFORE the ball is,
+ * and the only such thing that does not leak the kick in front of you is where
+ * this opponent has put their previous ones. It is entirely public — both
+ * players watched every one of them — and it is the read a real keeper works
+ * from. Somebody who has gone to your left three times is telling you
+ * something, and they know they are.
+ */
+function netTendency(){
+  if(mode !== 'online' || !Net.match) return null;
+  const mine = Net.match.side;
+  const bins = {'-1':0, '0':0, '1':0};
+  let n = 0;
+  for(const k of Net.played){
+    if(!k || !k.strike || k.strikerSide === mine) continue;   // only their kicks
+    const a = +k.strike.aimM || 0;
+    bins[a < -0.9 ? -1 : a > 0.9 ? 1 : 0]++;
+    n++;
+  }
+  if(!n) return null;
+  let top = -1;
+  for(const d of ['-1','0','1']) if(bins[d] > bins[top]) top = d;
+  return {bins, n, top: +top, share: bins[top]/n};
+}
+/* Drawn as three columns over the goal, one per third, filled by how often
+   they have gone there. No claim about this kick — a history, which is what it
+   is, and which they know you can see. */
+function drawTendency(L, R, T, B){
+  const t = netTendency();
+  if(!t || netStruck()) return;
+  const third = (R.x - L.x) / 3;
+  ctx.save();
+  ctx.font = '900 9px Nunito, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for(let i = 0; i < 3; i++){
+    const d = i - 1, share = t.bins[d] / t.n;
+    const x = L.x + third * i;
+    if(t.bins[d]){
+      ctx.fillStyle = 'rgba(126,224,160,' + (0.05 + share * 0.16) + ')';
+      ctx.fillRect(x, T.y, third, B.y - T.y);
+    }
+    ctx.fillStyle = t.bins[d] ? 'rgba(126,224,160,.9)' : 'rgba(255,255,255,.3)';
+    ctx.fillText(t.bins[d] + '/' + t.n, x + third/2, B.y + 11);
+  }
+  ctx.fillStyle = 'rgba(126,224,160,.85)';
+  ctx.fillText('WHERE THEY HAVE GONE', (L.x + R.x)/2, B.y + 24);
+  ctx.restore();
+}
+
+/* What the striker's body told you, drawn over the third of the goal it points
+   at. Deliberately not a target: a wash of colour and a word, on a read that
+   is wrong about a third of the time. It appears only once they have actually
+   gone — so it is not something to dive on, it is the bell telling you your
+   window has shut and anything you were saving it for is gone. */
+function drawReadCue(L, R, T, B){
+  if(mode !== 'online' || !netStruck() || !netTell) return;
+  const third = (R.x - L.x) / 3;
+  const i = netTell.dir + 1;                    // -1,0,1 -> 0,1,2
+  const x = L.x + third * i;
+  const pulse = 0.18 + 0.09 * Math.sin(now * 0.012);
+  ctx.save();
+  const g = ctx.createLinearGradient(0, T.y, 0, B.y);
+  g.addColorStop(0, 'rgba(255,210,0,' + pulse + ')');
+  g.addColorStop(1, 'rgba(255,210,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(x, T.y, third, B.y - T.y);
+  ctx.strokeStyle = 'rgba(255,210,0,.55)'; ctx.lineWidth = 2;
+  ctx.strokeRect(x + 1, T.y + 1, third - 2, B.y - T.y - 2);
+  ctx.font = '900 10px Nunito, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(255,210,0,.95)';
+  ctx.fillText('LOOKED ' + TELL_WORDS[netTell.dir], x + third/2, T.y - 12);
   ctx.restore();
 }
 
@@ -4480,8 +4709,28 @@ function drawDragGesture(){
    where you are meant to dither.
    ================================================================== */
 const SHOT_CLOCK = 5.0;
+/* Online, the striker's clock and the keeper's clock are the SAME clock: one
+   window, opened by the server, counted from the instant both were told about.
+   Two people acting at once who are shown two different numbers do not believe
+   either of them, and the keeper's window used to be a private countdown the
+   striker could not see at all.
+
+   The server's own deadline is longer and stays where it is — it is the safety
+   net for a closed tab, not the thing you play against. */
+const NET_WINDOW = 7.0;
+const netWindow = () => Math.max(3, Math.min(NET_WINDOW,
+  ((Net.match && Net.match.turnMs) || 25000)/1000 - 2));
+const netRemain = () => Math.max(0, netWindow() - netKickT());
 let shotT = 0;
 const clockRuns = () => state === ST.AIM && !paused && mode !== 'training' && !holding();
+/* One place decides what the bars say, so the two of them cannot drift. */
+function paintClock(el, secs, frac, tight){
+  const bar = $(el === 'shot' ? 'shotbar' : 'keepbar');
+  $(el === 'shot' ? 'shotFill' : 'keepFill').style.width = clamp(frac,0,1)*100 + '%';
+  $(el === 'shot' ? 'shotSecs' : 'keepSecs').textContent =
+    secs === null ? '' : (secs < 10 ? secs.toFixed(1) : Math.ceil(secs)) + 's';
+  bar.classList.toggle('tight', tight);
+}
 function startShotClock(){
   shotT = SHOT_CLOCK;
   const bar = $('shotbar');
@@ -4562,15 +4811,23 @@ function update(dt){
   keeperRecover(dt);
 
   if(clockRuns()){
-    shotT -= dt;
-    const f = clamp(shotT/SHOT_CLOCK, 0, 1);
-    $('shotFill').style.width = f*100 + '%';
-    $('shotbar').classList.toggle('tight', f < 0.34);
+    /* Online the clock is not ours to keep: it is the server's window, read
+       off the shared clock, so the number on this screen is the number on
+       theirs. Offline it is the local shot clock it always was. */
+    const online = mode === 'online' && Net.live && !Net.live.submitted;
+    if(online){ kickT = netKickT(); shotT = netRemain(); netRead(); netKeeperTheatre(dt); }
+    else shotT -= dt;
+    const span = online ? netWindow() : SHOT_CLOCK;
+    paintClock('shot', shotT, shotT/span, shotT/span < 0.34);
     if(shotT <= 0) rushShot();
   }
   if(state===ST.KEEP){
-    kickT += dt;
-    keepT -= dt;
+    /* Online both halves are timed from the instant the server opened the
+       kick, so the keeper's clock is read off it rather than counted down
+       locally — the two ends cannot drift apart, however uneven the frames. */
+    const online = mode === 'online' && Net.live && !Net.live.submitted;
+    if(online){ kickT = netKickT(); keepT = netRemain(); netRead(); }
+    else { kickT += dt; keepT -= dt; }
     // the moment the bend shows: one cue, once
     if(cpuShot && !cpuShot.flashed && cpuShot.swerve >= SWERVE_MIN && keepProg() >= 0.40){
       cpuShot.flashed = true;
@@ -4579,16 +4836,31 @@ function update(dt){
     // his dive, if he has already thrown himself, runs while he waits
     if(keeper && keeper.committed) keeperUpdate(keeper, kickT, ball);
     const untilStrike = cpuShot ? clamp(1 - kickT/cpuShot.strikeAt, 0, 1)
-                      : (mode==='online' ? clamp(keepT/KEEP_WINDOW, 0, 1) : 0);
-    $('keepFill').style.width = untilStrike*100 + '%';
-    // amber the moment leaving would still be read: it is the window to hold
-    $('keepbar').classList.toggle('tight', untilStrike < 0.3);
-    $('keepbar').classList.toggle('watched', !keepDone && untilStrike > 0.22);
+                      : (mode==='online' ? clamp(keepT/netWindow(), 0, 1) : 0);
+    paintClock('keep', mode==='online' ? keepT
+                     : cpuShot ? Math.max(0, cpuShot.strikeAt - kickT) : null,
+               untilStrike, untilStrike < 0.3);
+    // he can see you leave until the moment he actually goes — and online we
+    // now know when that was, so the eye comes off at the true instant
+    $('keepbar').classList.toggle('watched', !keepDone && !netStruck() && untilStrike > 0.22);
     // he strikes when he is ready — you are not given a whistle to react to
     if(cpuShot && kickT >= cpuShot.strikeAt) cpuShoot();
     /* Online there is no cpuShot to strike, because the striker is a person
-       taking their own time at the other end. The window is yours: hold it
-       to the end and you have chosen to stand up. */
+       taking their own time at the other end. But we now know the moment they
+       went, so the screen can say so — and say it late, which is the honest
+       thing: from here on a dive is a dive thrown after the ball. */
+    if(mode==='online' && !keepDone && netStruck()){
+      if($('keepLbl').firstChild.nodeValue !== 'BALL AWAY '){
+        $('keepLbl').firstChild.nodeValue = 'BALL AWAY ';
+        $('prompt').style.display = '';
+        /* Not "react to this" — by the time it is on the screen the ball is
+           most of the way to you. It is the bell: whatever you were holding
+           the dive for, it is now or never. */
+        $('prompt').textContent = netTell
+          ? 'Away — looked ' + TELL_WORDS[netTell.dir].toLowerCase() + '. Now or never'
+          : 'Ball away — throw yourself';
+      }
+    }
     if(mode==='online' && !keepDone && keepT <= 0) netKeeperDone();
   }
   else if(state===ST.CPU_WAIT){
@@ -4694,6 +4966,7 @@ function render(){
   drawNet();
   drawGoalFrame();
   drawKeeper(keeper);
+  drawKeeperSignal(keeper);
   drawKeeperTell(keeper);
   drawWall();
   drawScuffs();
@@ -4951,7 +5224,7 @@ $('bDuel').onclick  = startDuel;
    where both players kick at the server's own keeper and the scores are
    compared — is still there and still works; it is simply no longer what the
    button does, because a duel is the game. */
-$('bOnline').onclick = openOnline;
+$('bOnline').onclick = () => firstTimeThen(openOnline);
 $('bFindGame').onclick = () => netStart({});
 $('bHostGame').onclick = () => netStart({join:false});
 $('bJoinGame').onclick = () => {
@@ -5002,12 +5275,58 @@ async function netStart(opts){
       mpStatus('Waiting for an opponent — give them this code, or sit tight.');
       netWaitForOpponent(!opts.matchId && opts.join !== false);
     } else {
-      mpStatus('Matched. First kick is yours or theirs — watch the prompt.');
-      setTimeout(()=>$('ovOnline').classList.add('hidden'), 800);
+      netShowReady();
     }
   }catch(err){
     mpStatus(err.message, true);
     $('mpPick').classList.remove('hidden');
+  }
+}
+
+/* ---- BOTH HERE, BOTH READY ----
+   A match used to begin the instant the queue paired two strangers, which put
+   the first kick — deadline already running — in front of somebody still
+   reading the word FOUND. A kick with a running deadline is a kick you can
+   lose without touching the screen, so it is worth a tap to avoid.
+
+   The panel is also the answer to the question every online player asks first
+   and which nothing answered before: is there actually a person over there. */
+function netShowReady(){
+  $('ovOnline').classList.remove('hidden');
+  $('mpPick').classList.add('hidden');
+  $('mpCodeWrap').classList.add('hidden');
+  $('mpReady').classList.remove('hidden');
+  mpStatus('Found an opponent.');
+  netRoom();
+}
+function netRoom(){
+  if($('mpReady').classList.contains('hidden')) return;
+  const you = $('rdyYou'), them = $('rdyThem');
+  you.querySelector('b').textContent = (profile.name || 'YOU').toUpperCase();
+  you.querySelector('i').textContent = Net.ready.you ? 'ready' : 'not ready';
+  you.classList.toggle('on', !!Net.ready.you);
+  const o = Net.opponent;
+  them.querySelector('b').textContent = o ? (o.name || 'OPPONENT').toUpperCase() : '—';
+  /* Three states, and the middle one matters most: somebody who is connected
+     but has not pressed it is not the same as somebody who has gone. */
+  const gone = o && o.here === false;
+  them.querySelector('i').textContent = !o ? 'connecting…'
+    : gone ? 'lost connection' : o.ready ? 'ready' : 'here, not ready';
+  them.classList.toggle('on', !!(o && o.ready && !gone));
+  them.classList.toggle('gone', !!gone);
+  $('bReadyUp').textContent = Net.ready.you ? 'WAITING FOR THEM…' : "I'M READY";
+  $('bReadyUp').disabled = !!Net.ready.you;
+  $('rdyNote').textContent = Net.ready.both ? 'Both in. Here we go…'
+    : Net.ready.you ? 'Your half is in — nothing starts until they press it too.'
+    : gone ? 'They have dropped out. Give it a moment, or go back.'
+    : 'No clock is running yet. Press it when you are set.';
+  if(Net.ready.both){
+    $('bReadyUp').disabled = true;
+    setTimeout(()=>{
+      $('ovOnline').classList.add('hidden');
+      $('mpReady').classList.add('hidden');
+      talkShow(true);
+    }, 650);
   }
 }
 /* Sit on the lobby until somebody joins, then drop into the match. The
@@ -5017,8 +5336,7 @@ function netWaitForOpponent(inQueue){
     if(!Net.match){ clearInterval(t); return; }
     if(Net.state === 'in_progress'){
       clearInterval(t);
-      mpStatus('They are here. Play.');
-      setTimeout(()=>$('ovOnline').classList.add('hidden'), 700);
+      netShowReady();
       return;
     }
     /* Say how many people are looking. A number that moves is the difference
@@ -5033,7 +5351,17 @@ function netWaitForOpponent(inQueue){
   }, 900);
 }
 
-$('bOnlineClose').onclick = ()=>{ $('ovOnline').classList.add('hidden'); netLeave();
+$('bReadyUp').onclick = ()=>{
+  $('bReadyUp').disabled = true;
+  $('bReadyUp').textContent = 'WAITING FOR THEM…';
+  netReadyUp().catch(err => {
+    $('bReadyUp').disabled = false;
+    $('bReadyUp').textContent = "I'M READY";
+    $('rdyNote').textContent = 'Could not tell the server — ' + err.message;
+  });
+};
+$('bOnlineClose').onclick = ()=>{ $('ovOnline').classList.add('hidden');
+  $('mpReady').classList.add('hidden'); talkShow(false); netLeave();
   if(MP.poll){ clearInterval(MP.poll); MP.poll=null; } MP.match=null; };
 $('bNext').onclick  = ()=>{ ($('bNext').dataset.act==='next' ? nextRound : toMenu)(); };
 $('bKit').onclick   = openKit;
@@ -5048,6 +5376,8 @@ $('bCab').onclick   = openCabinet;
 $('bCabClose').onclick = ()=>$('ovCab').classList.add('hidden');
 $('bSet').onclick   = openSettings;
 $('bSetClose').onclick = ()=>{ $('ovSet').classList.add('hidden'); refreshProfileStrip(); };
+/* "I skipped it and now I want it" is the common case, not an edge one. */
+$('bSetTut').onclick = ()=>{ $('ovSet').classList.add('hidden'); tutShow(null); };
 $('bRankOn').onclick = closeRankUp;
 $('bCoach').onclick  = stepCoach;
 
@@ -5239,9 +5569,14 @@ const Net = {
      loop directly is what lets the transport be tested on its own. */
   skew: 0,            // serverTime - our clock, so both ends stamp the same
   queue: undefined,   // how many are looking, while waiting
+  ready: {you:false, them:false, both:false},
+  opponent: null,     // {name, here, seenAgo, ready} — is anybody over there
+  since: 0,           // highest chat/signal id seen, so a poll never re-reads
   onLive: null,       // (live)   -> it is your turn, in this role, until then
   onKick: null,       // (kick)   -> a resolved kick, with both halves, to show
   onEnd: null,        // (final)  -> the duel is over
+  onRoom: null,       // (state)  -> ready/presence changed while we wait
+  onSay: null,        // (msgs)   -> chat lines and signalling, in server order
 };
 
 /* Open a duel and wait, join a specific one, or take whatever is open. */
@@ -5267,13 +5602,16 @@ async function netSync(){
   if(!Net.match || Net.busy) return null;
   Net.busy = true;
   try{
-    const st = await mpFetch('/api/mp/sync/' + Net.match.matchId);
+    const st = await mpFetch('/api/mp/sync/' + Net.match.matchId +
+                             (Net.since ? '?since=' + Net.since : ''));
     /* The queue merged us into somebody else's lobby — they were waiting
        first, so their match is the one that lives. Follow it. Nothing has
        started yet, so there is nothing to carry across but the id. */
     if(st.movedTo){
       Net.match.matchId = st.movedTo;
       Net.seen = -1; Net.played = []; Net.live = null;
+      Net.since = 0;                    // a different room, a different log
+      Net.ready = {you:false, them:false, both:false};
       return netSync();
     }
     /* Two players, two wall clocks, one kick. Everything either of them
@@ -5284,6 +5622,21 @@ async function netSync(){
     Net.state = st.state;
     Net.queue = st.queue;
     Net.score = st.score;
+    /* Who is at the other end, whether they are still there, and whether both
+       of us have said we are. An older deployment sends none of this, so the
+       absence of an answer has to read as "no reason to think otherwise"
+       rather than as "nobody is there". */
+    const wasRoom = JSON.stringify([Net.ready, Net.opponent && Net.opponent.here,
+                                    Net.opponent && Net.opponent.ready]);
+    if(st.ready) Net.ready = st.ready;
+    if(st.opponent !== undefined) Net.opponent = st.opponent;
+    if(Net.onRoom && JSON.stringify([Net.ready, Net.opponent && Net.opponent.here,
+                                     Net.opponent && Net.opponent.ready]) !== wasRoom)
+      Net.onRoom(Net);
+    if(st.says && st.says.length){
+      for(const s of st.says) Net.since = Math.max(Net.since, s.id);
+      if(Net.onSay) Net.onSay(st.says);
+    }
     /* The server's seed belongs to whichever match we are actually in, and
        after a merge that is not the one we opened. */
     if(typeof st.seed === 'number' && (matchSeed>>>0) !== (st.seed>>>0)){
@@ -5323,13 +5676,19 @@ async function netSync(){
 
 /* Poll faster while the other player is the one being waited on, slower when
    the ball is in our court and the screen is busy anyway. */
+/* Three speeds, because the poll is now carrying three different things.
+   Slowest when nothing is happening. Faster while the other player is the one
+   being waited on. Fastest while a kick is live and our half is not in, because
+   that is when the tell arrives — a read that lands a second and a half after
+   the ball was struck is not a read, it is a result. */
 function netPollStart(){
   netPollStop();
   const tick = async () => {
     await netSync();
     if(!Net.poll) return;
+    const live = Net.live && !Net.live.submitted;
     const waiting = Net.live && Net.live.submitted;
-    Net.poll = setTimeout(tick, waiting ? 1200 : 3000);
+    Net.poll = setTimeout(tick, live ? 350 : waiting ? 1000 : 2500);
   };
   Net.poll = setTimeout(tick, 0);
 }
@@ -5366,10 +5725,29 @@ const netDive = () => netSubmit('dive',
     ? { x:+keeper.tx.toFixed(4), y:+keeper.ty.toFixed(4), t:+netKickT().toFixed(3) }
     : null);
 
+/* "I am here." Idempotent at the server, so pressing it twice — or retrying
+   after a dropped connection — is the same as pressing it once. */
+async function netReadyUp(){
+  if(!Net.match) throw new Error('not in a match');
+  const r = await mpFetch('/api/mp/ready', 'POST', {matchId: Net.match.matchId});
+  if(r.ready) Net.ready = {you:r.ready.you, them:r.ready.them, both:r.ready.both};
+  netSync();
+  return r;
+}
+
+/* A line of chat, or one WebRTC signalling message on its way to the other
+   browser. Fire and forget: a dropped line is a dropped line, and blocking the
+   game on it would be worse than losing it. */
+const netSay = (kind, body) => Net.match
+  ? mpFetch('/api/mp/say', 'POST', {matchId: Net.match.matchId, kind, body})
+  : Promise.reject(new Error('not in a match'));
+
 function netLeave(){
   netPollStop();
   Net.match = null; Net.live = null; Net.played = []; Net.seen = -1;
   Net.state = 'idle';
+  Net.ready = {you:false, them:false, both:false};
+  Net.opponent = null; Net.since = 0;
   srcStriker = 'ai'; srcKeeper = 'ai';
 }
 /* seconds left on the kick in front of you, for the bar that already exists */
@@ -5430,6 +5808,9 @@ async function netPlay(opts){
   Net.onLive = () => netPump();
   Net.onKick = k => { netQueue.push(k); netPump(); };
   Net.onEnd  = () => netPump();
+  Net.onRoom = () => netRoom();
+  Net.onSay  = msgs => talkHeard(msgs);
+  talkReset();
   startMatch();
   netIdle();                                  // until the server opens a kick
   return m;
@@ -5455,6 +5836,7 @@ function netBeginKick(live){
   kickIndex = live.kickIndex;
   netForced = null;
   netMsg = '';
+  netTell = null;                             // last kick's read is not this one's
   seedFrom(hash2(matchSeed, kickIndex));
   netScene();
   if(live.submitted){ netIdle(); return; }    // reconnected mid-kick
@@ -5474,8 +5856,91 @@ function netBeginKick(live){
     beginKeep();
     cpuShot = null;                           // no telegraph: this is a person
     $('keepLbl').firstChild.nodeValue = 'THEY ARE KICKING ';
-    $('prompt').textContent = 'Read the player, not a ring — set and dive';
+    const tend = netTendency();
+    $('prompt').textContent = tend && tend.share >= 0.6 && tend.n >= 2
+      ? 'They have gone ' + TELL_WORDS[tend.top].toLowerCase() + ' ' +
+        tend.bins[tend.top] + ' of ' + tend.n + ' — back your read'
+      : 'No ring to read here — pick your side and go';
   }
+}
+
+/* ---- THE READ ----
+ * The one thing you are allowed to notice about the other player while the
+ * kick is still live. It is one of three — left, middle, right — it is wrong
+ * about a third of the time, and it does not arrive until they have gone.
+ *
+ * Which is the point. Acting on it means acting after them, and the simulation
+ * already prices that: a dive thrown after the strike has less of itself behind
+ * it when the ball arrives, and a keeper who goes early enough to be read hands
+ * the striker a tell of their own. Nothing here shortens the odds for free.
+ *
+ * The server does the lying (see readFor in _lib/duel.js) so it cannot be
+ * resampled by asking twice. This side only decides how to show it.
+ */
+let netTell = null;         // {dir, at, what} — cached, because it never changes
+function netRead(){
+  const r = Net.live && Net.live.read;
+  if(!r){ netTell = null; return null; }
+  if(!netTell || netTell.at !== r.at || netTell.dir !== r.dir){
+    netTell = {dir:r.dir, at:r.at, what:r.what, cued:false};
+  }
+  /* One cue, at the moment it happens, not at the moment the poll noticed. */
+  if(!netTell.cued && kickT >= netTell.at){
+    netTell.cued = true;
+    SFX.tell(); buzz([0,14,30,14]);
+  }
+  return netTell;
+}
+/* Has the striker gone, as far as this keeper can tell? */
+const netStruck = () => !!(netTell && netTell.what === 'strike' && kickT >= netTell.at);
+/* Has the keeper moved, as far as this striker can tell? Never WHERE — only
+   that they went, and roughly which way they leaned. */
+const netKeeperMoved = () => !!(netTell && netTell.what === 'dive' && kickT >= netTell.at);
+const TELL_WORDS = {'-1':'LEFT', '0':'MIDDLE', '1':'RIGHT'};
+
+/* ---- WHAT THE STRIKER SEES OF THE KEEPER ----
+ * A man, moving. Never a dive, never a target, never a coordinate — the ask
+ * was explicit about that, and it is also the only version that is fair: the
+ * dive has not happened yet on this screen and will not until the kick
+ * resolves. What there is instead is a person on a line who shuffles, sets,
+ * and — once they have actually committed at the other end — leans, with a
+ * hand out, one of three ways, and lies about it nearly half the time.
+ */
+function netKeeperTheatre(dt){
+  if(!keeper || mode !== 'online' || srcKeeper !== 'remote') return;
+  if(keeper.signal === undefined){ keeper.signal = 0; keeper.wander = 0; keeper.said = false; }
+  keeper.wander += dt;
+  /* Idle: small, slow, never quite still. A keeper frozen to the spot reads
+     as a bug rather than as a decision. */
+  const idle = dsin(keeper.wander * 1.35) * 0.16 + dsin(keeper.wander * 0.61) * 0.09;
+  const lean = netKeeperMoved() ? netTell.dir * 0.62 : 0;
+  keeper.signal += (lean - keeper.signal) * Math.min(1, dt * 7);
+  keeper.wx = keeper.wx0 + idle + keeper.signal;
+  keeper.arm = netKeeperMoved() ? netTell.dir : 0;
+  /* Say it once, in words, when it happens. The lean is legible on a big
+     screen and easy to miss on a phone while you are lining up a swipe. */
+  if(keeper.arm !== 0 && !keeper.said){
+    keeper.said = true;
+    $('prompt').style.display = '';
+    $('prompt').textContent = 'He has gone — looked ' +
+      TELL_WORDS[netTell.dir].toLowerCase() + '. Put it the other way?';
+  }
+}
+/* The hand. Drawn as a short bar off the shoulder on the side he is showing
+   you, which is what a keeper waving you one way actually looks like. */
+function drawKeeperSignal(k){
+  if(!k || !k.arm || mode !== 'online' || srcKeeper !== 'remote') return;
+  if(state !== ST.AIM) return;
+  const p = prj(k.wx, 1.55, k.wz);
+  if(p.d < 1) return;
+  const q = prj(k.wx + k.arm * 0.72, 1.72, k.wz);
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,.75)';
+  ctx.lineWidth = 3.2; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.9)';
+  ctx.beginPath(); ctx.arc(q.x, q.y, 3.4, 0, 6.283); ctx.fill();
+  ctx.restore();
 }
 
 /* The scene for this kick: same spot and same conditions on both ends,
@@ -5560,8 +6025,338 @@ function netFinish(){
   if(netOver) return;
   netOver = true;
   netForced = null; netMsg = '';
+  talkShow(false);
   endMatch();
 }
+
+/* ==================================================================
+   THE FIRST TIME — four cards, then never again
+   ==================================================================
+   Everything in this game is a swipe, and which swipe does what is not
+   guessable: the same gesture takes a penalty at one end and throws a
+   goalkeeper at the other. That is one sentence per role, which is a tutorial
+   worth showing — and worth being able to skip on the first tap, because the
+   second-worst thing after no tutorial is one you cannot get out of.
+
+   Shown once, and reachable again from Settings, because "I skipped it and
+   now I want it" is the common case rather than an edge one.
+
+   Shown on the way into an online match, and only there. The single-player
+   first kick already has its own coaching, card by card, in context — running
+   both would mean eleven cards before anybody kicked anything. Online is where
+   there is something genuinely new to say, because the duel has rules the
+   offline game does not.
+   ================================================================== */
+const TUT = [
+  {t:'TAKING A KICK',
+   b:'Swipe from the ball towards the goal. How fast you swipe is the pace on '
+    + 'it, where you finish is where it goes, and a curved swipe bends it. The '
+    + 'crosshair shows where it would land — the white bar around it is how far '
+    + 'the contact could throw it off.',
+   art:'kick'},
+  {t:'THE SHOT CLOCK',
+   b:'You have a few seconds. Run it down and it goes anyway, off balance and '
+    + 'with nothing on it, so dithering costs you the strike rather than '
+    + 'sharpening it.',
+   art:'clock'},
+  {t:'IN GOAL',
+   b:'Flick the way you want to throw yourself: across for a low dive, up and '
+    + 'across for the top corner, straight up to leap down the middle. A short '
+    + 'drag along the line just moves your feet. Go too early and the striker '
+    + 'can see you; go too late and you get less of yourself behind it.',
+   art:'keep'},
+  {t:'ONLINE',
+   b:'Both of you play the same kick at the same moment — nobody waits for a '
+    + 'turn. You cannot see what they chose, but once they have gone you get '
+    + 'one clue, one of three, and it is wrong about a third of the time. '
+    + 'Acting on it means acting late. That is the game.',
+   art:'net'},
+];
+let tutAt = 0, tutThen = null;
+function tutShow(from){
+  tutAt = 0; tutThen = from || null;
+  $('ovTut').classList.remove('hidden');
+  tutPaint();
+}
+/* A picture of the gesture, because the gesture is the thing being explained
+   and a paragraph about a swipe is a poor substitute for the shape of one.
+   Drawn here rather than shipped as files: four diagrams is less markup than
+   one image request. */
+const GOAL = '<rect x="18" y="14" width="164" height="62" rx="3" fill="none" ' +
+             'stroke="rgba(255,255,255,.55)" stroke-width="2.5"/>';
+const TUT_ART = {
+  kick: GOAL +
+    '<circle cx="100" cy="90" r="5" fill="#fff"/>' +
+    '<path d="M100 90 Q118 62 150 32" fill="none" stroke="#FFD200" stroke-width="3" ' +
+    'stroke-linecap="round" stroke-dasharray="5 5"/>' +
+    '<circle cx="150" cy="32" r="9" fill="none" stroke="#FFD200" stroke-width="2.5"/>' +
+    '<circle cx="150" cy="32" r="2.4" fill="#FFD200"/>',
+  clock:
+    '<rect x="30" y="44" width="140" height="12" rx="6" fill="rgba(255,255,255,.16)"/>' +
+    '<rect x="30" y="44" width="52" height="12" rx="6" fill="#FF2D6B"/>' +
+    '<text x="100" y="30" text-anchor="middle" fill="rgba(255,255,255,.75)" ' +
+    'font-family="Nunito,sans-serif" font-size="12" font-weight="900">TAKE IT ON</text>' +
+    '<text x="100" y="78" text-anchor="middle" fill="#FF2D6B" ' +
+    'font-family="Nunito,sans-serif" font-size="12" font-weight="900">1.8s</text>',
+  keep: GOAL +
+    '<circle cx="100" cy="58" r="6" fill="#00AAFF"/>' +
+    '<path d="M100 58 L52 26" fill="none" stroke="#00AAFF" stroke-width="3" ' +
+    'stroke-linecap="round"/>' +
+    '<path d="M52 26 l12 3 l-4 -11 z" fill="#00AAFF"/>' +
+    '<circle cx="52" cy="26" r="11" fill="rgba(0,170,255,.2)" stroke="#00AAFF" ' +
+    'stroke-width="2"/>',
+  net:
+    '<circle cx="46" cy="52" r="12" fill="rgba(255,210,0,.25)" stroke="#FFD200" stroke-width="2"/>' +
+    '<circle cx="154" cy="52" r="12" fill="rgba(0,170,255,.25)" stroke="#00AAFF" stroke-width="2"/>' +
+    '<path d="M64 52 H136" stroke="rgba(255,255,255,.4)" stroke-width="2" stroke-dasharray="4 5"/>' +
+    '<text x="100" y="30" text-anchor="middle" fill="rgba(255,255,255,.75)" ' +
+    'font-family="Nunito,sans-serif" font-size="11" font-weight="900">SAME KICK, SAME MOMENT</text>' +
+    '<text x="46" y="80" text-anchor="middle" fill="#FFD200" ' +
+    'font-family="Nunito,sans-serif" font-size="10" font-weight="900">KICKING</text>' +
+    '<text x="154" y="80" text-anchor="middle" fill="#00AAFF" ' +
+    'font-family="Nunito,sans-serif" font-size="10" font-weight="900">IN GOAL</text>',
+};
+function tutPaint(){
+  const c = TUT[tutAt];
+  $('tutStep').textContent = (tutAt+1) + ' of ' + TUT.length;
+  $('tutTitle').textContent = c.t;
+  $('tutBody').textContent = c.b;
+  $('tutArt').innerHTML = '<svg viewBox="0 0 200 104" width="100%" height="100%" ' +
+    'aria-hidden="true">' + (TUT_ART[c.art] || '') + '</svg>';
+  $('bTutBack').classList.toggle('hidden', tutAt === 0);
+  $('bTutNext').textContent = tutAt === TUT.length-1 ? 'PLAY' : 'NEXT';
+  $('bTutSkip').classList.toggle('hidden', tutAt === TUT.length-1);
+}
+function tutClose(){
+  $('ovTut').classList.add('hidden');
+  profile.seenTut = true;
+  saveProfile();
+  const then = tutThen; tutThen = null;
+  if(then) then();
+}
+(function wireTut(){
+  $('bTutNext').onclick = () => {
+    if(tutAt === TUT.length-1) return tutClose();
+    tutAt++; tutPaint();
+  };
+  $('bTutBack').onclick = () => { if(tutAt > 0){ tutAt--; tutPaint(); } };
+  $('bTutSkip').onclick = tutClose;
+})();
+/* Run `fn`, but show the tutorial first if this is somebody's first game. */
+function firstTimeThen(fn){
+  if(profile.seenTut) return fn();
+  tutShow(fn);
+}
+
+/* ==================================================================
+   TALKING TO THE OTHER END — chat, and a microphone
+   ==================================================================
+   Two people playing one kick should be able to say something about it. Chat
+   rides the poll that already exists: a line goes to the server, comes back on
+   both screens in the server's order, and neither client has to guess how to
+   interleave two transcripts.
+
+   Voice does not ride the poll. The poll carries the four or five messages two
+   browsers need in order to find each other — an offer, an answer, a handful
+   of ICE candidates — and the audio then flows directly between them and never
+   touches the server. Which is why a microphone in a duel costs nothing to
+   host: there is no media path to pay for, and nothing to record.
+
+   The microphone is asked for on the tap and never before. A game that grabs
+   the microphone as it loads is a game people close, and rightly.
+   ================================================================== */
+const Talk = {
+  open: false, mic: 'off',     // off | asking | live | denied | failed
+  pc: null, local: null, audio: null,
+  polite: false,               // the side that yields in a glare-free negotiation
+  unread: 0, log: [],
+};
+/* Something to say without typing while a shot clock is running. */
+const CHAT_QUICK = ['Good luck', 'Nice one', 'Unlucky', 'Great save', 'Ready?', 'Go on'];
+
+const talkShow = on => {
+  $('talk').classList.toggle('hidden', !(on && mode === 'online'));
+  if(!on){ talkOpen(false); talkHangUp(); }
+};
+function talkLine(who, text){
+  const p = document.createElement('p');
+  p.className = who;
+  p.textContent = text;
+  $('chatLog').appendChild(p);
+  while($('chatLog').children.length > 40) $('chatLog').firstChild.remove();
+  $('chatLog').scrollTop = $('chatLog').scrollHeight;
+  if(who === 'them' && !Talk.open){
+    Talk.unread++;
+    $('talkDot').classList.remove('hidden');
+  }
+}
+function talkOpen(on){
+  Talk.open = on === undefined ? !Talk.open : !!on;
+  $('chatWrap').classList.toggle('hidden', !Talk.open);
+  if(Talk.open){
+    Talk.unread = 0;
+    $('talkDot').classList.add('hidden');
+    $('chatLog').scrollTop = $('chatLog').scrollHeight;
+  }
+}
+function talkSend(text){
+  const t = String(text || '').trim().slice(0, 240);
+  if(!t || !Net.match) return;
+  /* Not echoed locally: the line comes back from the server addressed to the
+     room, so both screens show one transcript in one order — the server's. */
+  netSay('chat', t).catch(() => talkLine('sys', 'not sent'));
+  $('chatIn').value = '';
+}
+
+/* ---- the microphone ---- */
+async function talkMic(){
+  if(Talk.mic === 'live'){ talkHangUp(); return; }
+  if(Talk.mic === 'asking') return;
+  if(!navigator.mediaDevices || !window.RTCPeerConnection){
+    talkLine('sys', 'this browser cannot do voice');
+    return;
+  }
+  Talk.mic = 'asking';
+  talkPaint();
+  try{
+    /* The permission prompt happens here, on the tap, and nowhere else. */
+    Talk.local = await navigator.mediaDevices.getUserMedia({audio:true, video:false});
+  }catch(e){
+    Talk.mic = e && e.name === 'NotAllowedError' ? 'denied' : 'failed';
+    talkPaint();
+    talkLine('sys', Talk.mic === 'denied'
+      ? 'microphone blocked — allow it in the address bar to talk'
+      : 'no microphone found');
+    return;
+  }
+  Talk.mic = 'live';
+  talkPaint();
+  talkLine('sys', 'microphone on');
+  talkConnect(true);
+}
+function talkPeer(){
+  if(Talk.pc) return Talk.pc;
+  const pc = new RTCPeerConnection({
+    iceServers: [{urls:'stun:stun.cloudflare.com:3478'},
+                 {urls:'stun:stun.l.google.com:19302'}],
+  });
+  pc.onicecandidate = e => {
+    if(e.candidate) netSay('rtc', JSON.stringify({ice:e.candidate})).catch(()=>{});
+  };
+  pc.ontrack = e => {
+    if(!Talk.audio){
+      Talk.audio = new Audio();
+      Talk.audio.autoplay = true;
+    }
+    Talk.audio.srcObject = e.streams[0];
+    /* Autoplay may be refused until the page has been interacted with. It has
+       been — you tapped the microphone — but a refusal must not be silent. */
+    Talk.audio.play().catch(()=> talkLine('sys', 'tap the screen to hear them'));
+    talkLine('sys', 'you are connected');
+  };
+  pc.onconnectionstatechange = () => {
+    if(pc.connectionState === 'failed' || pc.connectionState === 'disconnected'){
+      talkLine('sys', 'voice dropped');
+      talkHangUp();
+    }
+  };
+  Talk.pc = pc;
+  return pc;
+}
+async function talkConnect(initiator){
+  const pc = talkPeer();
+  if(Talk.local) for(const tr of Talk.local.getTracks())
+    if(!pc.getSenders().some(s => s.track === tr)) pc.addTrack(tr, Talk.local);
+  if(!initiator) return;
+  try{
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await netSay('rtc', JSON.stringify({sdp: pc.localDescription}));
+  }catch(e){ talkLine('sys', 'could not start voice'); }
+}
+/* One signalling message from the other browser. Ordered by the server, so
+   there is no reordering to defend against — only the one real hazard, which
+   is both sides offering at once. Side 'a' is the polite one and backs down. */
+async function talkSignal(raw){
+  let m; try{ m = JSON.parse(raw); }catch{ return; }
+  const pc = talkPeer();
+  Talk.polite = Net.match && Net.match.side === 'a';
+  try{
+    if(m.sdp){
+      const offering = m.sdp.type === 'offer';
+      const clash = offering && (pc.signalingState !== 'stable');
+      if(clash && !Talk.polite) return;            // impolite side ignores it
+      if(clash) await pc.setLocalDescription({type:'rollback'});
+      await pc.setRemoteDescription(m.sdp);
+      if(offering){
+        /* They want to talk. Answering without a microphone of our own is
+           still worth doing — you can listen — but ask for one first so the
+           common case is a two-way call. */
+        if(!Talk.local && Talk.mic === 'off'){
+          try{
+            Talk.local = await navigator.mediaDevices.getUserMedia({audio:true});
+            Talk.mic = 'live'; talkPaint(); talkLine('sys', 'microphone on');
+          }catch{ Talk.mic = 'denied'; talkPaint();
+                  talkLine('sys', 'answering muted — they can talk to you'); }
+        }
+        if(Talk.local) for(const tr of Talk.local.getTracks())
+          if(!pc.getSenders().some(s => s.track === tr)) pc.addTrack(tr, Talk.local);
+        const ans = await pc.createAnswer();
+        await pc.setLocalDescription(ans);
+        await netSay('rtc', JSON.stringify({sdp: pc.localDescription}));
+      }
+    } else if(m.ice){
+      await pc.addIceCandidate(m.ice).catch(()=>{});   // a stale candidate is fine
+    }
+  }catch(e){ /* a failed negotiation ends as no voice, not as a broken game */ }
+}
+function talkHangUp(){
+  if(Talk.pc){ try{ Talk.pc.close(); }catch{} Talk.pc = null; }
+  if(Talk.local){ for(const t of Talk.local.getTracks()) t.stop(); Talk.local = null; }
+  if(Talk.audio){ Talk.audio.srcObject = null; Talk.audio = null; }
+  if(Talk.mic === 'live'){ Talk.mic = 'off'; talkLine('sys', 'microphone off'); }
+  talkPaint();
+}
+function talkPaint(){
+  const b = $('bMic');
+  b.classList.toggle('on', Talk.mic === 'live');
+  b.classList.toggle('pending', Talk.mic === 'asking');
+  b.textContent = Talk.mic === 'live' ? '🔴' : Talk.mic === 'denied' ? '🚫' : '🎤';
+  b.setAttribute('aria-label', Talk.mic === 'live' ? 'Microphone on — tap to hang up'
+    : Talk.mic === 'denied' ? 'Microphone blocked' : 'Turn the microphone on');
+}
+function talkReset(){
+  talkHangUp();
+  Talk.log = []; Talk.unread = 0;
+  $('chatLog').innerHTML = '';
+  $('talkDot').classList.add('hidden');
+  talkOpen(false);
+}
+/* Everything the server has for us since the last poll, in its order. */
+function talkHeard(msgs){
+  for(const m of msgs){
+    if(m.kind === 'chat') talkLine(m.mine ? 'me' : 'them', m.body);
+    else if(m.kind === 'rtc') talkSignal(m.body);
+  }
+}
+(function wireTalk(){
+  $('bMic').onclick = talkMic;
+  $('bChat').onclick = () => talkOpen();
+  $('bChatClose').onclick = () => talkOpen(false);
+  $('bChatSend').onclick = () => talkSend($('chatIn').value);
+  $('chatIn').addEventListener('keydown', e => {
+    if(e.key === 'Enter'){ e.preventDefault(); talkSend($('chatIn').value); }
+    e.stopPropagation();               // typing must not fire the aim keys
+  });
+  const q = $('chatQuick');
+  for(const line of CHAT_QUICK){
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = line;
+    b.onclick = () => talkSend(line);
+    q.appendChild(b);
+  }
+  talkPaint();
+})();
 
 /* ==================================================================
    DEBUG API — enabled with ?debug=1
@@ -5678,7 +6473,11 @@ if(new URLSearchParams(location.search).has('debug')){
     /* the duel transport, so the online layer can be driven headlessly
        against a real server rather than being taken on trust */
     net: {
-      play: o => netPlay(o), ready: () => netReady(),
+      play: o => netPlay(o),
+      /* `health` is "can the other end serve at all"; `ready` is "I am here".
+         They were both called ready once, which was one word doing two jobs. */
+      health: () => netReady(), ready: () => netReadyUp(),
+      say: (kind, body) => netSay(kind, body),
       open: o => netOpen(o), join: id => netJoin(id),
       sync: () => netSync(), strike: () => netStrike(), dive: () => netDive(),
       submit: (half, payload) => netSubmit(half, payload),
@@ -5692,9 +6491,20 @@ if(new URLSearchParams(location.search).has('debug')){
                            begun:netBegun, forced:netForced,
                            kickT:+netKickT().toFixed(3), skew:+Net.skew.toFixed(3),
                            sources:{striker:srcStriker, keeper:srcKeeper},
+                           ready:Net.ready, opponent:Net.opponent,
+                           tell:netTell, struck:netStruck(),
+                           tendency:netTendency(),
+                           mic:Talk.mic, chat:$('chatLog').children.length,
                            left:netLeft()}; },
       on: (name, fn) => { Net['on' + name] = fn; },
     },
+    /* so the layout probe can measure a card that is otherwise only ever seen
+       on somebody's first online match */
+    tutorial: (i) => { tutAt = Math.max(0, Math.min(TUT.length-1, i|0)); tutPaint(); },
+    /* the drawn keeper, so a test can prove the striker is shown a lean and
+       never a dive */
+    get keeper(){ return keeper ? {committed: keeper.committed, arm: keeper.arm,
+                                   signal: keeper.signal, wx: keeper.wx} : null; },
     get device(){ return mpToken(); },
     venues: Object.keys(VENUES),
     ranks: RANKS.map(r=>r.n),

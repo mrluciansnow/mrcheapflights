@@ -60,9 +60,10 @@ export async function onRequestPost(context) {
         const match = { ...open, b_player: me.id, state: 'in_progress' };
         const duel = await env.DB.prepare('SELECT * FROM cf_duels WHERE match_id = ?')
           .bind(open.id).first();
-        // the first kick opens now, so its deadline starts when both players
-        // are actually present rather than when the lobby was created
-        await openKick(env, match, duel, duel.kick_index);
+        /* The first kick does NOT open here, on purpose. Being paired is not
+           being ready: a deadline that starts the moment a stranger is found
+           runs while one of them is still reading the screen. It opens when
+           both have pressed READY — see /api/mp/ready. */
         const c = await codeFor(env, open.id);
         return Response.json({
           matchId: open.id, code: c ? c.code : null,

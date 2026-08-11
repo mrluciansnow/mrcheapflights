@@ -96,6 +96,85 @@ for(const vp of [{width:344,height:882,n:'folding phone'},
     problems++; console.log('  OUT OF ASPECT BAND: ' + ratio.toFixed(2));
   }
   if(fit.scroll){ problems++; console.log('  THE PAGE ITSELF SCROLLS'); }
+
+  /* The panels that only appear during an online match. They are hidden on
+     every run above, so nothing here was ever measured — and a chat drawer
+     pinned to the bottom of a 393px-tall landscape phone is exactly the shape
+     of thing that covers the goal or pushes the page into scrolling. */
+  const panels = await page.evaluate(()=>{
+    const out = {};
+    /* A full-screen overlay is SUPPOSED to fill the screen, so the failure to
+       look for is not its size but its content: anything wider than the
+       overlay cannot be reached at all, and anything much taller than it means
+       the buttons are below the fold on the shortest phone. */
+    const overlay = (id, fn) => {
+      const el = document.getElementById(id);
+      el.classList.remove('hidden');
+      if(fn) fn();
+      out[id] = {wide: el.scrollWidth > el.clientWidth + 1,
+                 overflows: el.scrollHeight > el.clientHeight + 1,
+                 screens: +(el.scrollHeight / Math.max(1, el.clientHeight)).toFixed(2)};
+      el.classList.add('hidden');
+    };
+    /* A panel inside the pitch has the opposite job: stay inside it. */
+    const panel = (id, fn) => {
+      const st = document.getElementById('stage').getBoundingClientRect();
+      const el = document.getElementById(id);
+      el.classList.remove('hidden');
+      if(fn) fn();
+      const r = el.getBoundingClientRect();
+      out[id] = {w:Math.round(r.width), h:Math.round(r.height),
+                 outside: r.right > st.right + 1 || r.left < st.left - 1 ||
+                          r.bottom > st.bottom + 1 || r.top < st.top - 1,
+                 tall: r.height > st.height * 0.6};
+      el.classList.add('hidden');
+    };
+    overlay('ovTut', () => window.CF && window.CF.tutorial && window.CF.tutorial(0));
+    /* The lobby as it actually looks once two people are in it: the ways in
+       are gone by then, so showing them alongside the ready panel would be
+       measuring a screen nobody sees. */
+    overlay('ovOnline', () => {
+      for(const id of ['mpPick','mpCodeWrap','mpJoinCode','bJoinGo'])
+        document.getElementById(id).classList.add('hidden');
+      document.getElementById('mpReady').classList.remove('hidden');
+    });
+    document.getElementById('mpReady').classList.add('hidden');
+    document.getElementById('mpPick').classList.remove('hidden');
+    panel('talk');
+    /* The microphone spent a release underneath the wind gauge, where it was
+       drawn, measurable, and impossible to press. */
+    {
+      const t = document.getElementById('talk');
+      t.classList.remove('hidden');
+      const r = t.getBoundingClientRect();
+      const w = document.getElementById('gWind').getBoundingClientRect();
+      out.talkVsWind = {clash: !(r.right <= w.left || w.right <= r.left ||
+                                 r.bottom <= w.top || w.bottom <= r.top)};
+      t.classList.add('hidden');
+    }
+    panel('chatWrap', () => {
+      const log = document.getElementById('chatLog');
+      for(let i=0;i<8;i++){
+        const p = document.createElement('p');
+        p.className = i%2 ? 'me' : 'them';
+        p.textContent = 'a line of chat long enough to wrap on a narrow phone ' + i;
+        log.appendChild(p);
+      }
+    });
+    out.scroll = document.documentElement.scrollHeight > innerHeight + 1;
+    return out;
+  });
+  for(const [k,v] of Object.entries(panels)){
+    if(k === 'scroll') continue;
+    console.log('  ' + k.padEnd(9), JSON.stringify(v));
+    if(v.wide){ problems++; console.log('  PANEL WIDER THAN THE SCREEN: ' + k); }
+    // scrolling is fine; needing more than a screen and a half is not
+    if(v.screens > 1.5){ problems++; console.log('  PANEL NEEDS ' + v.screens + ' SCREENS: ' + k); }
+    if(v.outside){ problems++; console.log('  PANEL OUTSIDE THE STAGE: ' + k); }
+    if(v.tall){ problems++; console.log('  PANEL SWALLOWS THE PITCH: ' + k); }
+    if(v.clash){ problems++; console.log('  BURIED UNDER THE HUD: ' + k); }
+  }
+  if(panels.scroll){ problems++; console.log('  A PANEL MADE THE PAGE SCROLL'); }
   await page.close();
 }
 await browser.close();

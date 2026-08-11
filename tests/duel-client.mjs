@@ -57,6 +57,21 @@ ok('B joins it', joined.matchId === opened.matchId && joined.state === 'in_progr
 ok('both clients hold the same seed', joined.seed === opened.seed);
 ok('and the same weather', joined.weather === opened.weather);
 
+console.log('\nBOTH HERE, BOTH READY');
+/* Being paired is not being ready. Nothing opens — and no deadline runs —
+   until both have said they are there. */
+await A.evaluate(() => window.CF.net.sync());
+const preReady = await st(A);
+ok('no kick is open on a pair who have not said they are ready',
+   !preReady.live, JSON.stringify(preReady.live));
+await A.evaluate(() => window.CF.net.ready());
+const halfReady = await st(A);
+ok('one saying so is not enough', !halfReady.live, JSON.stringify(halfReady.live));
+ok('and the client knows it is waiting on the other',
+   halfReady.ready.you === true && halfReady.ready.both === false,
+   JSON.stringify(halfReady.ready));
+await B.evaluate(() => window.CF.net.ready());
+
 console.log('\nTHE SEAM');
 await A.evaluate(() => window.CF.net.sync());
 await B.evaluate(() => window.CF.net.sync());
