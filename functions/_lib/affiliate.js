@@ -115,7 +115,7 @@ const CITY_IATA = {
   'hamburg': 'HAM', 'cologne': 'CGN', 'dusseldorf': 'DUS', 'stuttgart': 'STR',
   'nuremberg': 'NUE', 'basel': 'BSL', 'salzburg': 'SZG', 'innsbruck': 'INN',
   'rotterdam': 'RTM', 'eindhoven': 'EIN', 'luxembourg': 'LUX',
-  'boston': 'BOS', 'philadelphia': 'PHL', 'atlanta': 'ATL', 'denver': 'DEN',
+  'philadelphia': 'PHL', 'atlanta': 'ATL', 'denver': 'DEN',
   'seattle': 'SEA', 'san diego': 'SAN', 'phoenix': 'PHX', 'dallas': 'DFW',
   'houston': 'HOU', 'nashville': 'BNA', 'new orleans': 'MSY',
   'calgary': 'YYC', 'ottawa': 'YOW', 'halifax': 'YHZ',

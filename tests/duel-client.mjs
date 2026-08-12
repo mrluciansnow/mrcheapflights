@@ -117,9 +117,23 @@ console.log('\nREPLAY AGREES');
 /* The point of shipping both halves: each client replays the kick through its
    own physics and must land on the server's outcome. If this ever disagrees,
    the two players are watching different matches. */
+/* The record has to carry the MATCH's conditions, and the seed above all.
+ *
+ * This check was passing by luck. It built the record from the strike and the
+ * dive alone, so CF.simulate fell back to a default seed and Clear weather
+ * while the server had simulated with the match's seed and whatever that seed
+ * drew — and the wind that comes out of it moves the ball. Whenever the wind
+ * happened not to change the outcome the check went green; the rest of the
+ * time it failed looking exactly like a parity bug in the physics, which is
+ * the one thing it exists to rule out.
+ *
+ * Reproduced against functions/_lib/sim.js directly: the same record scores a
+ * `post` with matchSeed 2886019011 and a `goal` without it. */
 const replay = p => p.evaluate(k => window.CF.simulate({
   ...k.strike, kickIndex: k.kickIndex, dive: k.dive,
-}).outcome, kA);
+  matchSeed: k.matchSeed, weather: k.weather, difficulty: k.difficulty,
+}).outcome, {...kA, matchSeed: opened.seed >>> 0,
+             weather: opened.weather, difficulty: opened.difficulty});
 const rA = await replay(A), rB = await replay(B);
 ok('A replays the server\'s outcome', rA === kA.outcome, rA + ' vs ' + kA.outcome);
 ok('B replays the same one', rB === kA.outcome, rB + ' vs ' + kA.outcome);
