@@ -127,6 +127,27 @@ ok('a line arriving while the drawer is shut raises the unread dot',
    await until(B, () => !document.getElementById('talkDot').classList.contains('hidden'),
                12000, 'the unread dot'), 'dot was hidden before: ' + unread);
 
+console.log('\nTHE SERVERS A CALL IS GIVEN');
+/* STUN alone is enough on wifi and not enough on mobile: behind carrier-grade
+   NAT the address STUN reports is not the address packets arrive from. Voice
+   shipped STUN-only, so it worked in every test and failed on 4G with nothing
+   on screen to say why. */
+const ice = await A.evaluate(async () => {
+  const r = await fetch('/api/mp/ice', {headers:{'X-CF-Device':
+    localStorage.getItem('crokerFlicks.device')}});
+  return {status: r.status, body: await r.json()};
+});
+ok('the client is told which servers to use', ice.status === 200 &&
+   Array.isArray(ice.body.iceServers) && ice.body.iceServers.length > 0,
+   JSON.stringify(ice.body));
+ok('STUN is always there', ice.body.iceServers.some(s => /^stun:/.test(
+   Array.isArray(s.urls) ? s.urls[0] : s.urls)), JSON.stringify(ice.body.iceServers));
+ok('and it says plainly whether a relay is available',
+   typeof ice.body.relay === 'boolean', JSON.stringify(ice.body.relay));
+console.log('  ..  relay configured on this deployment: ' + ice.body.relay);
+const anon = await A.evaluate(async () => (await fetch('/api/mp/ice')).status);
+ok('credentials are not handed to anyone who asks', anon === 401, String(anon));
+
 console.log('\nVOICE — a real peer connection, not just signalling');
 /* This sandbox has no audio stack: getUserMedia returns NotAllowedError here
    however Chromium is launched, with or without the fake-device flags. So the
@@ -152,6 +173,18 @@ await fakeMic(A); await fakeMic(B);
 await A.click('#bMic');
 ok('the microphone is taken', await until(A, () => window.CF.net.state.mic === 'live',
    15000, 'A microphone'), JSON.stringify((await A.evaluate(() => window.CF.net.state)).mic));
+/* The connection has to be BUILT from those servers, not from a hardcoded
+   list — that was the bug, and a fetch that succeeds while the peer ignores
+   it would look identical from outside. */
+/* `mic` goes live before the connection is built — the servers are fetched in
+   between — so this has to wait for the peer rather than read straight after. */
+await until(A, () => !!(window.CF.talk && window.CF.talk.pc), 10000, 'A peer connection');
+const used = await A.evaluate(() => {
+  const pc = window.CF.talk && window.CF.talk.pc;
+  return pc ? (pc.getConfiguration().iceServers || []).length : -1;
+});
+ok('and the peer connection was built from them', used === ice.body.iceServers.length,
+   used + ' servers on the connection, ' + ice.body.iceServers.length + ' from the API');
 
 /* The other end answers automatically when the offer arrives. */
 ok('the other end picks up', await until(B, () => window.CF.net.state.mic === 'live',

@@ -6640,6 +6640,8 @@ function firstTimeThen(fn){
 const Talk = {
   open: false, mic: 'off',     // off | asking | live | denied | failed
   pc: null, local: null, audio: null,
+  ice: null,                   // {servers, relay} from /api/mp/ice, once per match
+  restarted: false, dropT: null,
   polite: false,               // the side that yields in a glare-free negotiation
   unread: 0, log: [],
 };
@@ -6708,14 +6710,32 @@ async function talkMic(){
   Talk.mic = 'live';
   talkPaint();
   talkLine('sys', 'microphone on');
+  const ice = await talkIce();
+  if(!ice.relay) talkLine('sys', 'no relay configured — may not connect on mobile data');
   talkConnect(true);
+}
+/* The servers this call may use, asked for once per match.
+ *
+ * Hardcoding STUN meant voice worked on wifi and failed on mobile: behind the
+ * carrier-grade NAT most phones sit behind, the address STUN reports is not
+ * the address packets arrive from, and there is no way through without a
+ * relay. /api/mp/ice hands back a relay when one is configured and says so
+ * when there is not, which is what lets a failure be explained instead of
+ * being a microphone icon that goes nowhere. */
+async function talkIce(){
+  if(Talk.ice) return Talk.ice;
+  try{
+    const r = await mpFetch('/api/mp/ice');
+    Talk.ice = {servers: r.iceServers || [], relay: !!r.relay};
+  }catch{
+    Talk.ice = {servers: [{urls:'stun:stun.cloudflare.com:3478'}], relay: false};
+  }
+  return Talk.ice;
 }
 function talkPeer(){
   if(Talk.pc) return Talk.pc;
-  const pc = new RTCPeerConnection({
-    iceServers: [{urls:'stun:stun.cloudflare.com:3478'},
-                 {urls:'stun:stun.l.google.com:19302'}],
-  });
+  const ice = Talk.ice || {servers: [{urls:'stun:stun.cloudflare.com:3478'}], relay: false};
+  const pc = new RTCPeerConnection({ iceServers: ice.servers });
   pc.onicecandidate = e => {
     if(e.candidate) netSay('rtc', JSON.stringify({ice:e.candidate})).catch(()=>{});
   };
@@ -6730,10 +6750,37 @@ function talkPeer(){
     Talk.audio.play().catch(()=> talkLine('sys', 'tap the screen to hear them'));
     talkLine('sys', 'you are connected');
   };
+  /* A failure that says which failure it was.
+   *
+   * 'disconnected' is often temporary — a phone changing cell, a moment of
+   * packet loss — and recovers on its own, so it is given a few seconds
+   * before anything is torn down. 'failed' is terminal, and the honest thing
+   * to say depends on whether there was a relay available: without one this
+   * is the expected outcome on a mobile network rather than a mystery. */
+  pc.oniceconnectionstatechange = () => {
+    if(pc.iceConnectionState !== 'failed') return;
+    if(!Talk.restarted && pc.restartIce){
+      Talk.restarted = true;
+      talkLine('sys', 'voice dropped — trying again');
+      try{ pc.restartIce(); talkConnect(true); return; }catch{}
+    }
+    talkLine('sys', (Talk.ice && Talk.ice.relay)
+      ? 'could not connect the call'
+      : 'could not connect — this network needs a relay the game has not got');
+    talkHangUp();
+  };
   pc.onconnectionstatechange = () => {
-    if(pc.connectionState === 'failed' || pc.connectionState === 'disconnected'){
-      talkLine('sys', 'voice dropped');
-      talkHangUp();
+    clearTimeout(Talk.dropT);
+    if(pc.connectionState === 'connected'){ Talk.restarted = false; return; }
+    if(pc.connectionState === 'failed'){ talkLine('sys', 'voice dropped'); talkHangUp(); }
+    else if(pc.connectionState === 'disconnected'){
+      // give it a moment to come back before declaring it dead
+      Talk.dropT = setTimeout(() => {
+        if(Talk.pc && Talk.pc.connectionState === 'disconnected'){
+          talkLine('sys', 'voice dropped');
+          talkHangUp();
+        }
+      }, 6000);
     }
   };
   Talk.pc = pc;
@@ -6755,6 +6802,9 @@ async function talkConnect(initiator){
    is both sides offering at once. Side 'a' is the polite one and backs down. */
 async function talkSignal(raw){
   let m; try{ m = JSON.parse(raw); }catch{ return; }
+  /* Before talkPeer(), which reads it: the answering side builds its
+     connection here and would otherwise do so with no relay in hand. */
+  await talkIce();
   const pc = talkPeer();
   Talk.polite = Net.match && Net.match.side === 'a';
   try{
@@ -6787,6 +6837,7 @@ async function talkSignal(raw){
   }catch(e){ /* a failed negotiation ends as no voice, not as a broken game */ }
 }
 function talkHangUp(){
+  clearTimeout(Talk.dropT); Talk.dropT = null; Talk.restarted = false;
   if(Talk.pc){ try{ Talk.pc.close(); }catch{} Talk.pc = null; }
   if(Talk.local){ for(const t of Talk.local.getTracks()) t.stop(); Talk.local = null; }
   if(Talk.audio){ Talk.audio.srcObject = null; Talk.audio = null; }
@@ -6803,6 +6854,7 @@ function talkPaint(){
 }
 function talkReset(){
   talkHangUp();
+  Talk.ice = null;                    // credentials are short-lived and per match
   Talk.log = []; Talk.unread = 0;
   $('chatLog').innerHTML = '';
   $('talkDot').classList.add('hidden');

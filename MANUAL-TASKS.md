@@ -173,3 +173,60 @@ cannot serve. Claude can run that step and read the logs.
 ---
 Done: Google Search Console (both domains verified + sitemaps submitted),
 Travelpayouts marker corrected (752435), SerpApi + TP token armed.
+
+---
+
+## Voice in online duels needs a TURN relay (5 minutes, Cloudflare dashboard)
+
+Everything in the game is done and tested. This is the one part that needs
+your account, and until it is set **voice will connect on wifi and fail on
+mobile data** — the game now says so on screen rather than leaving a dead
+microphone, but it will still fail.
+
+Why: STUN only tells a browser its own public address. Behind the
+carrier-grade NAT most phones sit behind, that address is not the one packets
+arrive from, so the two players never find each other. A TURN server relays
+between them. It cannot listen — WebRTC media is encrypted end to end with
+DTLS-SRTP and a relay only ever sees ciphertext.
+
+Cloudflare Realtime TURN is the natural fit (the site is already on Pages and
+D1) and has a free tier well beyond what this game will use.
+
+1. Cloudflare dashboard → **Realtime** → **TURN** → create a key.
+   Copy the **Key ID** and the **API token**.
+2. Add both as secrets on the Pages project — Settings → Variables and
+   Secrets, for Production *and* Preview:
+
+   ```
+   TURN_KEY_ID     = <the key id>
+   TURN_KEY_TOKEN  = <the api token>
+   ```
+
+   Or from the command line:
+
+   ```
+   npx wrangler pages secret put TURN_KEY_ID --project-name=mrcheap
+   npx wrangler pages secret put TURN_KEY_TOKEN --project-name=mrcheap
+   ```
+
+3. Redeploy (`npm run release`) and check:
+
+   ```
+   Invoke-RestMethod https://mrcheapflights.ie/api/mp/ice
+   ```
+
+   Wants `relay: true` and a `turn:` entry in `iceServers`. It needs the
+   `X-CF-Device` header, so easiest is to open a match and watch the chat log
+   — the line "no relay configured" stops appearing.
+
+**Any other TURN server works too.** If you would rather self-host coturn or
+use a different provider, set these instead and the Cloudflare path is skipped:
+
+```
+TURN_URL   = turn:your.relay:3478      (comma-separate for several)
+TURN_USER  = username
+TURN_PASS  = password
+```
+
+Nothing is hardcoded and no third-party relay ships by default — routing
+players' traffic through somebody else's server is your call, not mine.
