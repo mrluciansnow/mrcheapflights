@@ -65,6 +65,7 @@ const MUST_SHIP = [
   'functions/api/mp/leave.js',
   'functions/api/mp/again.js',
   'functions/api/mp/name.js',
+  'functions/api/mp/ice.js',      // no relay config means voice dies on mobile
 ];
 for (const required of MUST_SHIP) {
   if (!existsSync(join(dist, required))) {
