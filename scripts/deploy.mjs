@@ -86,11 +86,25 @@ for (const forbidden of ['.dev.vars', 'wrangler.toml', 'package.json']) {
 
 const branch = process.argv.includes('--preview') ? 'preview' : 'main';
 console.log(`🚀 Deploying .dist/ to ${branch} …`);
-execFileSync(process.execPath,
-  wranglerArgv(['pages', 'deploy', '.dist', '--project-name=mrcheap',
-                `--branch=${branch}`, '--commit-dirty=true']),
-  { cwd: root, stdio: 'inherit' }
-);
+/* Two failures live below this line and they mean opposite things: wrangler
+   refusing to upload (nothing is live, the old build still serves) and the
+   smoke suite going red afterwards (the new build IS live and something on it
+   is wrong). They used to leave by the same door, so the release script said
+   "the deploy IS live" over a build that had never happened. Exit 1 for the
+   first, 2 for the second, and let the caller tell the difference. */
+try {
+  execFileSync(process.execPath,
+    wranglerArgv(['pages', 'deploy', '.dist', '--project-name=mrcheap',
+                  `--branch=${branch}`, '--commit-dirty=true']),
+    { cwd: root, stdio: 'inherit' }
+  );
+} catch {
+  console.error('\n💥 THE DEPLOY DID NOT HAPPEN. Nothing was uploaded and the');
+  console.error('   previous build is still serving. See wrangler\'s errors above —');
+  console.error('   an unresolved import anywhere under functions/ fails the whole');
+  console.error('   build, including files this change never touched.');
+  process.exit(1);
+}
 console.log('✅ Deployed (clean — no secrets/tooling uploaded).');
 
 // Self-verify. Deploys used to be fire-and-forget: the smoke suite existed but
@@ -104,8 +118,8 @@ if (!process.argv.includes('--no-verify') && branch === 'main') {
     execFileSync(process.execPath, ['scripts/smoke.mjs'], { cwd: root, stdio: 'inherit' });
   } catch {
     console.error('\n⚠️  Smoke checks FAILED against production (see above).');
-    console.error('   The deploy is live — decide whether to fix forward or roll back:');
+    console.error('   The deploy IS live — decide whether to fix forward or roll back:');
     console.error('   npx wrangler pages deployment list --project-name=mrcheap');
-    process.exitCode = 1;
+    process.exitCode = 2;          // live, but red — see the note above
   }
 }
