@@ -205,12 +205,25 @@ async function takeKick(i){
   const last = pts[pts.length-1];
   await at('mouseup', last[0], last[1]);
 }
+/* A promotion holds the game until it is acknowledged, and it lands mid-match
+   whenever the run happens to cross a rank threshold — so the next click hits
+   the overlay instead of the pitch and the match never finishes. A player taps
+   CARRY ON; so does this. It was an intermittent failure that said "the match
+   reaches full time" and meant nothing of the kind. */
+const carryOn = async () => {
+  const up = await page.evaluate(() =>
+    !document.getElementById('ovRank').classList.contains('hidden'));
+  if(up){ await page.click('#bRankOn'); await page.waitForTimeout(250); }
+};
 let turn = await waitTurn(), kicks = 0;
 for(; kicks<30 && !turn.end && !turn.timeout; kicks++){
+  await carryOn();
   await takeKick(kicks);
   await page.waitForTimeout(200);
+  await carryOn();
   turn = await waitTurn();
 }
+await carryOn();
 const ended = await page.evaluate(()=>!document.getElementById('ovEnd').classList.contains('hidden'));
 log('  (took ' + kicks + ' kicks)');
 ok(ended, 'the match reaches full time');
