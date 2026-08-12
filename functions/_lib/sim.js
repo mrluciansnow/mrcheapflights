@@ -114,10 +114,25 @@ export function simulate(rec){
   const elev  = rec.elev === undefined ? power : clamp(rec.elev, 0, 1);
   const slip  = gRand(-0.17, 0.17) * (0.30 + power*0.85);
   const aimM  = (rec.aimM || 0) + slip;
+  /* The contact slip was LATERAL ONLY, so height at the line was a pure
+     function of elevation, power and wind — perfectly repeatable. That left a
+     band of the goal where every shot hit the crossbar, 400 out of 400,
+     because a ball whose centre passes within a ball-and-a-bar of 2.5m always
+     touches it and nothing ever moved it off that line. A deterministic 0%
+     strip through the middle of the elevation control is a cliff with no
+     feedback.
+
+     A struck ball misses vertically as well as sideways, so it does here now.
+     Derived from the SAME draw rather than a new one: the seeded stream's
+     order is a contract — wind, keeper reaction, keeper lean, contact slip,
+     keeper read — and inserting a draw would shift everything after it and
+     re-score every stored replay. `dsin` of the slip decorrelates it without
+     costing a number, and is already on the allowed list for this path. */
+  const elevSlip = dsin(slip * 91.7) * 0.012 * (0.30 + power*0.85);
 
   // launch
   const tR = clamp((shotDist-CFG.PEN_Z)/34, 0, 1);
-  const th = lerp(lerp(8,22,tR), lerp(26,44,tR), elev) * D_PI/180;
+  const th = lerp(lerp(8,22,tR), lerp(26,44,tR), clamp(elev + elevSlip, 0, 1)) * D_PI/180;
   const S  = lerp(lerp(13,20,tR), lerp(27,28,tR), power) * (1 - weather.wet*0.07);
   const hyp = dhyp2(aimM, shotDist);
   const ch  = S*dcos(th);
