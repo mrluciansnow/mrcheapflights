@@ -1050,7 +1050,7 @@ if(typeof CanvasRenderingContext2D !== 'undefined' &&
    reset, and read by the renderer rather than baked into it.
    ------------------------------------------------------------------ */
 const OPT_KEY = 'crokerFlicks.opts';
-let opts = {sound:true, haptics:true, preview:true, gfx:'high', lefty:false,
+let opts = {sound:true, music:true, haptics:true, preview:true, gfx:'high', lefty:false,
             goalie:true};
 function loadOpts(){
   try{ const r = localStorage.getItem(OPT_KEY); if(r) opts = Object.assign(opts, JSON.parse(r)); }
@@ -1541,7 +1541,13 @@ function drawMarkings(g){
    GOAL — 3D net mesh with sag + impact ripple, shaded posts
    ================================================================== */
 const HW = CFG.GOAL_W/2;
-let ripple = {t:0, x:0, y:0};
+/* The ball goes into the net in a DIRECTION. A radial pocket reads as a
+   drumskin being struck from straight on however the ball actually arrived,
+   which is wrong on every shot but the one down the middle. `dx/dy` is the
+   unit heading at impact and `pace` is how hard, and both stretch the pocket
+   along the way it was travelling. Rendering only — nothing here is on the
+   outcome path. */
+let ripple = {t:0, x:0, y:0, dx:0, dy:0, pace:0.5};
 
 /* net surfaces are parameterised (u,v) -> world, so one mesh routine
    draws the back, roof and both sides with correct perspective. */
@@ -1568,14 +1574,24 @@ function netPoint(panel, u, v){
   wz -= sag*0.25;
   // impact ripple
   if(ripple.t>0 && panel==='back'){
-    const d = Math.hypot(wx-ripple.x, wy-ripple.y);
+    /* Measured in a frame stretched along the heading, so the pocket is
+       dragged out behind the impact instead of being a circle. */
+    const rx = wx - ripple.x, ry = wy - ripple.y;
+    const along  = rx*ripple.dx + ry*ripple.dy;
+    const across = rx*ripple.dy - ry*ripple.dx;
+    const stretch = 1 + 1.1*ripple.pace;
+    const d = Math.hypot(along/stretch, across);
     /* a pocket that punches in and settles, plus a shiver running out of it —
        the ball goes INTO the net rather than bouncing off a drumskin */
     const decay  = Math.exp(-ripple.t*1.5);
     const pocket = Math.exp(-d*d/0.85) * decay * (0.62 - 0.20*Math.exp(-ripple.t*9));
     const shiver = Math.exp(-d*d/2.4) * Math.exp(-ripple.t*4.2) * Math.sin(ripple.t*20 - d*3) * 0.16;
-    const amp = pocket + shiver;
-    wz -= amp; wy += amp*0.30;
+    /* Harder shots bury deeper, and the net is dragged the way the ball went
+       rather than only inwards. */
+    const amp = (pocket + shiver) * (0.65 + 0.7*ripple.pace);
+    wz -= amp;
+    wy += amp*0.30 + amp*ripple.dy*0.22;
+    wx += amp*ripple.dx*0.22;
   }
   return prj(wx,wy,wz);
 }
@@ -2537,6 +2553,148 @@ function startAmbience(){
   ambSrc.connect(bp); bp.connect(ambGain); ambGain.connect(a.destination);
   ambSrc.start();
 }
+/* ==================================================================
+   MUSIC
+   ==================================================================
+   Generated, not shipped. The game is one file with no external requests —
+   that is what lets it be dropped anywhere and what keeps the deploy an
+   allowlist — so a music track would have to be an asset the page fetches,
+   and there is no such asset. WebAudio can play it instead.
+
+   What it plays: a slow pulse under a drone, with a sparse line drawn from
+   the D dorian set — the mode most of the tunes anybody would hum at a match
+   are in. Notes come from a fixed sequence rather than a random one, because
+   music that re-rolls every bar is noise with rhythm.
+
+   Scheduled ahead of time against the audio clock, never on a frame. A tab in
+   the background stops calling requestAnimationFrame and would otherwise take
+   the music with it, or worse, resume it as a pile of overdue notes.
+   ================================================================== */
+const MUSIC = {
+  bpm: 84,
+  /* D dorian, two octaves, as scale degrees — the melody walks this rather
+     than picking freely, so it stays a tune. */
+  root: 146.83,                                   // D3
+  steps: [0, 2, 3, 5, 7, 9, 10, 12, 14, 15, 17, 19],
+  line: [0, 2, 4, 2, 7, 5, 4, 2, 0, 4, 7, 9, 7, 5, 4, 2],
+};
+const Music = {
+  on: false, gain: null, bus: null, timer: null,
+  at: 0, step: 0, duck: 1, want: 0.14,
+};
+const musicNote = i => MUSIC.root * Math.pow(2, MUSIC.steps[i % MUSIC.steps.length] / 12);
+
+function musicStart(){
+  const a = ac();
+  if(!a || Music.on) return;
+  /* Not while the context is suspended. Autoplay policy leaves it that way
+     until a gesture, and a scheduler running against a frozen clock queues
+     everything at the same instant — which arrives as one chord the moment
+     somebody taps. startMatch calls back here once it has resumed. */
+  if(a.state === 'suspended') return;
+  Music.bus = a.createGain();
+  /* One filter over everything: music sitting behind a crowd wants its top
+     end out of the way of the whistle and the strike. */
+  const lp = a.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 2600; lp.Q.value = 0.4;
+  Music.gain = a.createGain();
+  Music.gain.gain.value = 0;
+  Music.bus.connect(lp); lp.connect(Music.gain); Music.gain.connect(a.destination);
+  Music.on = true; Music.step = 0; Music.at = a.currentTime + 0.08;
+  musicLevel(0.5);                              // fade in rather than arrive
+  Music.timer = setInterval(musicPump, 120);
+  musicPump();
+}
+function musicStop(fade){
+  if(!Music.on) return;
+  const a = ac();
+  clearInterval(Music.timer); Music.timer = null;
+  if(Music.gain && a){
+    const g = Music.gain.gain, t = a.currentTime;
+    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t);
+    g.linearRampToValueAtTime(0, t + (fade === 0 ? 0.01 : 0.35));
+  }
+  const bus = Music.bus, gain = Music.gain;
+  setTimeout(() => {
+    try{ if(bus) bus.disconnect(); if(gain) gain.disconnect(); }catch{}
+  }, 450);
+  Music.on = false; Music.bus = null; Music.gain = null;
+}
+/* The one place the level is decided, so ducking, muting and the setting
+   cannot each have their own opinion about it. */
+function musicLevel(ramp){
+  if(!Music.on || !Music.gain) return;
+  const a = ac(); if(!a) return;
+  const target = (muted || !opts.music) ? 0 : Music.want * Music.duck;
+  const g = Music.gain.gain, t = a.currentTime;
+  g.cancelScheduledValues(t);
+  g.setValueAtTime(g.value, t);
+  g.linearRampToValueAtTime(target, t + (ramp === undefined ? 0.25 : ramp));
+}
+/* ---- ducking ----
+ * Somebody is talking. Music that keeps its level over a voice is music that
+ * gets turned off entirely, so it steps back to a quarter and comes forward
+ * again when the call ends. Not a stop: a duck, because the alternative is a
+ * silence that feels like something broke.
+ */
+function musicDuck(on){
+  Music.duck = on ? 0.25 : 1;
+  musicLevel(on ? 0.25 : 0.9);                 // down quickly, back up slowly
+}
+
+/* Schedule whatever falls inside the next second. */
+function musicPump(){
+  const a = ac();
+  if(!a || !Music.on) return;
+  const beat = 60 / MUSIC.bpm;
+  while(Music.at < a.currentTime + 1.0){
+    const t = Music.at, s = Music.step;
+
+    // the pulse: a soft thump on every beat, harder on the one
+    const hit = (s % 4) === 0;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(hit ? 82 : 66, t);
+    o.frequency.exponentialRampToValueAtTime(hit ? 44 : 40, t + 0.16);
+    g.gain.setValueAtTime(hit ? 0.5 : 0.26, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    o.connect(g); g.connect(Music.bus); o.start(t); o.stop(t + 0.26);
+
+    // the drone: two voices a fifth apart, once a bar, long and quiet
+    if((s % 8) === 0){
+      for(const mul of [1, 1.4983]){
+        const d = a.createOscillator(), dg = a.createGain();
+        d.type = 'triangle';
+        d.frequency.setValueAtTime(MUSIC.root * 0.5 * mul, t);
+        dg.gain.setValueAtTime(0.0001, t);
+        dg.gain.linearRampToValueAtTime(0.09, t + 0.6);
+        dg.gain.linearRampToValueAtTime(0.0001, t + beat * 8);
+        d.connect(dg); dg.connect(Music.bus); d.start(t); d.stop(t + beat * 8 + 0.1);
+      }
+    }
+
+    // the line: one note every other beat, walking the written sequence
+    if((s % 2) === 0){
+      const n = MUSIC.line[(s / 2) % MUSIC.line.length];
+      const m = a.createOscillator(), mg = a.createGain();
+      m.type = 'triangle';
+      m.frequency.setValueAtTime(musicNote(n) * 2, t);
+      mg.gain.setValueAtTime(0.0001, t);
+      mg.gain.linearRampToValueAtTime(0.13, t + 0.04);
+      mg.gain.exponentialRampToValueAtTime(0.0001, t + beat * 1.4);
+      m.connect(mg); mg.connect(Music.bus); m.start(t); m.stop(t + beat * 1.6);
+    }
+
+    Music.at += beat;
+    Music.step = (s + 1) % 64;
+  }
+}
+/* Follow the settings wherever they are changed from. */
+function musicApply(){
+  if(opts.music && !muted){ musicStart(); musicLevel(); }
+  else if(Music.on && (!opts.music || muted)) musicStop();
+}
+
 /* push the crowd up for a moment — 1 is a full roar */
 function crowdSwell(amount, hold){
   if(!ambGain || muted) return;
@@ -3337,7 +3495,11 @@ function award(kind){
     SFX.net(); SFX.roar(true); raiseFlags(2); burstConfetti(); buzz([0,26,50,70]);
     crowdReact(1);
     shake=13; flash=.5; zoomTarget=1.13;
-    ripple = {t:0.001, x:clamp(ball.wx,-HW+0.2,HW-0.2), y:Math.max(0.3,ball.wy)};
+    {
+      const sp = dhyp3(ball.vx, ball.vy, ball.vz) || 1;
+      ripple = {t:0.001, x:clamp(ball.wx,-HW+0.2,HW-0.2), y:Math.max(0.3,ball.wy),
+                dx: ball.vx/sp, dy: ball.vy/sp, pace: clamp(sp/26, 0, 1)};
+    }
   } else if(kind==='point'){
     SFX.point(); SFX.roar(false); raiseFlags(1); shake=4; crowdReact(0.45);
   } else if(kind==='twopoint'){
@@ -3950,6 +4112,7 @@ function applyOpts(){
   muted = !opts.sound;
   $('bMute').textContent = muted ? '\uD83D\uDD07' : '\uD83D\uDD0A';
   if(ambGain) ambGain.gain.value = muted ? 0 : ambBase;
+  musicApply();                      // one switch for sound, one for music
   document.body.classList.toggle('lefty', !!opts.lefty);
   saveOpts();
   if(W) resize();                    // quality changes the render target
@@ -3957,6 +4120,8 @@ function applyOpts(){
 const OPT_ROWS = [
   {n:'Sound',       d:'Crowd, whistle, and the net',
    get:()=>opts.sound,   flip:()=>{ opts.sound=!opts.sound; }},
+  {n:'Music',       d:'A bed under the match. Steps back on its own while somebody is talking.',
+   get:()=>opts.music,   flip:()=>{ opts.music=!opts.music; }},
   {n:'Vibration',   d:'A buzz on contact and on a score',
    get:()=>opts.haptics, flip:()=>{ opts.haptics=!opts.haptics; buzz(20); }},
   {n:'Aim line',    d:'Shows where the ball is heading. Turn it off and every score pays 25% more points.',
@@ -5286,6 +5451,7 @@ function startMatch(){
   $('ovPass').classList.add('hidden');
   const a=ac(); if(a&&a.state==='suspended') a.resume();
   startAmbience();
+  musicApply();
   updateRoundBar();
   newShot('p');                            // newShot rebuilds the scene
 }
@@ -6709,6 +6875,7 @@ async function talkMic(){
   }
   Talk.mic = 'live';
   talkPaint();
+  musicDuck(true);                    // step the music back behind a voice
   talkLine('sys', 'microphone on');
   const ice = await talkIce();
   if(!ice.relay) talkLine('sys', 'no relay configured — may not connect on mobile data');
@@ -6821,7 +6988,8 @@ async function talkSignal(raw){
         if(!Talk.local && Talk.mic === 'off'){
           try{
             Talk.local = await navigator.mediaDevices.getUserMedia({audio:true});
-            Talk.mic = 'live'; talkPaint(); talkLine('sys', 'microphone on');
+            Talk.mic = 'live'; talkPaint(); musicDuck(true);
+            talkLine('sys', 'microphone on');
           }catch{ Talk.mic = 'denied'; talkPaint();
                   talkLine('sys', 'answering muted — they can talk to you'); }
         }
@@ -6842,6 +7010,7 @@ function talkHangUp(){
   if(Talk.local){ for(const t of Talk.local.getTracks()) t.stop(); Talk.local = null; }
   if(Talk.audio){ Talk.audio.srcObject = null; Talk.audio = null; }
   if(Talk.mic === 'live'){ Talk.mic = 'off'; talkLine('sys', 'microphone off'); }
+  musicDuck(false);                   // and back up when the call ends
   talkPaint();
 }
 function talkPaint(){
@@ -7037,6 +7206,15 @@ if(new URLSearchParams(location.search).has('debug')){
        rather than merely that signalling was delivered — the two are very
        different claims and only one of them was ever checked */
     talk: Talk,
+    /* the music controls, so a test can drive the same switches a player does */
+    musicDuck: on => musicDuck(on),
+    audioContext: () => ac(),
+    applyOpts: () => applyOpts(),
+    opts,
+    /* the music bus, so a test can read the level rather than listen to it */
+    get music(){ return {on: Music.on, duck: Music.duck, want: Music.want,
+                         gain: Music.gain ? +Music.gain.gain.value.toFixed(4) : null,
+                         option: !!opts.music, muted: muted}; },
     /* the drawn keeper, so a test can prove the striker is shown a lean and
        never a dive */
     get keeper(){ return keeper ? {committed: keeper.committed, arm: keeper.arm,
