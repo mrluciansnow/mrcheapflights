@@ -67,15 +67,30 @@ log('\n— settings —');
 await page.click('#bSet');
 ok(!(await page.locator('#ovSet').getAttribute('class')).includes('hidden'), 'settings screen opens');
 const rowCount = await page.locator('#optList .opt').count();
-ok(rowCount === 6, 'six settings rows (five toggles + graphics)', 'got ' + rowCount);
+ok(rowCount >= 6, 'the settings screen is populated', 'got ' + rowCount);
+/* Addressed BY NAME, not by index. Positional selectors here meant that
+   adding one row — Music — failed three unrelated assertions and said
+   nothing about which setting had actually moved. */
+const row = name => page.locator('#optList .opt', { hasText: name }).first();
+for (const n of ['Sound', 'Music', 'Vibration', 'Aim line', 'Left-handed']) {
+  ok(await row(n).count() > 0, 'settings offers "' + n + '"');
+}
 // flip the aim line off and confirm it persists to storage
-await page.locator('#optList .opt').nth(2).click();
+await row('Aim line').click();
 const previewOff = await page.evaluate(()=>{
   const o = JSON.parse(localStorage.getItem('crokerFlicks.opts'));
   return o.preview === false;
 });
 ok(previewOff, 'aim-line toggle writes through to storage');
-await page.locator('#optList .opt').nth(2).click();     // back on
+await row('Aim line').click();                          // back on
+
+// music has a switch of its own, separate from Sound
+await row('Music').click();
+ok(await page.evaluate(()=>{
+  const o = JSON.parse(localStorage.getItem('crokerFlicks.opts'));
+  return o.music === false && o.sound === true;
+}), 'music can be stopped without silencing the game');
+await row('Music').click();
 // graphics cycles
 const g1 = await page.textContent('#optList .opt:last-child .optv');
 await page.click('#optList .opt:last-child');
@@ -84,9 +99,9 @@ ok(g1 !== g2, 'graphics setting cycles', g1 + ' -> ' + g2);
 await page.click('#optList .opt:last-child');
 await page.click('#optList .opt:last-child');           // back to HIGH
 // left-handed moves the furniture
-await page.locator('#optList .opt').nth(4).click();
+await row('Left-handed').click();
 ok(await page.evaluate(()=>document.body.classList.contains('lefty')), 'left-handed flips the layout');
-await page.locator('#optList .opt').nth(4).click();
+await row('Left-handed').click();
 await page.click('#bSetClose');
 
 log('\n— trophy cabinet —');
