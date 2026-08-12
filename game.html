@@ -3408,7 +3408,12 @@ function fire(){
   // contact is never perfect — harder strikes stray more
   // a placed shot should be placeable; a rocket should not be
   const slip = gRand(-0.17, 0.17) * (0.30 + power*0.85);
-  launchBall(power, aimM + slip, elev);
+  /* Vertical too — see the note in functions/_lib/sim.js. The slip was
+     lateral only, which left a band of the goal that hit the crossbar every
+     single time because nothing ever moved a shot off its line vertically.
+     Derived from the same draw so the seeded stream's order is untouched. */
+  const elevSlip = dsin(slip * 91.7) * 0.012 * (0.30 + power*0.85);
+  launchBall(power, aimM + slip, clamp(elev + elevSlip, 0, 1));
   state = ST.FLIGHT; flightT = 0;
   zoomTarget = 1.07;
   // the camera flinches along the line of the strike, then settles
@@ -4650,16 +4655,32 @@ function drawAimReticle(){
     ctx.restore();
   }
 
-  // how far contact can throw it off at this power, drawn to scale
+  /* How far contact can throw it off at this power, drawn to scale — in BOTH
+     axes now. It showed a horizontal bar only, which told a player about the
+     sideways uncertainty and nothing about the vertical, so a shot that
+     clipped the crossbar looked like the game changing its mind. There is
+     real vertical scatter (see the contact slip) and this is it. */
   const spread = 0.17 * (0.30 + power*0.85);
+  const vSpread = 0.012 * (0.30 + power*0.85) * 3.6;   // elev slip, as metres of height
   const qL = prj(last.x - spread, last.y, last.z);
   const qR = prj(last.x + spread, last.y, last.z);
+  const qT = prj(last.x, last.y + vSpread, last.z);
+  const qB = prj(last.x, last.y - vSpread, last.z);
   ctx.save();
   ctx.strokeStyle = 'rgba(255,255,255,.30)'; ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(qL.x, qL.y - 7); ctx.lineTo(qL.x, qL.y + 7);
   ctx.moveTo(qL.x, qL.y);     ctx.lineTo(qR.x, qR.y);
   ctx.moveTo(qR.x, qR.y - 7); ctx.lineTo(qR.x, qR.y + 7);
+  ctx.moveTo(qT.x - 7, qT.y); ctx.lineTo(qT.x + 7, qT.y);
+  ctx.moveTo(qT.x, qT.y);     ctx.lineTo(qB.x, qB.y);
+  ctx.moveTo(qB.x - 7, qB.y); ctx.lineTo(qB.x + 7, qB.y);
+  ctx.stroke();
+  /* the region it could actually land in, faintly, so the shape of the risk
+     is readable at a glance rather than having to be inferred from four ticks */
+  ctx.strokeStyle = 'rgba(255,255,255,.14)';
+  ctx.beginPath();
+  ctx.ellipse(q.x, q.y, Math.abs(qR.x-qL.x)/2, Math.abs(qB.y-qT.y)/2, 0, 0, 6.283);
   ctx.stroke();
 
   // the crosshair itself
@@ -7115,7 +7136,9 @@ if(new URLSearchParams(location.search).has('debug')){
       curl = rec.curl||0;
       ball = newBall();
       const slip = gRand(-0.17,0.17)*(0.30+rec.power*0.85);
-      launchBall(rec.power, (rec.aimM||0) + slip, rec.elev);
+      const elevSlip = dsin(slip * 91.7) * 0.012 * (0.30 + rec.power*0.85);
+      launchBall(rec.power, (rec.aimM||0) + slip,
+                 clamp((rec.elev === undefined ? rec.power : rec.elev) + elevSlip, 0, 1));
       let t=0, pz, px, py, pa, res='short';
       for(let i=0;i<900;i++){
         pz=ball.wz; px=ball.wx; py=ball.wy; pa=wall?alongShot(ball):0;
