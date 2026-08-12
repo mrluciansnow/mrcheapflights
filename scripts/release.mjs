@@ -46,11 +46,22 @@ step(2, 'deploying the site');
 let siteRed = false;
 try {
   node([join('scripts', 'deploy.mjs'), ...(PREVIEW ? ['--preview'] : [])]);
-} catch {
-  siteRed = true;
-  console.error('\n⚠️  The site smoke checks came back red (see above).');
-  console.error('   The deploy IS live. Carrying on to check the online half,');
-  console.error('   which is a separate question — this run will still fail at the end.');
+} catch (e) {
+  /* Exit 2 means it went live and the site checks are red — a real problem,
+     but a different one, and no reason not to go on and ask whether online is
+     serving. Anything else means the upload never happened, and carrying on
+     to health-check the OLD build would report success for a deploy that did
+     not occur. That is exactly what this said the first time it happened. */
+  if (e && e.status === 2) {
+    siteRed = true;
+    console.error('\n⚠️  The site smoke checks came back red (see above).');
+    console.error('   The deploy IS live. Carrying on to check the online half,');
+    console.error('   which is a separate question — this run will still fail at the end.');
+  } else {
+    console.error('\n❌  Stopping: nothing was deployed, so there is nothing new to check.');
+    console.error('    Whatever was live before still is. Fix the build and run again.');
+    process.exit(1);
+  }
 }
 
 /* ---------------------------------------------------------------- 3 ---
