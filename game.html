@@ -341,6 +341,12 @@ body.dragging .betbar,body.dragging .prompt,body.dragging .comm{pointer-events:n
 .netwarn.show{opacity:.95;transform:translateY(0)}
 /* Below the wind gauge, not beside it — at 104px the microphone sat underneath
    the gauge and could not be pressed. */
+/* `.hud` is pointer-events:none — everything inside it that a finger is meant
+   to reach has to opt back in, as .mute, .pausebtn and .spotbtn all do. These
+   did not, so the microphone could not be pressed, chat could not be opened,
+   and the box could not be typed in: the whole feature was inert on screen
+   while every test drove it through the debug API and passed. */
+.talk,.chat{pointer-events:auto}
 .talk{position:absolute;right:8px;top:162px;display:flex;flex-direction:column;
   gap:6px;z-index:5}
 .tbtn{width:34px;height:34px;border-radius:50%;border:1px solid rgba(255,255,255,.22);
@@ -6241,8 +6247,13 @@ function netBeginKick(live){
   if(!$('ovOnline').classList.contains('hidden')){
     $('ovOnline').classList.add('hidden');
     $('mpReady').classList.add('hidden');
-    talkShow(true);
   }
+  /* Unconditionally, and driven by "there is a kick in front of me" rather
+     than by whether an overlay happened to be open. Tying it to the lobby
+     meant any route into a match that did not go through that screen left a
+     player with no way to talk and nothing on screen to suggest there was
+     one. */
+  talkShow(true);
   netForced = null;
   netMsg = '';
   netTell = null;                             // last kick's read is not this one's
@@ -6970,6 +6981,10 @@ if(new URLSearchParams(location.search).has('debug')){
     /* so the layout probe can measure a card that is otherwise only ever seen
        on somebody's first online match */
     tutorial: (i) => { tutAt = Math.max(0, Math.min(TUT.length-1, i|0)); tutPaint(); },
+    /* the live peer connection, so a test can prove voice actually CONNECTS
+       rather than merely that signalling was delivered — the two are very
+       different claims and only one of them was ever checked */
+    talk: Talk,
     /* the drawn keeper, so a test can prove the striker is shown a lean and
        never a dive */
     get keeper(){ return keeper ? {committed: keeper.committed, arm: keeper.arm,
