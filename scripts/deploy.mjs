@@ -44,9 +44,59 @@ for (const f of SERVED_FILES) {
   if (existsSync(src)) { cpSync(src, join(dist, f)); staged++; }
   else console.warn(`   (missing, skipped) ${f}`);
 }
+/* Directories are staged from GIT, not from the working tree.
+ *
+ * `functions/` used to be copied wholesale, which meant anything sitting in
+ * that folder shipped — including a half-finished file somebody else was
+ * mid-way through writing. Pages compiles every function together, so one
+ * unresolved import in a file this project has never heard of fails the whole
+ * build and takes the game down with it. That happened twice.
+ *
+ * Tracked files only. A file that is not committed is not part of the project
+ * yet, and a deploy should be reproducible from what is in the repository
+ * rather than from whatever happens to be on one machine. Modified tracked
+ * files still ship as they are on disk — that is what iterating looks like —
+ * it is only the untracked ones that are left behind, loudly. */
+function trackedUnder(dir) {
+  try {
+    const out = execFileSync('git', ['ls-files', '-z', '--', dir],
+                             { cwd: root, encoding: 'utf8' });
+    return out.split('\0').filter(Boolean);
+  } catch {
+    return null;                      // no git here: fall back to copying it all
+  }
+}
+function untrackedUnder(dir) {
+  try {
+    const out = execFileSync('git', ['ls-files', '-z', '--others', '--exclude-standard',
+                                     '--', dir], { cwd: root, encoding: 'utf8' });
+    return out.split('\0').filter(Boolean);
+  } catch { return []; }
+}
 for (const d of SERVED_DIRS) {
   const src = join(root, d);
-  if (existsSync(src)) { cpSync(src, join(dist, d), { recursive: true }); staged++; }
+  if (!existsSync(src)) continue;
+  const files = trackedUnder(d);
+  if (files === null) {
+    console.warn(`   (no git — copying all of ${d}/, including anything uncommitted)`);
+    cpSync(src, join(dist, d), { recursive: true });
+    staged++;
+    continue;
+  }
+  for (const f of files) {
+    const from = join(root, f);
+    if (!existsSync(from)) continue;          // deleted but still in the index
+    mkdirSync(dirname(join(dist, f)), { recursive: true });
+    cpSync(from, join(dist, f));
+    staged++;
+  }
+  const skipped = untrackedUnder(d);
+  if (skipped.length) {
+    console.warn(`   ⚠ left behind ${skipped.length} uncommitted file(s) under ${d}/:`);
+    for (const f of skipped.slice(0, 8)) console.warn(`     ${f}`);
+    if (skipped.length > 8) console.warn(`     …and ${skipped.length - 8} more`);
+    console.warn('     Commit them to deploy them. Until then they cannot break this build.');
+  }
 }
 console.log(`   staged ${staged} entries`);
 
