@@ -329,12 +329,16 @@ body.dragging .betbar,body.dragging .prompt,body.dragging .comm{pointer-events:n
 .talk.hidden,.chat.hidden{display:none}
 /* Said out loud, because a poll that keeps failing looks exactly like a game
    that has frozen. Sits under the HUD, out of the way of the goal. */
-.netwarn{position:absolute;left:50%;top:196px;transform:translate(-50%,-6px);
-  padding:.3rem .7rem;border-radius:20px;font:900 .5rem/1 Nunito,sans-serif;
-  letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;
+/* Kept clear of the talk buttons on the right: on a phone held sideways the
+   stage is a 244px column and a centred pill 230px wide ran straight under
+   them. It wraps rather than overlaps now, and stops short of that column. */
+.netwarn{position:absolute;left:8px;right:52px;top:196px;transform:translateY(-6px);
+  margin:0 auto;max-width:230px;
+  padding:.3rem .7rem;border-radius:20px;font:900 .5rem/1.25 Nunito,sans-serif;
+  letter-spacing:.1em;text-transform:uppercase;text-align:center;
   color:#0b1620;background:var(--yellow);opacity:0;pointer-events:none;
   transition:opacity .25s,transform .25s;z-index:6}
-.netwarn.show{opacity:.95;transform:translate(-50%,0)}
+.netwarn.show{opacity:.95;transform:translateY(0)}
 /* Below the wind gauge, not beside it — at 104px the microphone sat underneath
    the gauge and could not be pressed. */
 .talk{position:absolute;right:8px;top:162px;display:flex;flex-direction:column;
@@ -3564,7 +3568,15 @@ function endMatch(){
   state = ST.OVER; SFX.whistle();
   $('gCard').innerHTML = scorecardHTML();
   $('bAgain').style.display = '';
-  if(mode !== 'online') $('netEnd').classList.add('hidden');
+  if(mode !== 'online'){
+    $('netEnd').classList.add('hidden');
+    /* Put the button back. An online match that ended with a rematch pending
+       left it disabled and reading "WAITING FOR THEM…", and nothing ever undid
+       that — so the next solo match offered a PLAY AGAIN you could not press. */
+    $('bAgain').disabled = false;
+    $('bAgain').textContent = 'PLAY AGAIN';
+    $('bAgain').classList.remove('alt');
+  }
   const tp=total(P), tc=total(C), won = tp>tc;
   const scoreline = CO_P.n.toUpperCase()+' '+line(P)+' ('+tp+')   —   '+line(C)+' ('+tc+') '+CO_C.n.toUpperCase();
 
@@ -5329,6 +5341,12 @@ function nextRound(){
 function toMenu(){
   if(duelOwner){ CO_P = duelOwner; duelOwner = null; }
   $('ovEnd').classList.add('hidden');
+  $('netEnd').classList.add('hidden');
+  /* The chat buttons now survive the end of a match — deliberately, that is
+     when "good game" gets said — so the menu is where they have to go, or
+     they follow you onto the title screen and out of any match at all. */
+  talkShow(false);
+  $('netwarn').classList.remove('show');
   $('ovTitle').classList.remove('hidden');
   state=ST.TITLE; buildCounties(); refreshProfileStrip();
 }
@@ -5392,11 +5410,19 @@ async function netOfferResume(){
    which is what everybody was until now. */
 async function netSetName(){
   const raw = ($('mpNameIn').value || '').trim().slice(0, 14);
-  if(!raw || raw === profile.name) return;
+  if(!raw) return;
+  /* Sent whenever the SERVER does not already have this name, not merely when
+     the box has been retyped. Comparing against the local profile meant a
+     device whose first POST failed — or a fresh device token with an old
+     profile behind it — kept its name locally and stayed "Player" to every
+     opponent, with the box showing the right thing the whole time. */
+  if(raw === profile.name && netSetName.sent === raw) return;
   profile.name = raw;
   saveProfile();
-  try{ await mpFetch('/api/mp/name', 'POST', {name: raw}); }
-  catch(e){ /* a name is not worth failing a match over */ }
+  try{
+    await mpFetch('/api/mp/name', 'POST', {name: raw});
+    netSetName.sent = raw;                  // only after the server said yes
+  }catch(e){ /* a name is not worth failing a match over */ }
 }
 
 function openOnline(){
@@ -6117,7 +6143,10 @@ let netMsg    = '';
    opened, so a site that has been deployed without its migrations says so in
    a sentence instead of failing somewhere inside a match. */
 async function netReady(){
-  if(Net.base === null)
+  /* `MP.base`, not `Net.base` — there is no such field on Net, so this guard
+     was permanently false and the clearest message the game has for "you are
+     playing a saved copy of the file" never once appeared. */
+  if(MP.base === null)
     return {ok:false, why:'This copy is not connected to a server — play online from the site.'};
   try{
     const h = await mpFetch('/api/mp/health');
@@ -6407,7 +6436,11 @@ function netFinish(){
   netForced = null; netMsg = '';
   netForget();                        // nothing left to come back to
   $('netwarn').classList.remove('show');
-  talkShow(false);
+  talkHangUp();                       // a live audio link to somebody who may have gone
+  /* Chat stays. Hiding it here was backwards: the end of a match is when
+     "again?" and "good game" actually get said, and it was the one moment the
+     buttons disappeared. Voice is hung up — that is a live connection to
+     somebody who may have gone — but the transcript and the box remain. */
   endMatch();
   netEndCard();
 }
@@ -6640,6 +6673,10 @@ function talkSend(text){
 async function talkMic(){
   if(Talk.mic === 'live'){ talkHangUp(); return; }
   if(Talk.mic === 'asking') return;
+  /* 'denied' used to be permanent: the button sat on 🚫 for the rest of the
+     session, so somebody who went and allowed the microphone in their browser
+     had no way to tell the game about it. Pressing it asks again — the browser
+     will refuse instantly if the block still stands, which costs nothing. */
   if(!navigator.mediaDevices || !window.RTCPeerConnection){
     talkLine('sys', 'this browser cannot do voice');
     return;

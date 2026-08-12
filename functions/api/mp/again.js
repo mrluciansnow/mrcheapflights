@@ -26,6 +26,12 @@ export async function onRequestPost(context) {
   if (!match) return bad('no such match', 404);
   if (match.a_player !== me.id && match.b_player !== me.id) return bad('not your match', 403);
   if (!match.b_player) return bad('nobody to play again', 409);
+  /* The match has to be OVER. Without this a player could ask mid-match and
+     get handed a second, live duel against the same person — two matches, two
+     shot clocks, one pair of thumbs — and the one they were already in would
+     run down its deadlines while they were somewhere else. */
+  if (match.state !== 'settled' && match.state !== 'resolved')
+    return bad('that match is still going', 409);
   const duel = await env.DB.prepare('SELECT * FROM cf_duels WHERE match_id = ?')
     .bind(matchId).first();
   if (!duel) return bad('not a duel', 409);
