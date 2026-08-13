@@ -267,6 +267,80 @@ seconds to come round could not otherwise be checked. `tests/music.mjs` is now
 phrases, resolving to the note it opened on, three or more bass roots, and
 every pitched note in the mode.
 
+# Third pass — three fixes that do not work, and why
+
+Finding 6 said a hard shot inside the post is a free goal at the lower tiers.
+It is worse than that, and the reason is not the one that document gave.
+
+## The corner is unsaveable by construction
+
+At full power the ball reaches the line in **0.407s**. The dive:
+
+| tier | reacts in | dive to that corner | earliest arrival |
+|---|---|---|---|
+| junior | 0.25–0.35s | 0.55s | 0.80s |
+| intermediate | 0.22–0.31s | 0.50s | 0.72s |
+| senior | 0.19–0.27s | 0.45s | 0.64s |
+| All-Ireland | 0.15–0.22s | 0.40s | **0.55s** |
+
+The fastest keeper in the game arrives 0.15s after the ball, and the slowest
+0.4s after. No amount of reach, range or reading changes that, because none of
+them is the binding constraint. And a player can put it there: measured with a
+clean harness, the same swipe repeated lands within **1–3cm**.
+
+So the shootout has a repeatable, risk-free, unsaveable shot worth 2.6 points
+a kick against a random 0.77. That is the real fault, and it is still open.
+
+## Three fixes measured and rejected
+
+**Give every keeper enough reach.** Ranges raised so all four tiers cover the
+goal (2.55 → 3.10m). Corner goals moved from 100/100/94/58% to
+100/100/93/56%, concedes-per-kick by 0.01. Reach was never the constraint.
+
+**Make power cost accuracy.** The contact slip already scales with power; the
+curve was steepened to ±0.57m at full power, three times what it ships with.
+Corner goals 100/100/94/58% → 95/94/85/54%; the best cell on the whole control
+surface 2.57 → 2.41. Almost nothing, because the spray stays INSIDE the
+unsaveable band — widening it just scatters the ball across ground the keeper
+cannot cover either.
+
+**Let the keeper guess, like a real penalty keeper.** He commits at the strike
+to the side his lean already shows, derived from the lean draw so the seeded
+stream is untouched. It makes him **worse**: corner goals rose to 99% at
+senior and 91% at All-Ireland, and the solo score doubled. A blind commitment
+is worse than a late read, because a dive that is only partway there still
+covers ground near the middle. A keeper who has thrown himself at a guess
+covers one spot and nothing else.
+
+What is left is the race itself, and every lever on it trades against
+something already shipped — faster dives undo the commitment cost from #22,
+slower balls change every mode at once. The design answer is probably that the
+keeper should **adapt**: go where this player has been going. That is the AI's
+target selection, which is on the outcome path and would have to be fed
+identical history on both copies, so it is a protocol change and its own pass.
+
+## An aim bug that was not there
+
+This pass also chased, and failed to find, a fault in the swipe reading.
+
+Measured first at a standard deviation of **1.02m** — the aim wandering across
+most of the goal from one repeated gesture — it looked like the biggest
+playability bug in the game. It was the harness: releasing the pointer FIRES
+the shot, so every second swipe was being measured against a match that had
+already moved on, and those reads came back as a flat zero. Half real numbers
+and half zeros is a large standard deviation and no bug at all.
+
+With a harness that waits for a live kick before each swipe, the aim is
+repeatable to **1–3cm**.
+
+A fix was written for the non-problem — heading and curl fitted across every
+sample of the swipe rather than taken from two or three of them — and has been
+reverted. Two like-for-like comparisons of it disagreed with each other
+(fitted better at ±6px of jitter in one run, much worse in the next), which at
+18 samples a cell is noise, and shipping an unmeasurable change to the core
+input is the same mistake as the 14-sample sweep behind #19. The principle may
+still be right; there is no evidence, so it does not ship.
+
 ## Not measurable in this container
 
 **Frame pacing.** The harness reports `devicePixelRatio: 1`, so the three
@@ -291,6 +365,18 @@ a real device.
 - **Curl** does a great deal — but non-monotonically, and one setting at a
   given aim is a 100% save while another is 92% wide. Sharp, but arguably
   correct: bend it back into the keeper and he catches it.
+
+## Fourth pass — the tune answers the match
+
+A goal, a point, a save and the woodwork each get a **sting**: a short phrase
+over the top of the tune, written off the same scale degrees so it lands as
+part of the music rather than as a sound effect that happens to be musical. A
+goal is the tonic triad rising; a save is the same shape falling an octave
+down; the woodwork is one flat note with no resolution, because nothing
+resolved. All through the music bus, so they duck under a voice and stop with
+the setting.
+
+`tests/music.mjs` is 35 checks now.
 
 ## How to re-run this
 

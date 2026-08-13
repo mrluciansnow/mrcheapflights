@@ -201,6 +201,53 @@ ok('but it keeps the tune and the drone',
 ok('and loses the rhythm section',
    !menu.parts.includes('drum') && !menu.parts.includes('bass'), JSON.stringify(menu.parts));
 
+console.log('\nAND IT ANSWERS THE MATCH');
+/* Furniture plays the same sixteen bars through a goal and a miss alike. The
+ * stings are the tune answering — so they have to be IN the tune: same key,
+ * same degrees, or they are just sound effects that happen to be musical. */
+const stings = await page.evaluate(() => window.CF.stings);
+ok('a goal, a point, a save and the woodwork each get one',
+   ['goal','point','save','wood'].every(k => stings[k] && stings[k].deg.length),
+   Object.keys(stings).join(', '));
+ok('a goal is the biggest of them',
+   stings.goal.deg.length >= stings.point.deg.length &&
+   stings.goal.peak >= stings.save.peak, JSON.stringify(stings.goal));
+ok('and a save falls where a goal rises',
+   stings.save.deg[0] > stings.save.deg[stings.save.deg.length-1] &&
+   stings.goal.deg[0] < stings.goal.deg[stings.goal.deg.length-1],
+   JSON.stringify([stings.goal.deg, stings.save.deg]));
+/* every note off the same scale degrees the tune is written in */
+const modeOK = await page.evaluate(() => {
+  const steps = [0,2,3,5,7,9,10,12,14,15,17,19];
+  const bad = [];
+  for (const [k, v] of Object.entries(window.CF.stings))
+    for (const d of v.deg)
+      if (!Number.isInteger(d) || d < 0 || d >= steps.length) bad.push(k + ':' + d);
+  return bad;
+});
+ok('every sting note is a degree of the mode the tune is in',
+   modeOK.length === 0, modeOK.join(', '));
+
+/* and they go through the bus, so the mute and the duck reach them */
+const routed = await page.evaluate(async () => {
+  const a = window.CF.audioContext();
+  let made = 0;
+  const real = a.createOscillator.bind(a);
+  a.createOscillator = function(){ made++; return real(); };
+  window.CF.musicSting('goal');
+  const withMusic = made;
+  made = 0;
+  window.CF.opts.music = false; window.CF.applyOpts();
+  window.CF.musicSting('goal');
+  const without = made;
+  window.CF.opts.music = true; window.CF.applyOpts();
+  a.createOscillator = real;
+  return { withMusic, without };
+});
+ok('a sting plays when the music is on', routed.withMusic > 0, JSON.stringify(routed));
+ok('and is silent when the player has turned the music off',
+   routed.without === 0, JSON.stringify(routed));
+
 await browser.close();
 console.log('\n' + (fail ? 'MUSIC: ' + fail + ' FAILED' : 'MUSIC: ALL ' + pass + ' PASSED'));
 process.exit(fail ? 1 : 0);

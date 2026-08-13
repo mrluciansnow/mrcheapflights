@@ -2881,6 +2881,36 @@ function musicScore(s, full){
   return out;
 }
 
+/* ---- the tune answering the match ----
+ *
+ * A soundtrack that plays the same sixteen bars through a goal and a miss
+ * alike is furniture. These are stings: a phrase over the top of the tune, in
+ * the same key and off the same degrees, so they land as part of it rather
+ * than as a sound effect that happens to be musical.
+ *
+ * Through the music bus, so they duck under a voice, thin out under pressure
+ * and stop with the setting, exactly like everything else here.
+ */
+const STING = {
+  /* the net: the tonic triad, up, fast and bright */
+  goal:  {deg: [0, 2, 4, 7], step: 0.075, peak: 0.20, oct: 2, type: 'triangle'},
+  /* over the bar: two notes up a fourth, smaller than a goal */
+  point: {deg: [4, 7],       step: 0.10,  peak: 0.13, oct: 2, type: 'triangle'},
+  /* kept out: the same shape falling, an octave down */
+  save:  {deg: [4, 2, 0],    step: 0.085, peak: 0.13, oct: 1, type: 'triangle'},
+  /* the frame: one flat note and no resolution, because nothing resolved */
+  wood:  {deg: [1],          step: 0.12,  peak: 0.15, oct: 1, type: 'square'},
+};
+function musicSting(kind){
+  const k = STING[kind];
+  const a = ac();
+  if(!k || !a || !Music.on || muted || !opts.music) return;
+  const t = a.currentTime + 0.02;
+  for(let i = 0; i < k.deg.length; i++)
+    musicVoice(a, {type: k.type, hz: musicNote(k.deg[i]) * k.oct,
+                   peak: k.peak, a: 0.006, h: 0.02, r: 0.34}, t + i * k.step);
+}
+
 /* Schedule whatever falls inside the next second.
  *
  * Against a.currentTime, never against the frame loop: a scheduler running
@@ -3749,7 +3779,8 @@ function award(kind){
   profile.seenResults = (profile.seenResults || 0) + 1;
 
   if(kind==='goal'){
-    SFX.net(); SFX.roar(true); raiseFlags(2); burstConfetti(); buzz([0,26,50,70]);
+    SFX.net(); SFX.roar(true); musicSting('goal');
+    raiseFlags(2); burstConfetti(); buzz([0,26,50,70]);
     crowdReact(1);
     shake=13; flash=.5; zoomTarget=1.13;
     {
@@ -3758,16 +3789,19 @@ function award(kind){
                 dx: ball.vx/sp, dy: ball.vy/sp, pace: clamp(sp/26, 0, 1)};
     }
   } else if(kind==='point'){
-    SFX.point(); SFX.roar(false); raiseFlags(1); shake=4; crowdReact(0.45);
+    SFX.point(); SFX.roar(false); musicSting('point');
+    raiseFlags(1); shake=4; crowdReact(0.45);
   } else if(kind==='twopoint'){
-    SFX.point(); setTimeout(()=>SFX.point(),150); SFX.roar(true);
+    SFX.point(); setTimeout(()=>SFX.point(),150); SFX.roar(true); musicSting('goal');
     raiseFlags(3); shake=7; flash=.28; crowdReact(0.8);
   } else if(kind==='save' || kind==='tip'){
-    SFX.save(); shake=7; crowdSwell(.5,1.0); buzz(34); crowdReact(0.5);
+    SFX.save(); musicSting('save');
+    shake=7; crowdSwell(.5,1.0); buzz(34); crowdReact(0.5);
     slowMo(0.32, 0.75);                       // a beat to see the hand on it
   }
   else if(kind==='post' || kind==='bar'){
-    SFX.post(); shake=9; crowdSwell(.7,1.2); buzz([0,18,40,18]);
+    SFX.post(); musicSting('wood');
+    shake=9; crowdSwell(.7,1.2); buzz([0,18,40,18]);
     slowMo(0.30, 0.85);                       // and one for the woodwork
   }
   else { SFX.roar(false); crowdSwell(.2,.8); }
@@ -4582,8 +4616,8 @@ function readSwipe(path){
   const dRun = dhyp2(run.b.x-run.a.x, run.b.y-run.a.y); // of events is not
   const speed = dRun / dt;                              // read as infinite pace
 
-  // the line: where the finger is heading, measured over the tail of the
-  // swipe if there is one, and over the whole thing if it was a short flick
+  // the line: the fitted heading over the tail of the swipe if there is one,
+  // and the whole thing if it was a short flick
   let dx = run.b.x - run.a.x, dy = run.b.y - run.a.y;
   if(dhyp2(dx,dy) < 14){ dx = last.x - first.x; dy = last.y - first.y; }
   const up = -dy;                                       // toward the goal
@@ -7653,6 +7687,14 @@ if(new URLSearchParams(location.search).has('debug')){
       return true;
     },
     get aimState(){ return {power:power, aimM:aimM, elev:elev, curl:curl}; },
+    /* how many samples the gesture actually gave us — a swipe read from three
+       points is a different instrument from one read from fifteen */
+    get pathLen(){ return dragPath.length; },
+    /* abandon a drag without taking the shot, so a probe can read the same
+       gesture many times against one live kick */
+    cancelDrag(){ dragging=false; swipeOk=false; dragPath=[];
+                  document.body.classList.remove('dragging');
+                  $('meter').classList.remove('live'); },
     /* Put the shot exactly where a test needs it. A swipe cannot express
        "elevation 0.52" — it is 8px of finger — and the woodwork bands are
        narrower than that, so they can only be looked at from here. */
@@ -7748,6 +7790,10 @@ if(new URLSearchParams(location.search).has('debug')){
        cannot be listened to from a test; what the tune is made of can be read,
        and that is the only way to tell a tune from a loop. */
     musicScore: (step, full) => musicScore(step, full !== false),
+    /* the stings, and what they are made of, so a test can check they are
+       part of the tune rather than noises that happen to be musical */
+    musicSting: kind => musicSting(kind),
+    stings: STING,
     audioContext: () => ac(),
     toTitle: () => toMenu(),
     applyOpts: () => applyOpts(),
