@@ -43,6 +43,17 @@ node([join('tools', 'migrate.mjs'), '--remote']);
    Two different questions, so: remember it, keep going, and fail at the end
    with whichever of them actually went wrong. */
 step(2, 'deploying the site');
+/* First: prove nothing in the working tree can reach the build. wrangler
+   compiles the functions/ directory beside its CONFIG, not beside the assets
+   it is pointed at, so a half-finished file left lying in the repo used to
+   take the whole site down — three times. This is a second of checking that
+   turns that into a named failure before anything is uploaded. */
+try {
+  node([join('tests', 'deploy-root.mjs')]);
+} catch {
+  console.error('\n💥 The deploy root is not clean — see above. Nothing was uploaded.');
+  process.exit(1);
+}
 let siteRed = false;
 try {
   node([join('scripts', 'deploy.mjs'), ...(PREVIEW ? ['--preview'] : [])]);

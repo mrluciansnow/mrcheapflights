@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler pages dev",
+    "predeploy": "node tests/deploy-root.mjs",
     "deploy": "node scripts/deploy.mjs",
     "deploy:unsafe": "echo 'REFUSED: use npm run deploy (bare wrangler pages deploy . leaks .dev.vars)' && exit 1",
     "smoke": "node scripts/smoke.mjs",
