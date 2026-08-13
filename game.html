@@ -1790,7 +1790,7 @@ function newKeeper(defendingCounty, tier){
        for what you can see before you strike; nothing reads it back. */
     sharp: clamp((d.rMax - react)/span, 0, 1),
     dur: d.dur, reach: d.reach, range: d.range, err: d.err,
-    dive: 0, committed: false,
+    dive: 0, settle: 0, committed: false,
     /* ai:true means he reads the ball himself. A human or a remote keeper
        sets it false and supplies diveAt — the moment on the kick clock at
        which the dive began. */
@@ -1861,17 +1861,30 @@ function keeperUpdate(k, nowT, b){
     // human keeper has already committed or has not
     else if(k.ai !== false && strikeT !== null && nowT >= strikeT + k.react){
       keeperCommit(k, b);
-      k.diveAt = nowT;
+      /* The dive began at his reaction time, NOT at the frame we happened to
+         notice it had. Those differ by up to a whole frame, and the server
+         uses the reaction time — which made the two ends disagree about how
+         far through the dive he was by up to 16ms. It only ever moved the
+         hand a couple of centimetres, so it sat there unnoticed until the
+         settle gave that hand somewhere to fall to and one record in a
+         hundred and twenty landed on the wrong side of a fingertip.
+         It also takes frame rate out of the keeper, which is its own win. */
+      k.diveAt = strikeT + k.react;
     } else return;
   }
   const base = k.diveAt !== undefined ? k.diveAt
              : (strikeT === null ? 0 : strikeT) + k.react;
   const dt = Math.max(0, nowT - base);
-  k.dive = clamp(dt / diveDur(k), 0, 1);
-  const e = ease(k.dive);
+  const dur = diveDur(k);
+  k.dive = clamp(dt / dur, 0, 1);
+  // how far past full stretch he is — see the note above keeperHand
+  k.settle = clamp((dt - dur - HANG) / FALL, 0, 1);
+  const e = ease(k.dive), st = ease(k.settle);
   // the dive starts from wherever he had his weight, not from centre
   k.wx = lerp(k.wx0*0.56, k.tx*0.56, e);
-  k.wy = lerp(0, Math.max(0, k.ty*0.52 - 0.14), e);
+  /* Sideways he stays where he went — that is what committed means. It is
+     height he loses, because he is coming down. */
+  k.wy = lerp(lerp(0, Math.max(0, k.ty*0.52 - 0.14), e), 0, st);
 }
 /* How long the dive takes. It used to be a constant, which meant flinging
    himself three metres into the top corner cost exactly what a half-step to
@@ -1882,9 +1895,30 @@ function diveDur(k){
   const travel = dhyp2(k.tx - k.wx0, k.ty - 1.15);
   return k.dur * (0.46 + 0.88 * clamp(travel/2.6, 0, 1.35));
 }
+/* Where the hand is, INCLUDING after the dive is over.
+ *
+ * It used to stop at full stretch and stay there, which made going early
+ * completely free: measured over 8000 kicks a cell, every dive thrown between
+ * 0.6s before the strike and the strike itself saved at exactly the same
+ * rate, because the keeper simply arrived and held the pose until the ball
+ * turned up. There was no decision to make — you went as early as the window
+ * allowed, every time.
+ *
+ * A keeper at the end of a dive is airborne for a moment and then he is on
+ * the ground, and the hand that was in the top corner comes down with him.
+ * That is the price of committing: you get there, and then you keep going.
+ * Nothing is drawn from the seeded stream for it — it is a function of time
+ * since the dive completed, which the kick clock already carries.
+ *
+ * Kept identical in functions/_lib/sim.js. */
+const HANG = 0.17;                   // he stays up this long at full stretch
+const FALL = 0.46;                   // and this long to be down
 function keeperHand(k){
-  const e = ease(k.dive);
-  return { x: lerp(k.wx0 + k.side*0.42, k.tx, e), y: lerp(1.42, k.ty, e) };
+  const e = ease(k.dive), st = ease(k.settle || 0);
+  const y = lerp(1.42, k.ty, e);
+  /* a dive already low stays low — settling never lifts him */
+  return { x: lerp(k.wx0 + k.side*0.42, k.tx, e),
+           y: lerp(y, y < 0.60 ? y : 0.60, st) };
 }
 function drawKeeper(k){
   if(!k) return;
@@ -2285,7 +2319,7 @@ function setSpot(x, z, label, wall){
   setCamera(x, z);
 }
 function newBall(){
-  return {wx:spot.x, wy:CFG.BALL_R, wz:spot.z, vx:0, vy:0, vz:0, spin:0, live:false};
+  return {wx:spot.x, wy:CFG.BALL_R, wz:spot.z, vx:0, vy:0, vz:0, spin:0, t:0, live:false};
 }
 /* Power maps to speed AND elevation, and both scale with range: a 45m free
    needs a much higher, longer strike than an 11m penalty. */
@@ -2310,20 +2344,43 @@ function launchBall(power, aimM, elev){
   ball.vx = shotU.x*fwd + shotR.x*lat;
   ball.vz = shotU.z*fwd + shotR.z*lat;
   ball.vy = S*dsin(th);
+  ball.t = 0;                 // the flight starts here, whatever the ball was
   ball.live = true;
   trail.length = 0;
 }
+/* The wind is a gust, not a fan.
+ *
+ * It was a constant lateral acceleration for the whole flight, so a ball in
+ * the air for a second was pushed by exactly the same hand at the end as at
+ * the start. That made wind a fixed offset: you learned it once from the
+ * arrow and applied it, and the only thing distance changed was how long the
+ * same push had to work.
+ *
+ * It breathes now — same strength on average, but a long ball rides through
+ * more of the cycle than a short one, so hang time is worth thinking about
+ * and a 45m free is no longer an 11m penalty with more of the same drift.
+ * The aim preview integrates the same gust, so this is texture in the flight
+ * and not information withheld from the player.
+ *
+ * The phase comes out of the wind draw itself rather than a new number: the
+ * seeded stream's order is a contract and inserting a draw would re-score
+ * every stored replay. Kept identical in functions/_lib/sim.js. */
+const gust = t => 1 + 0.35*dsin(t*4.4 + wind*17.3);
 function stepBall(dt){
   const b = ball;
   const sp = dhyp3(b.vx,b.vy,b.vz);
   const k  = CFG.DRAG*(1 + weather.wet*0.28)*sp;   // a wet ball carries less
   // curl and wind push sideways relative to the flight line, not world x
-  const side = (curl*CFG.CURL*(sp/20) + windAcc)*dt;
+  const side = (curl*CFG.CURL*(sp/20) + windAcc*gust(b.t))*dt;
   b.vx += (-k*b.vx)*dt + shotR.x*side;
   b.vz += (-k*b.vz)*dt + shotR.z*side;
   b.vy += (-CFG.G - k*b.vy)*dt;
   b.wx += b.vx*dt; b.wy += b.vy*dt; b.wz += b.vz*dt;
   b.spin += sp*dt*0.9;
+  /* Flight time lives on the ball, not in a global. stepBall is driven by
+     three different clocks — the frame loop, the replay and the sim hook —
+     and a gust read off any one of them would disagree with the other two. */
+  b.t += dt;
   if(b.wy < CFG.BALL_R){                       // bounce short
     b.bounced = true;
     b.wy = CFG.BALL_R; b.vy = -b.vy*(0.48 - weather.wet*0.16);
@@ -2884,7 +2941,10 @@ function beginKeep(){
   restCam(); zoom = zoomTarget; panX = panTarget = 0;
   keeper.wx0 = 0; keeper.wx = 0;                 // no free lean for your own man
   $('prompt').style.display = '';
-  $('prompt').textContent = 'Set your line — flick to dive, any time';
+  /* It used to say "any time", which is now bad advice: a dive thrown well
+     before the strike lands before the ball arrives and he is on the turf
+     watching it go in. Say what the kick actually rewards. */
+  $('prompt').textContent = 'Set your line — flick to dive, and go with the strike';
   $('keepLbl').firstChild.nodeValue = 'HE STRIKES IN ';
   $('keepTally').textContent = keepFaced ? '· ' + matchSaves + '/' + keepFaced : '';
   $('keepbar').classList.add('show');
@@ -4640,9 +4700,12 @@ function simPath(withDrift, aimOverride){
   let x=spot.x, y=CFG.BALL_R, z=spot.z;
   let vx=shotU.x*fwd+shotR.x*lat, vy=S*dsin(th), vz=shotU.z*fwd+shotR.z*lat;
   const dt=1/90, pts=[];
+  let ft=0;
   for(let i=0;i<260 && z>-0.2;i++){
     const sp=dhyp3(vx,vy,vz), k=CFG.DRAG*(1+weather.wet*0.28)*sp;
-    const side = withDrift ? (curl*CFG.CURL*(sp/20)+windAcc)*dt : 0;
+    // the same gust the real flight will ride, so the line is not a lie
+    const side = withDrift ? (curl*CFG.CURL*(sp/20)+windAcc*gust(ft))*dt : 0;
+    ft += dt;
     vx+=(-k*vx)*dt+shotR.x*side; vz+=(-k*vz)*dt+shotR.z*side; vy+=(-CFG.G-k*vy)*dt;
     x+=vx*dt; y+=vy*dt; z+=vz*dt;
     if(y<CFG.BALL_R){ y=CFG.BALL_R; vy=-vy*0.48; vx*=0.78; vz*=0.82; }
@@ -5495,6 +5558,11 @@ function recordFrame(){
   replay.push({
     bx:ball.wx, by:ball.wy, bz:ball.wz, spin:ball.spin,
     kx:keeper.wx, ky:keeper.wy, kd:keeper.dive, ks:keeper.side,
+    /* the landing as well as the dive. Without it the replay redraws the
+       body from the frame but leaves the hand wherever the live flight left
+       it, so a keeper who went early is replayed with his arm already on the
+       ground from the opening frame. */
+    kst:keeper.settle || 0,
     ktx:keeper.tx, kty:keeper.ty, kc:keeper.committed,
     wj: wall ? wall.jump : 0,
   });
@@ -5512,6 +5580,7 @@ function stepReplay(dt){
   const f = replay[i];
   ball.wx=f.bx; ball.wy=f.by; ball.wz=f.bz; ball.spin=f.spin;
   keeper.wx=f.kx; keeper.wy=f.ky; keeper.dive=f.kd; keeper.side=f.ks;
+  keeper.settle=f.kst||0;
   keeper.tx=f.ktx; keeper.ty=f.kty; keeper.committed=f.kc;
   if(wall) wall.jump=f.wj;
   const q = prj(ball.wx, ball.wy, ball.wz);
@@ -7244,6 +7313,11 @@ if(new URLSearchParams(location.search).has('debug')){
       const save = {spot:spot, dist:shotDist, u:shotU, r:shotR, ball:ball,
                     keeper:keeper, wall:wall, curl:curl, diff:difficulty,
                     weather:weather, windAcc:windAcc, mode:mode,
+                    /* `wind` itself, not just the acceleration derived from
+                       it. It used to be display-only so nobody restored it;
+                       the gust reads it, so a replay run through this hook
+                       would have left the live kick with a borrowed phase. */
+                    wind:wind, windKmh:windKmh,
                     kickT:kickT, strikeT:strikeT};
       kickT = 0; strikeT = 0;        // the strike is the origin of this replay
       difficulty = rec.difficulty || 'senior';
@@ -7286,6 +7360,7 @@ if(new URLSearchParams(location.search).has('debug')){
       spot=save.spot; shotDist=save.dist; shotU=save.u; shotR=save.r;
       ball=save.ball; keeper=save.keeper; wall=save.wall; curl=save.curl;
       difficulty=save.diff; weather=save.weather; windAcc=save.windAcc; mode=save.mode;
+      wind=save.wind; windKmh=save.windKmh;
       kickT=save.kickT; strikeT=save.strikeT;
       return out;
     },
@@ -7332,6 +7407,12 @@ if(new URLSearchParams(location.search).has('debug')){
     },
     get keepWindow(){ return KEEP_WINDOW; },
     get keepCommitted(){ return !!(keeper && keeper.committed && keeper.ai === false); },
+    /* the dive as it runs, so "he comes back down" can be watched rather
+       than taken on trust — the whole cost of going early is in `settle` */
+    get keeperNow(){
+      return keeper ? {dive:keeper.dive, settle:keeper.settle || 0,
+                       wy:keeper.wy, hand:keeperHand(keeper)} : null;
+    },
     get kickClock(){ return {t:+kickT.toFixed(3), strikeAt: cpuShot ? +cpuShot.strikeAt.toFixed(3) : null,
                              struck: strikeT !== null, punished: !!(cpuShot && cpuShot.punished),
                              seen: cpuShot ? (cpuShot.seen || 0) : 0}; },

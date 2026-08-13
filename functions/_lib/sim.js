@@ -102,7 +102,8 @@ export function simulate(rec){
   /* A human keeper overrides the lean: he stands where he chose to stand. */
   const dive = (rec.dive && typeof rec.dive === 'object') ? rec.dive : null;
   const keeper = {
-    wx: lean * KEEPER_LEAN * 0.56, wy:0, tx:0, ty:1.35, side:1, dive:0, committed:false,
+    wx: lean * KEEPER_LEAN * 0.56, wy:0, tx:0, ty:1.35, side:1, dive:0, settle:0,
+    committed:false,
     lean: lean, wx0: dive ? 0 : lean * KEEPER_LEAN,
     react: react, diveAt: undefined,
     dur: diff.dur, reach: diff.reach, range: diff.range, err: diff.err,
@@ -144,6 +145,23 @@ export function simulate(rec){
   const alongShot  = () => (b.wx-sx)*uX + (b.wz-sz)*uZ;
   const acrossAt   = (x,z) => (x-sx)*rX + (z-sz)*rZ;
 
+/* The wind is a gust, not a fan.
+ *
+ * It was a constant lateral acceleration for the whole flight, so a ball in
+ * the air for a second was pushed by exactly the same hand at the end as at
+ * the start. That made wind a fixed offset: you learned it once from the
+ * arrow and applied it, and the only thing distance changed was how long the
+ * same push had to work.
+ *
+ * It breathes now — same strength on average, but a long ball rides through
+ * more of the cycle than a short one, so hang time is worth thinking about
+ * and a 45m free is no longer an 11m penalty with more of the same drift.
+ *
+ * The phase comes out of the wind draw itself rather than a new number: the
+ * stream's order is a contract and inserting a draw re-scores every stored
+ * replay. Same reasoning as the vertical contact slip above. */
+  const gust = t => 1 + 0.35*dsin(t*4.4 + wind*17.3);
+
 /* How long the dive takes. It used to be a constant, which meant flinging
    himself three metres into the top corner cost exactly what a half-step to
    his right cost — so where he stood was decorative and when he went was
@@ -153,10 +171,28 @@ export function simulate(rec){
     const travel = dhyp2(k.tx - k.wx0, k.ty - 1.15);
     return k.dur * (0.46 + 0.88 * clamp(travel/2.6, 0, 1.35));
   }
+/* Where the hand is, INCLUDING after the dive is over.
+ *
+ * It used to stop at full stretch and stay there, which made going early
+ * completely free: from the first frame the UI allows right up to the strike
+ * the save rate was identical to nine decimal places, because the keeper
+ * simply arrived and held the pose until the ball turned up. There was no
+ * decision to make — you went as early as you could, every time.
+ *
+ * A keeper at the end of a dive is airborne for a moment and then he is on
+ * the ground, and the hand that was in the top corner comes down with him.
+ * That is the price of committing: you get there, and then you keep going.
+ * Nothing is drawn from the stream for it — it is a function of time since
+ * the dive completed, which the record already carries. */
+  const HANG = 0.17;                 // he stays up this long at full stretch
+  const FALL = 0.46;                 // and this long to be down
   function keeperHand(){
     const e = ease(keeper.dive);
+    const s = ease(keeper.settle || 0);
+    const y = lerp(1.42, keeper.ty, e);
+    /* a dive already low stays low — settling never lifts him */
     return {x: lerp(keeper.wx0 + keeper.side*0.42, keeper.tx, e),
-            y: lerp(1.42, keeper.ty, e)};
+            y: lerp(y, y < 0.60 ? y : 0.60, s)};
   }
   function keeperUpdate(t){
     if(!keeper.committed){
@@ -184,10 +220,15 @@ export function simulate(rec){
       }
     }
     const dt = Math.max(0, t - keeper.diveAt);
-    keeper.dive = clamp(dt / diveDur(keeper), 0, 1);
-    const e = ease(keeper.dive);
+    const dur = diveDur(keeper);
+    keeper.dive = clamp(dt / dur, 0, 1);
+    // how far past full stretch he is — see the note above keeperHand
+    keeper.settle = clamp((dt - dur - HANG) / FALL, 0, 1);
+    const e = ease(keeper.dive), s = ease(keeper.settle);
     keeper.wx = lerp(keeper.wx0*0.56, keeper.tx*0.56, e);
-    keeper.wy = lerp(0, Math.max(0, keeper.ty*0.52 - 0.14), e);
+    /* Sideways he stays where he went — that is what committed means. It is
+       height he loses, because he is coming down. */
+    keeper.wy = lerp(lerp(0, Math.max(0, keeper.ty*0.52 - 0.14), e), 0, s);
   }
   function evaluateAtPlane(bx, by){
     const R = CFG.BALL_PHYS, edge = CFG.POST_R + R;
@@ -214,7 +255,7 @@ export function simulate(rec){
     // step
     const sp = dhyp3(b.vx,b.vy,b.vz);
     const k  = CFG.DRAG*(1 + weather.wet*0.28)*sp;
-    const side = (curl*CFG.CURL*(sp/20) + windAcc)*dt;
+    const side = (curl*CFG.CURL*(sp/20) + windAcc*gust(t))*dt;
     b.vx += (-k*b.vx)*dt + rX*side;
     b.vz += (-k*b.vz)*dt + rZ*side;
     b.vy += (-CFG.G - k*b.vy)*dt;
