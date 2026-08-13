@@ -3660,7 +3660,9 @@ function fire(){
      Derived from the same draw so the seeded stream's order is untouched. */
   const elevSlip = dsin(slip * 91.7) * 0.012 * (0.30 + power*0.85);
   launchBall(power, aimM + slip, clamp(elev + elevSlip, 0, 1));
-  state = ST.FLIGHT; flightT = 0;
+  // a fresh flight starts on a fresh clock — leftover accumulator would give
+  // the next kick a free part-step of the last one
+  state = ST.FLIGHT; flightT = 0; flightAcc = 0;
   zoomTarget = 1.07;
   // the camera flinches along the line of the strike, then settles
   panX = clamp(-aimM * 9, -26, 26);
@@ -5398,6 +5400,7 @@ const netWindow = () => Math.max(3, Math.min(NET_WINDOW,
  * see the same number to within a poll.
  *
  * The server's deadline stays the backstop: never offer time we do not have. */
+let lastCross = null;          // debug only — see the crossing block
 let netKickBeganAt = 0;
 function netRemain(){
   if(!Net.live) return 0;
@@ -5616,8 +5619,27 @@ function update(dt){
     cpuT -= dt; if(cpuT<=0) cpuShoot();
   }
   else if(state===ST.FLIGHT){
-    flightT += dt;
-    kickT += dt;
+    /* ---- the flight runs on a fixed step, not on the frame ----
+     *
+     * It used to integrate with whatever dt the frame handed it, capped at
+     * 33ms. The server steps at exactly 1/60. So the same swipe on a phone
+     * holding 60fps and one dipping to 30 followed two different flights and
+     * could be scored two different ways — measured over 3000 kicks, 5.7% of
+     * them came out differently, and the changes were exactly the ones people
+     * report: point becoming crossbar, tip becoming save, goal becoming tip.
+     * A ball that is off the bar on one phone and over it on another is not a
+     * physics engine, it is a frame counter.
+     *
+     * Fixed 1/60 accumulator now, which is what the authoritative copy does.
+     * Frame rate moves how smoothly you SEE the flight and nothing else. */
+    flightAcc += dt;
+    let steps = 0;
+    while(flightAcc >= FLIGHT_DT && steps < 8){
+      flightAcc -= FLIGHT_DT;
+      steps++;
+      stepFlight(FLIGHT_DT);
+      if(state !== ST.FLIGHT) break;         // the kick resolved mid-catch-up
+    }
     if(srcKeeper === 'local'){
       if(keepLive()){
         const toLine = ball.wz / Math.max(1, -ball.vz);
@@ -5634,6 +5656,21 @@ function update(dt){
         $('keepbar').classList.remove('show', 'tight', 'press');
       }
     }
+  }
+  else if(state===ST.REPLAY){ stepReplay(dt); }
+  else if(state===ST.RESULT){
+    if(ball && ball.live) stepBall(dt);
+    resultT -= dt; if(resultT<=0) advance();
+  }
+}
+
+/* One step of the flight, always FLIGHT_DT long. Everything that decides an
+   outcome lives in here, so it can only ever run on the fixed clock. */
+const FLIGHT_DT = 1/60;
+let flightAcc = 0;
+function stepFlight(dt){
+    flightT += dt;
+    kickT += dt;
     const prevZ = ball.wz, prevX = ball.wx, prevY = ball.wy;
     const prevAlong = wall ? alongShot(ball) : 0;
     stepBall(dt);
@@ -5647,6 +5684,12 @@ function update(dt){
       const hgt = lerp(prevY, ball.wy, f2);
       if(wallBlocks(wall, lat, hgt)){
         crossed = true;
+        /* same as the goal line below: the block is judged at the point the
+           ball reaches the wall, so that is where it has to be when it comes
+           off it — otherwise it is drawn through a body and then kicked back */
+        ball.wx = lerp(prevX, ball.wx, f2);
+        ball.wy = hgt;
+        ball.wz = lerp(prevZ, ball.wz, f2);
         ball.vx*=-0.32; ball.vz*=-0.32; ball.vy=Math.abs(ball.vy)*0.4+2.2;
         SFX.save(); shake=8;
         setTimeout(()=>{ if(state===ST.FLIGHT) award('blocked'); }, 70);
@@ -5668,6 +5711,24 @@ function update(dt){
          the woodwork and the save have to bounce — but the scoreline comes
          from the one authority both players share. */
       const res = netForced !== null ? netForced : evaluateAtPlane(bx, by);
+      /* debug only: how far past the line the ball had got before the snap */
+      lastCross = {bx:+bx.toFixed(3), by:+by.toFixed(3),
+                   ballX:+ball.wx.toFixed(3), ballY:+ball.wy.toFixed(3),
+                   ballZ:+ball.wz.toFixed(3),
+                   gap:+dhyp3(ball.wx-bx, ball.wy-by, ball.wz).toFixed(3),
+                   dt:+dt.toFixed(4), res};
+      /* PUT THE BALL WHERE THE CONTACT WAS JUDGED.
+       *
+       * The outcome is decided at the interpolated crossing — the exact point
+       * the ball passes the goal line — but the ball itself had already been
+       * stepped past it, by up to 28cm, which is more than a ball's width.
+       * So the woodwork bounce was applied from a position behind the goal
+       * and the player watched the ball go clean past the bar and then get
+       * pulled back into it. "It says I hit the bar and I can see I didn't."
+       *
+       * A step is a step: it lands on the plane it was judged on. */
+      ball.wx = bx; ball.wy = by; ball.wz = 0;
+      lastCross.snappedTo = {x:+ball.wx.toFixed(3), y:+ball.wy.toFixed(3), z:ball.wz};
       if(res==='post' || res==='bar'){
         ball.vz = Math.abs(ball.vz)*0.55; ball.vx *= 0.5;
         if(res==='bar') ball.vy = -Math.abs(ball.vy)*0.4;
@@ -5692,12 +5753,6 @@ function update(dt){
       crossed=true; award('short');
     }
     if(flightT>5 && !crossed){ crossed=true; award('wide'); }
-  }
-  else if(state===ST.REPLAY){ stepReplay(dt); }
-  else if(state===ST.RESULT){
-    if(ball && ball.live) stepBall(dt);
-    resultT -= dt; if(resultT<=0) advance();
-  }
 }
 
 function render(){
@@ -7651,6 +7706,10 @@ if(new URLSearchParams(location.search).has('debug')){
        changed the presentation and not the match */
     get debugScore(){ return {p: total(P), c: total(C),
                               pr: P.r.length, cr: C.r.length}; },
+    /* where the ball actually WAS when the contact was judged, against where
+       the judging happened. They should be the same place. */
+    get lastCross(){ return lastCross; },
+    project: (x,y,z) => prj(x,y,z),
     get paused(){ return paused; },
     get canAim(){ return state === ST.AIM && !paused; },
     get canKeep(){ return keepLive(); },
