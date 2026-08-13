@@ -116,7 +116,12 @@ body.keeping .readout{opacity:0 !important}
 .curldial i{position:absolute;top:0;bottom:0;width:0%;left:50%;border-radius:3px;
   background:var(--sky);box-shadow:0 0 8px rgba(0,170,255,.7);transition:none}
 
-.prompt{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);white-space:nowrap;pointer-events:none;
+/* nowrap put this straight under the pause and mute buttons on anything
+   narrower than about 400px — 34x30px of overlap on a 320px phone, with the
+   text running behind two opaque circles. It wraps now, and keeps their width
+   clear at both ends. */
+.prompt{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);pointer-events:none;
+  max-width:calc(100% - 116px);text-align:center;line-height:1.3;
   background:rgba(4,13,22,.78);border:1px solid rgba(255,210,0,.28);border-radius:40px;
   padding:.5rem 1.1rem;font-weight:900;font-size:.8rem;backdrop-filter:blur(6px)}
 
@@ -947,7 +952,10 @@ const DIFF = {
   junior      : {n:'Junior',       rMin:.25, rMax:.35, dur:.52, reach:.42, range:1.90, err:.95},
   intermediate: {n:'Intermediate', rMin:.22, rMax:.31, dur:.47, reach:.45, range:2.05, err:.68},
   senior      : {n:'Senior',       rMin:.19, rMax:.27, dur:.43, reach:.48, range:2.32, err:.46},
-  allireland  : {n:'All-Ireland',  rMin:.15, rMax:.22, dur:.38, reach:.52, range:2.28, err:.30},
+  /* range was 2.28 — the one stat in this table that went DOWN at the top of
+     the ladder (1.90, 2.05, 2.32, 2.28). Everything else improves on every
+     line. Kept identical in functions/_lib/sim.js. */
+  allireland  : {n:'All-Ireland',  rMin:.15, rMax:.22, dur:.38, reach:.52, range:2.45, err:.30},
 };
 let difficulty = 'senior';
 
@@ -4762,18 +4770,88 @@ function drawZoneGrid(){
 /* The reticle is your intent, drawn on the goal itself: where the ball would
    cross with no wind, no curl and a perfect strike. It is always on. The
    dashed line that predicts the real flight is the optional crutch. */
+/* Does a ball arriving HERE hit the frame?
+ *
+ * The aid used to answer "is it in the goal?" with `last.y > BAR_H` — the
+ * ball's centre against the bar's centre line, as though both were points.
+ * The game does not score it that way: evaluateAtPlane calls it woodwork when
+ * the centre passes within a ball-and-a-post of the frame, which is a band
+ * 39cm tall under the bar and 19.5cm wide inside each post.
+ *
+ * So there was a 39cm strip of the goal where the reticle lit up yellow, said
+ * GOAL, and the ball hit the crossbar — measured at 100% of 2000 kicks, every
+ * time, with only ±4cm of contact scatter to lift it out. The player had no
+ * way to learn that except by repetition, because the one instrument they had
+ * was telling them the opposite.
+ *
+ * The band is not the bug. A ball struck at bar height hits the bar, and a
+ * game where that is visible is a precise game rather than a cruel one — the
+ * alternative, blunting the strike until the band goes soft, was measured too
+ * and costs the top corner (98% of top-corner goals down to 78%). So the
+ * frame is drawn, and the aid says what will actually happen. */
+const WOOD = CFG.POST_R + CFG.BALL_PHYS;      // how close the centre may pass
+function frameHit(x, y){
+  if(Math.abs(y - CFG.BAR_H) <= WOOD && Math.abs(x) <= HW + WOOD) return 'bar';
+  if(Math.abs(Math.abs(x) - HW) <= WOOD && y <= CFG.BAR_H + WOOD) return 'post';
+  return null;
+}
 function drawAimReticle(){
   const clean = simPath(false);
   const last = clean[clean.length-1];
   if(!last) return;
   const q = prj(last.x, last.y, last.z);
-  const over = last.y > CFG.BAR_H, inP = Math.abs(last.x) < HW;
-  const col = inP ? (over ? '#7ee0a0' : '#FFD200') : '#FF2D6B';
+  /* The frame is tested against the DRIFTED flight, not the aimed line. The
+     reticle deliberately shows intent — that is what makes the gap to the
+     dashed preview line readable as wind — but a warning is a promise about
+     what happens, and what happens is the drifted one. Height is the same in
+     both (wind pushes sideways only), so this only ever moves the POST
+     warning, which is exactly the one the wind decides. */
+  const drift = simPath(true);
+  const end = drift[drift.length-1] || last;
+  const wood = frameHit(end.x, end.y);
+  /* over the bar means CLEAR of it, not past its centre line */
+  const over = last.y > CFG.BAR_H + WOOD, inP = Math.abs(last.x) < HW - WOOD;
+  const col = wood ? '#FF8A3D' : inP ? (over ? '#7ee0a0' : '#FFD200') : '#FF2D6B';
 
   // the area lights up as the swipe moves, so a glance is enough
   drawZoneGrid();
-  const z = zoneOf(last.x, last.y);
-  if(z){
+  const z = wood ? null : zoneOf(last.x, last.y);
+  if(wood){
+    /* the frame itself, lit. Orange rather than red: this is not a miss, it
+       is the width of a post between you and a score. */
+    const pulse = 0.35 + 0.22*Math.sin(now*0.011);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,138,61,' + pulse + ')';
+    ctx.lineWidth = Math.max(4, prj(0,1,0).s * WOOD * 2.4);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    if(wood === 'bar'){
+      const a2 = prj(-HW, CFG.BAR_H, 0), b2 = prj(HW, CFG.BAR_H, 0);
+      ctx.moveTo(a2.x, a2.y); ctx.lineTo(b2.x, b2.y);
+    } else {
+      const sx = end.x > 0 ? HW : -HW;
+      const a2 = prj(sx, CFG.BAR_H, 0), b2 = prj(sx, 0, 0);
+      ctx.moveTo(a2.x, a2.y); ctx.lineTo(b2.x, b2.y);
+    }
+    ctx.stroke();
+    ctx.fillStyle = '#FF8A3D';
+    ctx.font = '900 11px Nunito, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    /* Clear of the keeper's set-position badge, which sits just under the bar
+       at a fixed place on screen and was being written straight through. And
+       clamped into the canvas: a post label placed beside the post it names
+       is off the edge of a phone, which is where OFF THE POST went. */
+    /* Both centred, above the frame. The post label used to sit beside the
+       post it names, which on a phone is hard against the edge of the screen
+       and written over the umpire; there is nothing there to point at that
+       the lit post is not already pointing at. Height keeps it clear of the
+       keeper's set-position badge, which is a DOM layer at a fixed spot. */
+    const txt = wood === 'bar' ? 'OFF THE CROSSBAR' : 'OFF THE POST';
+    const lbl = prj(0, CFG.BAR_H + 1.30, 0);
+    ctx.fillText(txt, lbl.x, lbl.y);
+    ctx.restore();
+  }
+  else if(z){
     const pulse = 0.13 + 0.05*Math.sin(now*0.008);
     fillZone(z, (z.over ? 'rgba(126,224,160,' : 'rgba(255,210,0,') + pulse + ')',
                  z.over ? 'rgba(126,224,160,.75)' : 'rgba(255,210,0,.75)');
@@ -7340,6 +7418,8 @@ if(new URLSearchParams(location.search).has('debug')){
       launchBall(rec.power, (rec.aimM||0) + slip,
                  clamp((rec.elev === undefined ? rec.power : rec.elev) + elevSlip, 0, 1));
       let t=0, pz, px, py, pa, res='short';
+      // the crossing point, not the step after it — see the note in sim.js
+      let hitX=null, hitY=null;
       for(let i=0;i<900;i++){
         pz=ball.wz; px=ball.wx; py=ball.wy; pa=wall?alongShot(ball):0;
         t+=1/60; stepBall(1/60); keeperUpdate(keeper,t,ball); if(wall) wallUpdate(wall,t);
@@ -7350,13 +7430,17 @@ if(new URLSearchParams(location.search).has('debug')){
         }
         if(pz>0 && ball.wz<=0){
           const f=pz/(pz-ball.wz);
-          res = evaluateAtPlane(lerp(px,ball.wx,f), lerp(py,ball.wy,f));
+          hitX = lerp(px,ball.wx,f); hitY = lerp(py,ball.wy,f);
+          res = evaluateAtPlane(hitX, hitY);
           break;
         }
         if(t>6) break;
       }
       const out = {outcome:res, x:+ball.wx.toFixed(9), y:+ball.wy.toFixed(9),
-                   z:+ball.wz.toFixed(9), wind:+wind.toFixed(9)};
+                   z:+ball.wz.toFixed(9),
+                   hitX: hitX===null ? null : +hitX.toFixed(9),
+                   hitY: hitY===null ? null : +hitY.toFixed(9),
+                   wind:+wind.toFixed(9)};
       spot=save.spot; shotDist=save.dist; shotU=save.u; shotR=save.r;
       ball=save.ball; keeper=save.keeper; wall=save.wall; curl=save.curl;
       difficulty=save.diff; weather=save.weather; windAcc=save.windAcc; mode=save.mode;
@@ -7429,6 +7513,34 @@ if(new URLSearchParams(location.search).has('debug')){
       return true;
     },
     get aimState(){ return {power:power, aimM:aimM, elev:elev, curl:curl}; },
+    /* Put the shot exactly where a test needs it. A swipe cannot express
+       "elevation 0.52" — it is 8px of finger — and the woodwork bands are
+       narrower than that, so they can only be looked at from here. */
+    setAim(p, a, e, c){
+      if(p !== undefined) power = clamp(p, 0, 1);
+      if(a !== undefined) aimM = clamp(a, -AIM_MAX, AIM_MAX);
+      if(e !== undefined) elev = clamp(e, 0, 1);
+      if(c !== undefined) curl = clamp(c, -1, 1);
+      kbAim = true; swipeOk = true;
+      refreshAimUI();
+      return {power, aimM, elev, curl};
+    },
+    /* The aid's geometry, callable on any landing point. The contract this
+       exists to prove: for a ball that actually arrived at (x,y), the aid's
+       verdict and the scorer's outcome must be the same word. */
+    frameAt(x, y){ return frameHit(x, y); },
+    /* what the reticle is telling the player right now, in words */
+    get aimVerdict(){
+      const pts = simPath(false), last = pts[pts.length-1];
+      if(!last) return null;
+      const d = simPath(true), e = d[d.length-1] || last;
+      return {x:+e.x.toFixed(3), y:+e.y.toFixed(3),
+              aimedX:+last.x.toFixed(3),
+              frame: frameHit(e.x, e.y),
+              over: e.y > CFG.BAR_H + WOOD,
+              inPosts: Math.abs(e.x) < HW - WOOD,
+              weather: WEATHERS.indexOf(weather)};
+    },
     get shotClock(){ return +shotT.toFixed(3); },
     holdClock(on){ clockHeld = !!on; },
     /* pressure is rendering-only by design, so the way to prove it never

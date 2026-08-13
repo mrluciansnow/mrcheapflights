@@ -47,7 +47,42 @@ function records(n){
   return out;
 }
 
-const RECS = records(120);
+/* Records aimed at the edges of what a keeper can physically reach.
+ *
+ * The generated spread above is broad but random, and broad-and-random misses
+ * narrow things. A real divergence was once introduced — the two copies given
+ * different values for the top tier's dive range — and this suite passed
+ * 120/120 over it, because only a handful of its records were both played by
+ * the server's own keeper AND aimed anywhere near the limit of his reach.
+ *
+ * A parity suite that cannot see a changed keeper is not guarding the thing it
+ * exists to guard, so these go at the numbers directly: every tier, aims
+ * stepped across and past each tier's reach, driven hard and low where the
+ * keeper's arm is the only thing between the ball and the net. */
+function reachRecords(){
+  const out = [];
+  const tiers = ['junior','intermediate','senior','allireland'];
+  let n = 0;
+  for(const difficulty of tiers){
+    for(const aimM of [1.8, 2.05, 2.2, 2.32, 2.45, 2.6, 2.8, 3.0, -2.32, -2.45, -2.8]){
+      for(const elev of [0.12, 0.34]){
+        out.push({
+          matchSeed: (2166136261 + n*16777619) >>> 0,
+          kickIndex: n % 9,
+          power: 0.95, aimM, curl: 0, elev,
+          x: 0, z: 11, wall: 0, weather: n % 4, difficulty,
+          /* half with a keeper who chose his own dive, half left to the
+             server's — the two paths reach the reach clamp differently */
+          dive: (n % 2) ? undefined : { x: aimM > 0 ? 2.9 : -2.9, y: 0.9, at: -0.05 },
+        });
+        n++;
+      }
+    }
+  }
+  return out;
+}
+
+const RECS = [...records(120), ...reachRecords()];
 
 // --- validation gate ---
 let badRejected = 0;

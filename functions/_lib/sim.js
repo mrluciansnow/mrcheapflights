@@ -37,7 +37,14 @@ export const DIFF = {
   junior:       {rMin:.25, rMax:.35, dur:.52, reach:.42, range:1.90, err:.95},
   intermediate: {rMin:.22, rMax:.31, dur:.47, reach:.45, range:2.05, err:.68},
   senior:       {rMin:.19, rMax:.27, dur:.43, reach:.48, range:2.32, err:.46},
-  allireland:   {rMin:.15, rMax:.22, dur:.38, reach:.52, range:2.28, err:.30},
+  /* range was 2.28 here — the one stat in this table that went DOWN at the top
+     of the ladder (1.90, 2.05, 2.32, 2.28). Everything else improves on every
+     line, so it read as a typo, and a table that lies about which way it is
+     tuned will mislead the next person to change it. Measured before and
+     after: the correction is worth 0.007 points a kick, because at this tier
+     err:.30 means he is usually already going to the right place. A
+     consistency fix, not a balance change. */
+  allireland:   {rMin:.15, rMax:.22, dur:.38, reach:.52, range:2.45, err:.30},
 };
 export const WEATHERS = [
   {name:'Clear',        rain:0,   wet:0},
@@ -250,6 +257,12 @@ export function simulate(rec){
      keeper is stepped once up front to put him where he had got to. */
   if(dive && dive.at < 0) keeperUpdate(0);
   let t = 0, outcome = 'short';
+  /* Where the ball crossed the line, as opposed to where it had got to when
+     the loop stopped — which is one step PAST the plane and up to 40cm away
+     from it. The outcome has always been judged at the crossing; only the
+     reported position was the later one, so anything reading x/y back to ask
+     "why was that a post?" got an answer that did not match. */
+  let hitX = null, hitY = null;
   for(let i=0;i<900;i++){
     const pz=b.wz, px=b.wx, py=b.wy, pa = wall ? alongShot() : 0;
     // step
@@ -282,7 +295,8 @@ export function simulate(rec){
     }
     if(pz > 0 && b.wz <= 0){
       const f = pz/(pz-b.wz);
-      outcome = evaluateAtPlane(lerp(px,b.wx,f), lerp(py,b.wy,f));
+      hitX = lerp(px,b.wx,f); hitY = lerp(py,b.wy,f);
+      outcome = evaluateAtPlane(hitX, hitY);
       break;
     }
     if(t > 6) break;
@@ -290,6 +304,8 @@ export function simulate(rec){
   return {
     outcome,
     x:+b.wx.toFixed(9), y:+b.wy.toFixed(9), z:+b.wz.toFixed(9),
+    hitX: hitX === null ? null : +hitX.toFixed(9),
+    hitY: hitY === null ? null : +hitY.toFixed(9),
     wind:+wind.toFixed(9),
   };
 }
