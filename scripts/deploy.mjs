@@ -12,13 +12,39 @@
 // served files here on purpose.
 
 import { execFileSync } from 'node:child_process';
-import { rmSync, mkdirSync, cpSync, existsSync } from 'node:fs';
+import { rmSync, mkdirSync, cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { wranglerArgv } from '../tools/wrangler-bin.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const dist = join(root, '.dist');
+/* THE WHOLE DEPLOY IS BUILT IN ITS OWN ROOT.
+ *
+ * This used to stage the served files into .dist/ and run
+ * `wrangler pages deploy .dist` from the repo. That works for the static
+ * files and does nothing whatever for the Functions, because wrangler does
+ * not compile the functions/ directory beside the assets you point it at —
+ * it compiles the one beside its CONFIG, which is the repo root. Its own
+ * error says so: "Failed to build Functions at ./functions".
+ *
+ * Which meant every guard here was being applied to a directory the Functions
+ * build never looked at. A half-finished file sitting untracked in the repo
+ * broke the game's deploy three times over, the second and third times
+ * through a script that was reporting it had left that very file behind.
+ * Verified directly: with a broken file in functions/, `pages deploy .dist`
+ * still fails on it; a root that does not contain the file compiles clean.
+ *
+ * So the deploy now assembles a complete little project of its own —
+ * config, functions, assets — and runs wrangler from inside it. Nothing
+ * about the working tree can reach the build.
+ *
+ *   .deploy/
+ *     wrangler.toml     a copy, with the output dir pointed at public/
+ *     functions/        tracked files only
+ *     public/           the served files; this is what gets uploaded
+ */
+const build = join(root, '.deploy');
+const dist = join(build, 'public');
 
 // Exactly the files/dirs that make up the public site. NOTHING else ships.
 const SERVED_FILES = [
@@ -34,8 +60,8 @@ const SERVED_FILES = [
 ];
 const SERVED_DIRS = ['functions']; // Pages compiles this — not served as static
 
-console.log('🧹 Building clean .dist/ …');
-rmSync(dist, { recursive: true, force: true });
+console.log('🧹 Building a clean deploy root …');
+rmSync(build, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });
 
 let staged = 0;
@@ -76,18 +102,21 @@ function untrackedUnder(dir) {
 for (const d of SERVED_DIRS) {
   const src = join(root, d);
   if (!existsSync(src)) continue;
+  /* functions/ goes beside the assets dir, not inside it: wrangler compiles
+     it from the project root, and anything left under public/ would also be
+     served as a static file, which is how you publish your own source. */
   const files = trackedUnder(d);
   if (files === null) {
     console.warn(`   (no git — copying all of ${d}/, including anything uncommitted)`);
-    cpSync(src, join(dist, d), { recursive: true });
+    cpSync(src, join(build, d), { recursive: true });
     staged++;
     continue;
   }
   for (const f of files) {
     const from = join(root, f);
     if (!existsSync(from)) continue;          // deleted but still in the index
-    mkdirSync(dirname(join(dist, f)), { recursive: true });
-    cpSync(from, join(dist, f));
+    mkdirSync(dirname(join(build, f)), { recursive: true });
+    cpSync(from, join(build, f));
     staged++;
   }
   const skipped = untrackedUnder(d);
@@ -118,7 +147,8 @@ const MUST_SHIP = [
   'functions/api/mp/ice.js',      // no relay config means voice dies on mobile
 ];
 for (const required of MUST_SHIP) {
-  if (!existsSync(join(dist, required))) {
+  const where = required.startsWith('functions/') ? build : dist;
+  if (!existsSync(join(where, required))) {
     console.error(`💥 ABORT: ${required} is missing from .dist/ — this build cannot serve it.`);
     console.error('   Check SERVED_FILES / SERVED_DIRS above.');
     process.exit(1);
@@ -126,16 +156,31 @@ for (const required of MUST_SHIP) {
 }
 console.log(`   verified ${MUST_SHIP.length} required entries are present`);
 
-// Hard guard: never let a secrets/config file into the deploy.
-for (const forbidden of ['.dev.vars', 'wrangler.toml', 'package.json']) {
+/* The config the build runs against: a copy, pointed at public/, sitting
+   BESIDE the assets rather than in them. wrangler needs it for the D1 and AI
+   bindings and for nodejs_compat; Pages must never serve it. */
+writeFileSync(join(build, 'wrangler.toml'),
+  readFileSync(join(root, 'wrangler.toml'), 'utf8')
+    .replace(/^pages_build_output_dir\s*=.*$/m, 'pages_build_output_dir = "public"'));
+
+// Hard guard: never let a secrets/config file into the part that gets served.
+for (const forbidden of ['.dev.vars', 'wrangler.toml', 'package.json', 'functions']) {
   if (existsSync(join(dist, forbidden))) {
-    console.error(`💥 ABORT: ${forbidden} ended up in .dist/ — refusing to deploy.`);
+    console.error(`💥 ABORT: ${forbidden} ended up in the served directory — refusing to deploy.`);
     process.exit(1);
   }
 }
 
+/* Build the root and stop. Lets the staging be inspected, and lets a test
+   prove that nothing in the working tree can reach it, without needing
+   credentials or uploading anything. */
+if (process.argv.includes('--stage-only')) {
+  console.log(`\n📦 Staged only. The deploy root is ${build}`);
+  process.exit(0);
+}
+
 const branch = process.argv.includes('--preview') ? 'preview' : 'main';
-console.log(`🚀 Deploying .dist/ to ${branch} …`);
+console.log(`🚀 Deploying to ${branch} …`);
 /* Two failures live below this line and they mean opposite things: wrangler
    refusing to upload (nothing is live, the old build still serves) and the
    smoke suite going red afterwards (the new build IS live and something on it
@@ -143,10 +188,12 @@ console.log(`🚀 Deploying .dist/ to ${branch} …`);
    "the deploy IS live" over a build that had never happened. Exit 1 for the
    first, 2 for the second, and let the caller tell the difference. */
 try {
+  /* from inside the build root — see the note at the top. Run from the repo,
+     wrangler compiles the repo's functions/ whatever it is pointed at. */
   execFileSync(process.execPath,
-    wranglerArgv(['pages', 'deploy', '.dist', '--project-name=mrcheap',
+    wranglerArgv(['pages', 'deploy', 'public', '--project-name=mrcheap',
                   `--branch=${branch}`, '--commit-dirty=true']),
-    { cwd: root, stdio: 'inherit' }
+    { cwd: build, stdio: 'inherit' }
   );
 } catch {
   console.error('\n💥 THE DEPLOY DID NOT HAPPEN. Nothing was uploaded and the');
