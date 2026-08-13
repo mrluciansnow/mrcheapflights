@@ -14,7 +14,7 @@
     "test:email": "node scripts/test-email.mjs",
     "test:site": "node scripts/test-parser.mjs && node scripts/test-email.mjs",
     "test:game": "node tests/sim-parity.mjs && node tests/determinism.mjs && node tests/physics.mjs",
-    "test:ui": "node tests/ui-smoke.mjs && node tests/layout.mjs && node tests/music.mjs && node tests/pressure.mjs",
+    "test:ui": "node tests/ui-smoke.mjs && node tests/layout.mjs && node tests/music.mjs && node tests/pressure.mjs && node tests/aim.mjs",
     "test:duel": "node tests/duel-api.mjs && node tests/duel-client.mjs && node tests/duel-play.mjs && node tests/duel-lobby.mjs && node tests/duel-queue.mjs && node tests/duel-room.mjs && node tests/duel-endgame.mjs && node tests/duel-talk.mjs",
     "test:daily": "node tests/daily.mjs",
     "test:balance": "node tests/balance.mjs",
