@@ -125,6 +125,18 @@ body.keeping .readout{opacity:0 !important}
   background:rgba(4,13,22,.78);border:1px solid rgba(255,210,0,.28);border-radius:40px;
   padding:.5rem 1.1rem;font-weight:900;font-size:.8rem;backdrop-filter:blur(6px)}
 
+/* Shown a beat after a result card, and only once the player has seen a few —
+   somebody watching their first goal does not want to be told to skip it. */
+/* Down in the prompt's lane, which is empty while a result is showing — the
+   prompt is hidden from the moment the ball is struck. Above the commentary
+   at 74px it was written straight through a two-line comm line. Same width
+   guard as the prompt so it keeps clear of the pause and mute buttons. */
+.skiphint{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);
+  pointer-events:none;opacity:0;transition:opacity .45s;
+  max-width:calc(100% - 116px);text-align:center;
+  font-size:.58rem;font-weight:900;letter-spacing:.16em;text-transform:uppercase;
+  color:rgba(255,255,255,.42);text-shadow:0 2px 8px rgba(0,0,0,.8)}
+.skiphint.show{opacity:1}
 .res{position:absolute;left:50%;top:41%;transform:translate(-50%,-50%) scale(.55);opacity:0;text-align:center;
   transition:transform .38s cubic-bezier(.34,1.7,.6,1),opacity .22s;pointer-events:none}
 .res.show{transform:translate(-50%,-50%) scale(1);opacity:1}
@@ -279,8 +291,14 @@ body.dragging .betbar,body.dragging .prompt,body.dragging .comm{pointer-events:n
   background:rgba(4,13,22,.82);color:rgba(255,255,255,.8);backdrop-filter:blur(6px)}
 .stake.sel{border-color:var(--yellow);color:var(--yellow);background:rgba(255,210,0,.14)}
 .stake.off{opacity:.3;cursor:not-allowed}
-.betnote{margin-top:.3rem;padding:0 18px;font-size:.58rem;font-weight:800;
-  letter-spacing:.05em;opacity:.55;line-height:1.4}
+/* White at 55% over a floodlit terrace is not text, it is a texture. The
+   crowd behind this is the busiest part of the frame and the line was
+   unreadable at every viewport. Same treatment as the prompt: its own ground
+   to sit on, and only as wide as the words. */
+.betnote{margin:.35rem auto 0;padding:.28rem .7rem;font-size:.58rem;font-weight:800;
+  letter-spacing:.05em;line-height:1.35;width:fit-content;max-width:calc(100% - 36px);
+  color:rgba(255,255,255,.8);background:rgba(4,13,22,.6);border-radius:20px;
+  backdrop-filter:blur(4px)}
 .keepbar{position:absolute;left:50%;top:150px;transform:translate(-50%,-8px);
   opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;text-align:center}
 .keepbar.show{opacity:1;transform:translate(-50%,0)}
@@ -672,6 +690,7 @@ window.addEventListener('error', function(e){
   <div class="prompt" id="prompt">Swipe the shot you want</div>
   <div class="comm" id="comm"></div>
   <div class="res" id="res"><div class="big"></div><div class="sub"></div></div>
+  <div class="skiphint" id="skipHint">tap to continue</div>
   <button class="pausebtn" id="bPause" aria-label="Pause">⏸</button>
   <button class="mute" id="bMute" aria-label="Toggle sound">🔊</button>
 
@@ -2667,13 +2686,40 @@ function startAmbience(){
    the background stops calling requestAnimationFrame and would otherwise take
    the music with it, or worse, resume it as a pile of overdue notes.
    ================================================================== */
+/* ==================================================================
+   THE SOUNDTRACK
+
+   Generated, because the game is one file with no external requests — so
+   there is no track to load and nothing to buffer. What there is instead is
+   a tune, written out below and played by oscillators.
+
+   It used to be a loop: one sixteen-note line over one drone and one thump,
+   the same four bars forever. Four bars is long enough to notice and short
+   enough to wear through in a minute. This is a sixteen-bar tune — four
+   phrases, A A' B A'' — over a chord progression, with a bass under it and
+   the ornaments that make a line sound played rather than stepped.
+
+   D dorian throughout. The major IV is the whole reason for that mode; it is
+   what stops a minor tune sounding mournful, and it is the sound of the trad
+   the ground would actually be playing.
+   ================================================================== */
 const MUSIC = {
   bpm: 84,
-  /* D dorian, two octaves, as scale degrees — the melody walks this rather
-     than picking freely, so it stays a tune. */
   root: 146.83,                                   // D3
+  /* the mode, two octaves, as semitones from the root. Degree 0 = D,
+     2 = F, 3 = G, 6 = C — everything below is written in these degrees so a
+     phrase cannot land outside the key. */
   steps: [0, 2, 3, 5, 7, 9, 10, 12, 14, 15, 17, 19],
-  line: [0, 2, 4, 2, 7, 5, 4, 2, 0, 4, 7, 9, 7, 5, 4, 2],
+  /* one chord a bar, four bars round: Dm - C - G - Dm. i, VII, IV, i. */
+  chords: [0, 6, 3, 0],
+  /* four phrases of eight notes, one note every other beat, four bars each.
+     A states it, A' opens it out, B lifts an octave, A'' brings it home. */
+  phrases: [
+    [0, 2, 4, 2, 3, 2, 1, 0],
+    [0, 2, 4, 5, 4, 3, 2, 1],
+    [4, 6, 7, 6, 5, 4, 3, 2],
+    [0, 2, 4, 2, 1, 3, 2, 0],
+  ],
 };
 const Music = {
   on: false, gain: null, bus: null, timer: null,
@@ -2752,50 +2798,107 @@ function musicPress(p){
 }
 
 /* Schedule whatever falls inside the next second. */
+/* one voice: an oscillator, an envelope, and a stop. Every pitched part below
+   is this with different numbers, which is the whole synth. */
+function musicVoice(a, n, t){
+  const o = a.createOscillator(), g = a.createGain();
+  o.type = n.type || 'triangle';
+  o.frequency.setValueAtTime(n.hz, t);
+  if(n.to) o.frequency.exponentialRampToValueAtTime(n.to, t + n.bend);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(n.peak, t + n.a);
+  if(n.h) g.gain.setValueAtTime(n.peak, t + n.a + n.h);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + n.a + n.h + n.r);
+  o.connect(g); g.connect(Music.bus);
+  o.start(t); o.stop(t + n.a + n.h + n.r + 0.02);
+}
+
+/* ---- the composition ----
+ *
+ * What the tune plays on a given beat, as data. Pure: no audio context, no
+ * clock, no scheduling. That separation is not tidiness — the scheduler works
+ * a second ahead of the clock, so it cannot be driven forward by hand, and a
+ * tune that takes forty-five seconds to come round cannot be checked by
+ * waiting for it. This can be read a beat at a time in a millisecond.
+ *
+ * `full` is the arrangement: a menu gets the tune and the drone, a match gets
+ * the bass and the bodhrán under it as well.
+ */
+function musicScore(s, full){
+  const beat = 60 / MUSIC.bpm;
+  const bar    = (s >> 2) & 15;                  // 0-15, sixteen bars round
+  const chord  = MUSIC.chords[bar & 3];          // the chord this bar
+  const phrase = MUSIC.phrases[(bar >> 2) & 3];  // the phrase these four
+  const beatOf = s & 3;                          // 0-3 within the bar
+  const out = [];
+
+  /* the bodhrán: a soft thump on every beat, harder on the one, and the
+     tipper coming back off the beat — that second half is what makes the
+     rhythm walk instead of march */
+  if(full){
+    const hit = beatOf === 0;
+    out.push({part:'drum', type:'sine', hz: hit?82:66, to: hit?44:40, bend:0.16,
+              dt:0, peak: hit?0.5:0.26, a:0.001, h:0, r:0.21});
+    if(beatOf !== 0)
+      out.push({part:'tick', type:'sine', hz:190, dt:beat*0.5,
+                peak:0.055, a:0.004, h:0, r:0.05});
+  }
+
+  /* the bass: the chord root on one and three, then a passing note on the
+     four — the degree halfway to the next chord, so the bars join rather
+     than restart, and always in the mode because it is still a degree of it */
+  if(full && (beatOf === 0 || beatOf === 2))
+    out.push({part:'bass', hz: musicNote(chord)*0.5, dt:0,
+              peak:0.16, a:0.008, h:beat*0.25, r:beat*0.6});
+  if(full && beatOf === 3){
+    const next = MUSIC.chords[(bar + 1) & 3];
+    out.push({part:'bass', hz: musicNote((chord + next) >> 1)*0.5, dt:0,
+              peak:0.10, a:0.008, h:0, r:beat*0.5});
+  }
+
+  /* the drone: two voices a fifth apart, once a bar, long and quiet, moving
+     with the chord instead of sitting on D through the whole tune */
+  if(beatOf === 0)
+    for(const mul of [1, 1.4983])
+      out.push({part:'drone', hz: musicNote(chord)*0.5*mul, dt:0,
+                peak:0.055, a:0.5, h:0, r:beat*3.5});
+
+  /* the tune: one note every other beat, walking the written phrase */
+  if((s & 1) === 0){
+    const deg = phrase[((s & 15) >> 1) & 7];
+    const hz = musicNote(deg) * 2;
+    out.push({part:'tune', hz, dt:0, peak:0.13, a:0.03, h:beat*0.35, r:beat*0.9});
+    /* the cut: three grace notes off the top of the note, on the first beat
+       of every second bar. One ornament, and it is the difference between a
+       tune being played and a sequence being stepped through. */
+    if(full && beatOf === 0 && (bar & 1) === 1){
+      const up = musicNote(deg + 2) * 2;
+      for(let i = 0; i < 3; i++)
+        out.push({part:'cut', hz: i === 1 ? up : hz, dt: beat*0.5 + i*0.055,
+                  peak:0.07, a:0.004, h:0, r:0.05});
+    }
+  }
+  return out;
+}
+
+/* Schedule whatever falls inside the next second.
+ *
+ * Against a.currentTime, never against the frame loop: a scheduler running
+ * off requestAnimationFrame stutters with the frame rate and stops dead in a
+ * background tab, and audio that drifts against its own clock is worse than
+ * no audio at all.
+ */
 function musicPump(){
   const a = ac();
   if(!a || !Music.on) return;
   const beat = 60 / MUSIC.bpm;
+  /* how much of the arrangement is playing — derived rather than set, so
+     nothing has to remember to turn it up when a match starts */
+  const full = !(state === ST.TITLE || state === ST.OVER);
   while(Music.at < a.currentTime + 1.0){
-    const t = Music.at, s = Music.step;
-
-    // the pulse: a soft thump on every beat, harder on the one
-    const hit = (s % 4) === 0;
-    const o = a.createOscillator(), g = a.createGain();
-    o.type = 'sine';
-    o.frequency.setValueAtTime(hit ? 82 : 66, t);
-    o.frequency.exponentialRampToValueAtTime(hit ? 44 : 40, t + 0.16);
-    g.gain.setValueAtTime(hit ? 0.5 : 0.26, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
-    o.connect(g); g.connect(Music.bus); o.start(t); o.stop(t + 0.26);
-
-    // the drone: two voices a fifth apart, once a bar, long and quiet
-    if((s % 8) === 0){
-      for(const mul of [1, 1.4983]){
-        const d = a.createOscillator(), dg = a.createGain();
-        d.type = 'triangle';
-        d.frequency.setValueAtTime(MUSIC.root * 0.5 * mul, t);
-        dg.gain.setValueAtTime(0.0001, t);
-        dg.gain.linearRampToValueAtTime(0.09, t + 0.6);
-        dg.gain.linearRampToValueAtTime(0.0001, t + beat * 8);
-        d.connect(dg); dg.connect(Music.bus); d.start(t); d.stop(t + beat * 8 + 0.1);
-      }
-    }
-
-    // the line: one note every other beat, walking the written sequence
-    if((s % 2) === 0){
-      const n = MUSIC.line[(s / 2) % MUSIC.line.length];
-      const m = a.createOscillator(), mg = a.createGain();
-      m.type = 'triangle';
-      m.frequency.setValueAtTime(musicNote(n) * 2, t);
-      mg.gain.setValueAtTime(0.0001, t);
-      mg.gain.linearRampToValueAtTime(0.13, t + 0.04);
-      mg.gain.exponentialRampToValueAtTime(0.0001, t + beat * 1.4);
-      m.connect(mg); mg.connect(Music.bus); m.start(t); m.stop(t + beat * 1.6);
-    }
-
+    for(const n of musicScore(Music.step, full)) musicVoice(a, n, Music.at + n.dt);
     Music.at += beat;
-    Music.step = (s + 1) % 64;
+    Music.step = (Music.step + 1) % 64;
   }
 }
 /* Follow the settings wherever they are changed from. */
@@ -3635,6 +3738,15 @@ function award(kind){
   r.querySelector('.sub').textContent=sub2;
   refreshProgressHUD();
   requestAnimationFrame(()=>r.classList.add('show'));
+  /* The hint, after a beat, and only once somebody has watched a few of
+     these. A player's first goal should not come with instructions for
+     getting past it. */
+  const hint = $('skipHint');
+  clearTimeout(hint._t);
+  hint.classList.remove('show');
+  if(profile.seenResults > 4)
+    hint._t = setTimeout(()=>{ if(state===ST.RESULT||state===ST.REPLAY) hint.classList.add('show'); }, 900);
+  profile.seenResults = (profile.seenResults || 0) + 1;
 
   if(kind==='goal'){
     SFX.net(); SFX.roar(true); raiseFlags(2); burstConfetti(); buzz([0,26,50,70]);
@@ -3828,6 +3940,7 @@ function decided(){
 
 function advance(){
   $('res').classList.remove('show');
+  $('skipHint').classList.remove('show');
   restCam();
   // a promotion holds the game until it is acknowledged
   if(pendingRankUp) return showRankUp(advanceNow);
@@ -4498,6 +4611,17 @@ function down(e){
     e.preventDefault();
     return;
   }
+  /* ---- tap to get on with it ----
+   * A match spent 31% of its wall clock in RESULT: the card holds for 1.7s,
+   * slow-mo stretches that, and a goal adds a replay on top. All of it is
+   * watching, none of it is playing, and there was no way past it — the only
+   * input handler in the game returned immediately unless you were aiming.
+   *
+   * A tap now takes the shortest honest route to the next kick. It does not
+   * skip the OUTCOME, which is already decided and already scored; it ends
+   * the presentation of it. Online it changes nothing about the match either,
+   * because advance() there just goes back to waiting on the server. */
+  if(state===ST.RESULT || state===ST.REPLAY){ skipShow(); e.preventDefault(); return; }
   if(state!==ST.AIM) return;
   // anywhere on the pitch starts a shot — a fingertip should not have to find
   // a 40px ball on a phone
@@ -5644,6 +5768,15 @@ function recordFrame(){
     ktx:keeper.tx, kty:keeper.ty, kc:keeper.committed,
     wj: wall ? wall.jump : 0,
   });
+}
+/* End whatever is being shown and move on. Called by a tap, and safe from
+   any of the three states that show something: a replay jumps to its last
+   frame so the outcome still lands, and a result simply stops holding.
+   Nothing here decides anything — the kick was scored before this ran. */
+function skipShow(){
+  if(state === ST.REPLAY){ replayI = replay.length; stepReplay(0); }
+  if(state === ST.RESULT){ timeScale = 1; timeHold = 0; resultT = 0; advance(); }
+  $('skipHint').classList.remove('show');
 }
 function startReplay(kind){
   if(replay.length<6) return false;
@@ -7477,6 +7610,13 @@ if(new URLSearchParams(location.search).has('debug')){
       refreshHUD();
       return {p: total(P), c: total(C), press: pressure()};
     },
+    /* the tap that gets past a result card, so the pacing it changes can be
+       measured rather than asserted */
+    skipShow: () => skipShow(),
+    /* the scoreboard, so a test can prove that getting past a result card
+       changed the presentation and not the match */
+    get debugScore(){ return {p: total(P), c: total(C),
+                              pr: P.r.length, cr: C.r.length}; },
     get paused(){ return paused; },
     get canAim(){ return state === ST.AIM && !paused; },
     get canKeep(){ return keepLive(); },
@@ -7601,7 +7741,15 @@ if(new URLSearchParams(location.search).has('debug')){
     talk: Talk,
     /* the music controls, so a test can drive the same switches a player does */
     musicDuck: on => musicDuck(on),
+    /* The scheduler, callable a step at a time. What comes out of the bus
+       cannot be listened to from a test, but what goes INTO it can be read —
+       which is the only way to tell a tune from a loop. */
+    /* The composition, readable a beat at a time. What comes out of the bus
+       cannot be listened to from a test; what the tune is made of can be read,
+       and that is the only way to tell a tune from a loop. */
+    musicScore: (step, full) => musicScore(step, full !== false),
     audioContext: () => ac(),
+    toTitle: () => toMenu(),
     applyOpts: () => applyOpts(),
     opts,
     /* the music bus, so a test can read the level rather than listen to it */

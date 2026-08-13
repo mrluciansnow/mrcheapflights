@@ -187,6 +187,32 @@ src.forEach((line, i) => {
 ok('pressure is read only by the view, the sound and the clock',
    stray.length === 0, stray.join('\n       '));
 
+console.log('\nAND A PLAYER CAN GET ON WITH IT');
+/* A match spent 41% of its wall clock showing cards nobody could dismiss:
+ * 1.7s of result, stretched by slow-mo, plus a replay on every goal. The
+ * outcome is decided and scored before any of that is drawn, so a tap ends
+ * the showing of it and nothing else. */
+await page.evaluate(() => window.CF.holdClock(false));
+const skip = await page.evaluate(async () => {
+  const t0 = Date.now();
+  while (Date.now() - t0 < 25000) {
+    if (window.CF.stateName === 'RESULT' || window.CF.stateName === 'REPLAY') break;
+    await new Promise(r => setTimeout(r, 60));
+  }
+  const before = window.CF.stateName;
+  if (before !== 'RESULT' && before !== 'REPLAY') return { before, after: before };
+  const score = JSON.stringify(window.CF.debugScore || null);
+  window.CF.skipShow();
+  await new Promise(r => setTimeout(r, 250));
+  return { before, after: window.CF.stateName, score,
+           scoreAfter: JSON.stringify(window.CF.debugScore || null) };
+});
+ok('a result card can be reached', skip.before === 'RESULT' || skip.before === 'REPLAY',
+   JSON.stringify(skip));
+ok('and a tap moves the match on', skip.after !== skip.before, JSON.stringify(skip));
+ok('without changing what the kick was worth', skip.score === skip.scoreAfter,
+   skip.score + ' -> ' + skip.scoreAfter);
+
 ok('no runtime errors through any of it', errs.length === 0, errs.join(' | '));
 
 await browser.close();

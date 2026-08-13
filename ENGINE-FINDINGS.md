@@ -201,13 +201,80 @@ elevation and power at 26m, 32m and 40m: **0 men and 5 men produce identical
 outcomes, 0.0% blocked**. At 20m it is an all-or-nothing cliff — 100% blocked
 at elevation 0.05, 0% at 0.15.
 
-### 11. The bet bar sits across the goalmouth
+### 11. ~~The bet bar sits across the goalmouth~~ — overstated, corrected
 
-Not a collision in the measured sense — it is where it was placed — but the
-stakes row and its note are drawn over the goal and the crossbar at every
-viewport, which is exactly where the player is looking while aiming.
+Measured rather than eyeballed, the stakes row sits about 145px **above** the
+crossbar, over the uprights and the terrace — not across the goalmouth. The
+first version of this finding said otherwise and was wrong.
+
+What *was* real underneath it: the note below the stakes was white at 55%
+opacity over the busiest part of the frame, which is a texture rather than a
+line of text. Fixed in the second pass — it has its own ground now.
 
 ---
+
+---
+
+# Second pass — pacing, and the soundtrack
+
+## 12. A third to a half of a match was watching, with no way past it
+
+Sampling the game state 50 times a second through a whole quick match:
+
+| state | share of the match |
+|---|---|
+| AIM | 36.3% |
+| **RESULT** | **30.8%** |
+| KEEP | 12.4% |
+| FLIGHT | 11.9% |
+| REPLAY | 8.6% |
+
+The result card holds for 1.7s, slow-mo stretches that, and a goal adds a
+replay on top. None of it could be dismissed: the only input handler in the
+game returned immediately unless you were aiming.
+
+**Fixed**: a tap during RESULT or REPLAY takes the shortest honest route to
+the next kick. It does not skip the *outcome* — that is decided and scored
+before any of it is drawn — it ends the presentation. Measured over a full
+match:
+
+| | match length | spent watching |
+|---|---|---|
+| before | 57.9s | 23.5s (41%) |
+| tapping through | **25.7s** | **0.4s (1%)** |
+
+A hint appears after a beat, and only once a player has watched a few — a
+first goal should not come with instructions for getting past it.
+
+## 13. The music was a loop, not a soundtrack
+
+One sixteen-note line over one drone and one thump: the same four bars, one
+chord, forever. Long enough to notice and short enough to wear through in a
+minute.
+
+**Rewritten** as a sixteen-bar tune in D dorian — four phrases (A A' B A'')
+over a Dm–C–G–Dm progression, with a bass that walks between the chords, a
+drone that moves with them, a bodhrán with the tipper coming back off the
+beat, and a trad cut ornament on every second bar. The arrangement thins out
+away from a match: a menu keeps the tune and the drone and loses the rhythm
+section.
+
+The composition is now a pure function of the beat, separate from the
+scheduler. That is not tidiness — the scheduler works a second ahead of the
+audio clock and cannot be driven forward by hand, so a tune that takes 45
+seconds to come round could not otherwise be checked. `tests/music.mjs` is now
+29 checks and reads the score directly: 32 melody notes, four distinct
+phrases, resolving to the note it opened on, three or more bass roots, and
+every pitched note in the mode.
+
+## Not measurable in this container
+
+**Frame pacing.** The harness reports `devicePixelRatio: 1`, so the three
+graphics presets all render at the same size and cannot be told apart, and the
+~25ms floor observed is the headless environment rather than the game. An
+early draft of this document reported "12.77% dropped frames" as a finding;
+that number is the harness and has been removed. Frame cost needs measuring on
+a real device.
 
 ## Confirmed working
 
