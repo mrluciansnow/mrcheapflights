@@ -134,6 +134,73 @@ ok('still exactly one bus running, not four', (await music()).on === true,
    JSON.stringify(await music()));
 ok('no runtime errors through any of it', errs.length === 0, errs.join(' | '));
 
+console.log('\nIT IS A TUNE, NOT A LOOP');
+/* The bus can be running and the level can be right and the thing coming out
+ * of it can still be four bars repeating until somebody turns it off. That is
+ * what it was. So read the composition, a beat at a time, and look at the
+ * shape of it. */
+const score = await page.evaluate(() => {
+  const beats = [];
+  for (let s = 0; s < 64; s++) beats.push(window.CF.musicScore(s, true));
+  return beats;
+});
+const all = score.flat();
+ok('every beat of the cycle plays something', score.every(b => b.length > 0),
+   score.findIndex(b => !b.length) + ' was silent');
+
+const tune = all.filter(n => n.part === 'tune').map(n => n.hz);
+ok('the melody is 32 notes long, not 8', tune.length === 32, String(tune.length));
+/* the actual claim: the second four bars are not the first four again */
+const barsOf = i => tune.slice(i * 8, i * 8 + 8).join(',');
+const phrases = [barsOf(0), barsOf(1), barsOf(2), barsOf(3)];
+ok('it is four different phrases, not one repeated',
+   new Set(phrases).size >= 3, phrases.join('  |  '));
+ok('and it comes home — the last phrase ends on the note the first began on',
+   tune[31] === tune[0], tune[0] + ' -> ' + tune[31]);
+
+const bass = [...new Set(all.filter(n => n.part === 'bass').map(n => n.hz))];
+ok('there is a bass under it', bass.length > 0, String(bass.length));
+ok('and the chord moves — more than one root across the cycle',
+   bass.length >= 3, bass.map(h => h.toFixed(1)).join(', '));
+const drone = [...new Set(all.filter(n => n.part === 'drone').map(n => n.hz))];
+ok('the drone moves with it instead of sitting on one note',
+   drone.length >= 4, drone.length + ' drone pitches');
+ok('there are ornaments on it', all.some(n => n.part === 'cut'));
+ok('and a rhythm under all of it',
+   all.some(n => n.part === 'drum') && all.some(n => n.part === 'tick'));
+
+/* nothing may be written outside the mode — that is the point of writing the
+   tune in scale degrees rather than in frequencies */
+const inMode = await page.evaluate(() => {
+  const ok = [];
+  for (let o = -2; o <= 3; o++)
+    for (const st of [0, 2, 3, 5, 7, 9, 10, 12, 14, 15, 17, 19])
+      ok.push(+(146.83 * Math.pow(2, st / 12) * Math.pow(2, o)).toFixed(1));
+  const bad = [];
+  for (let s = 0; s < 64; s++)
+    for (const n of window.CF.musicScore(s, true))
+      if (n.part !== 'drum' && n.part !== 'tick' &&
+          !ok.some(h => Math.abs(h - n.hz) < 0.6)) bad.push(n.part + ' ' + n.hz);
+  return bad;
+});
+ok('every pitched note is in the mode', inMode.length === 0, inMode.slice(0, 6).join(', '));
+
+console.log('\nAND IT STEPS BACK AWAY FROM A MATCH');
+const menu = await page.evaluate(() => {
+  let full = 0, thin = 0;
+  const parts = new Set();
+  for (let s = 0; s < 64; s++) {
+    full += window.CF.musicScore(s, true).length;
+    for (const n of window.CF.musicScore(s, false)) { thin++; parts.add(n.part); }
+  }
+  return { full, thin, parts: [...parts].sort() };
+});
+ok('a menu is not given a drum kit', menu.thin < menu.full, JSON.stringify(menu));
+ok('but it keeps the tune and the drone',
+   menu.parts.includes('tune') && menu.parts.includes('drone'), JSON.stringify(menu.parts));
+ok('and loses the rhythm section',
+   !menu.parts.includes('drum') && !menu.parts.includes('bass'), JSON.stringify(menu.parts));
+
 await browser.close();
 console.log('\n' + (fail ? 'MUSIC: ' + fail + ' FAILED' : 'MUSIC: ALL ' + pass + ' PASSED'));
 process.exit(fail ? 1 : 0);
