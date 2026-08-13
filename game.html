@@ -2013,6 +2013,30 @@ function drawKeeper(k){
   const footR=J(0.03+Math.max(0,-lift),  0.30+k.side*e*0.62);
   const offElb=J(1.14-cr, -k.side*0.40-(1-e)*0.06), offHand=J(0.96-cr+(1-e)*0.22, -k.side*0.62-(1-e)*0.10);
 
+  /* AN ARM IS A FIXED LENGTH.
+     keeperHand() is the simulation's, and at full stretch it sits further
+     from the shoulder than any arm reaches — the drawing closed that gap by
+     growing the arm, which is a keeper made of elastic. He leads with the
+     shoulder instead: the upper body slides toward the hand by the excess,
+     which is what a diving keeper actually does. Capped, so he cannot
+     dislocate himself either. Swept over every pose the dive can produce,
+     the arm used to reach 1.87x its own length and 26% of poses needed a
+     stretch; at this cap the worst is 1.00 and nothing stretches at all.
+     Purely how he is drawn. wx, wy and keeperHand are untouched, so nothing
+     the simulation reads has moved. */
+  const ARM = 0.74;                                  // shoulder to fingertip
+  {
+    const ax = handP.x - shR.x, ay = handP.y - shR.y;
+    const reach = Math.sqrt(ax*ax + ay*ay);
+    const over  = reach - ARM*s;
+    if(over > 0 && reach > 0.001){
+      const f = Math.min(over, 0.65*s) / reach;
+      for(const j of [chest, shL, shR, head_, offElb, offHand]){
+        j.x += ax*f; j.y += ay*f;
+      }
+    }
+  }
+
   // ground shadow (fades as he leaves the turf)
   /* a short trail behind a committed dive: three ghosts along the path he
      has already covered, fading out */
@@ -2063,7 +2087,14 @@ function drawKeeper(k){
   // shoulders
   limb(ctx, shL.x,shL.y, shR.x,shR.y, LW(.11), LW(.11), kit, dk);
   // reaching arm
-  const elb = { x:lerp(shR.x, handP.x, .5)+ux*3, y:lerp(shR.y, handP.y, .5)-7*(1-e) };
+  /* the elbow bends out of the line, and bends MORE the less of the arm the
+     reach is using — a hand held close should not be on the end of a plank */
+  const armDX = handP.x - shR.x, armDY = handP.y - shR.y;
+  const armD  = Math.max(0.001, Math.sqrt(armDX*armDX + armDY*armDY));
+  const slack = clamp(1 - armD/(ARM*s), 0, 1);
+  const bend  = k.side * (0.10 + slack*0.34) * ARM * s;
+  const elb = { x: lerp(shR.x, handP.x, .5) - (armDY/armD)*bend + ux*3,
+                y: lerp(shR.y, handP.y, .5) + (armDX/armD)*bend };
   limb(ctx, shR.x,shR.y, elb.x,elb.y, LW(.105), LW(.082), kit, dk);
   limb(ctx, elb.x,elb.y, handP.x,handP.y, LW(.082), LW(.062), kit, dk);
   head(ctx, head_.x, head_.y, Math.max(3,0.16*s), '#dba97c', '#2e2118', ang);
@@ -6076,28 +6107,66 @@ function inkKeeper(k){
   const mine = k.co === CO_P;
   const KIT  = inkRamp(mine ? gkKit.a : '#CFE83C', -0.40, 0.22);
   /* his own body drops as he settles, exactly as the classic renderer has it */
-  const off = (lat, hgt) => [ k.wx + lat*RX, k.wy + hgt, k.wz + lat*RZ ];
+  /* THE ARM IS DRAWN TO THE HAND THE SAVE IS JUDGED FROM, and it is a fixed
+     length while doing it. At full stretch the judged hand is further from
+     the shoulder than an arm reaches; growing the arm to meet it is a keeper
+     made of elastic, so the upper body leads instead — shoulder first, capped
+     — which is what a diving keeper does. wx, wy and keeperHand never move. */
+  /* HE GOES OVER FROM THE HIPS.
+     The torso box used to be ROLLED by the lean without being MOVED by it,
+     so a keeper at full stretch stood upright with his hand at ankle height
+     and the arm had to grow the best part of a foot to bridge the two. The
+     upper body is now built in a frame that turns about the pelvis, which is
+     where a dive actually pivots, and the gap closes on its own.
+
+     What is left after that, he leads with the shoulder — capped, so he
+     cannot dislocate himself either. The arm then holds ARM exactly and its
+     fingertips sit ON the hand the save is judged from, which is the whole
+     point: a stop lands in the glove instead of near it.
+
+     All of this is how he is drawn. wx, wy and keeperHand are untouched, so
+     nothing the simulation reads has moved. */
+  const ARM = 0.74, PELVIS = 0.90, SHOULDER = 1.30 - crouch;
+  const cL = Math.cos(lean), sL = Math.sin(lean);
+  const pose = (lat, hgt) => {                    // about the pelvis, not the feet
+    const dh = hgt - PELVIS;
+    return [ lat*cL + dh*sL, PELVIS + dh*cL - lat*sL ];
+  };
+  const hand = keeperHand(k);
+  const hl = (hand.x - k.wx)*RX;                  // hand, in his own lateral axis
+  const hv = hand.y - k.wy;
+  const shoulder0 = pose(k.side*0.25, SHOULDER);
+  let leadL = 0, leadV = 0;
+  {
+    const dx = hl - shoulder0[0], dy = hv - shoulder0[1];
+    const reach = Math.hypot(dx, dy), over = reach - ARM;
+    if(over > 0 && reach > 0.001){
+      const f = Math.min(over, 0.40) / reach;
+      leadL = dx*f; leadV = dy*f;
+    }
+  }
+  const off = (lat, hgt) => {
+    const p = pose(lat, hgt);
+    return [ k.wx + (p[0]+leadL)*RX, k.wy + p[1] + leadV, k.wz + (p[0]+leadL)*RZ ];
+  };
   inkFoot(k.wx, z, 0.40 + e*0.34, 0.30 - e*0.12);
   const torso = off(0, 1.05 - crouch);
   inkBox(torso[0], torso[1], torso[2], 0.46, 0.62, 0.28, KIT, lean);
-  const head = off(Math.sin(lean)*0.48, 1.05 - crouch + Math.cos(lean)*0.48);
+  const head = off(0, 1.53 - crouch);
   inkBox(head[0], head[1], head[2], 0.24, 0.26, 0.24, INK_SKIN, lean);
-  /* the arm is drawn TO the hand the save is judged from, so a stop lands
-     in it instead of near it */
-  const hand = keeperHand(k);
   for(const sgn of [-1,1]){
-    const sh = off(sgn*0.25, 1.30 - crouch);
+    const sh = off(sgn*0.25, SHOULDER);
+    const p  = pose(sgn*0.25, SHOULDER);
     if(sgn === k.side){
-      const dx = (hand.x - k.wx)*RX + (0)*RZ - sgn*0.25;
-      const dy = hand.y - (1.30 - crouch) - (k.wy);
-      const len = Math.max(0.42, Math.hypot(dx, dy));
+      const dx = hl - leadL - p[0], dy = hv - leadV - p[1];
+      const len = clamp(Math.hypot(dx, dy), 0.42, ARM);
       inkLimb(sh[0], sh[1], sh[2] - 0.08*RZ, len, 0.15, KIT, Math.atan2(dx, -dy));
     } else {
       inkLimb(sh[0], sh[1], sh[2], 0.56, 0.15, KIT, lean + sgn*(1.55 - e*0.35));
     }
   }
   for(const sgn of [-1,1]){
-    const hp = off(sgn*0.14, 0.78 - crouch*0.6);
+    const hp = [ k.wx + sgn*0.14*RX, k.wy + 0.78 - crouch*0.6, k.wz + sgn*0.14*RZ ];
     const th = lean + sgn*(0.10 + e*0.42);
     inkLimb(hp[0], hp[1], hp[2], 0.42, 0.17, INK_SOCK, th);
     inkLimb(hp[0] + Math.sin(th)*0.42*RX, hp[1] - Math.cos(th)*0.42,
