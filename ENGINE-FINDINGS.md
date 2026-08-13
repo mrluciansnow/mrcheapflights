@@ -378,6 +378,68 @@ the setting.
 
 `tests/music.mjs` is 35 checks now.
 
+# Fifth pass — the game scored a different kick from the one you watched
+
+Reported from real play: "says hit the bar when visually it hasn't touched
+it", "goal when it's a miss", "doesn't read that the goalie blocked it".
+
+Two faults, both the same shape — the outcome and the picture came from
+different places. Both measured, both fixed.
+
+## The contact was drawn up to 28cm from where it was judged
+
+The outcome is decided at the **interpolated crossing**: the exact point the
+ball passes the goal line, worked out between the frame before and the frame
+after. That part was right. What was wrong is that the ball itself was left
+wherever the step had put it — already past the line, by up to 28cm, which is
+more than a ball's width, and often already *behind* the goal.
+
+So the woodwork bounce was applied from behind the goal. The player watched
+the ball sail clean past the bar and then get yanked backwards into it.
+
+Measured over real kicks through the input path: median drift 15–20cm, worst
+30cm, and it scales with frame time — 17ms frames drifted less than 33ms ones.
+
+**Fixed**: the ball is put on the crossing point before the contact response
+runs. The same fault, and the same fix, applies to the free-kick wall, where a
+block was judged at the wall and bounced from a body's width past it.
+
+## The flight ran on the frame clock, the server on a fixed one
+
+`stepBall(dt)` was called with whatever the frame handed it, capped at 33ms.
+`functions/_lib/sim.js` steps at exactly 1/60. So the same swipe on a phone
+holding 60fps and one dipping to 30 followed two different flights.
+
+Through the same physics at two step sizes, 3,000 kicks:
+
+| | different outcomes |
+|---|---|
+| 60fps vs 30fps | **170 (5.7%)** |
+| 60fps vs 120fps | 89 (3.0%) |
+
+And what changed is the bug report, item for item:
+
+| flip | count |
+|---|---|
+| point → bar | 51 |
+| tip → save | 37 |
+| bar → save | 29 |
+| goal → tip | 21 |
+| bar → goal | 10 |
+| save → tip | 10 |
+
+A ball that is off the bar on one phone and over it on another is not a
+physics engine, it is a frame counter. It also means solo play could disagree
+with the authoritative copy, on a device that never dropped a frame in
+testing.
+
+**Fixed**: the flight runs on a fixed 1/60 accumulator, the same step the
+server uses. Frame rate now changes how smoothly the flight is *seen* and
+nothing else. A slow frame catches up in several fixed steps instead of taking
+one big one.
+
+`tests/contact.mjs` (11 checks) covers both, and joins `npm run test:game`.
+
 ## How to re-run this
 
 ```
