@@ -1083,7 +1083,7 @@ if(typeof CanvasRenderingContext2D !== 'undefined' &&
    ------------------------------------------------------------------ */
 const OPT_KEY = 'crokerFlicks.opts';
 let opts = {sound:true, music:true, haptics:true, preview:true, gfx:'high', lefty:false,
-            goalie:true};
+            goalie:true, art:'classic'};
 function loadOpts(){
   try{ const r = localStorage.getItem(OPT_KEY); if(r) opts = Object.assign(opts, JSON.parse(r)); }
   catch(e){ /* blocked storage: play with the defaults */ }
@@ -1334,6 +1334,13 @@ function buildBackground(){
   bg.width = Math.round(W*DPR); bg.height = Math.round(H*DPR);
   const g = bg.getContext('2d');
   g.setTransform(DPR,0,0,DPR,0,0);
+  /* the ink renderer plates its own ground */
+  if(opts.art === 'ink'){
+    floodPts = [];
+    if(!inkCrowd.length || inkCrowdFor !== venue) inkBuildCrowd();
+    inkBackground(g);
+    return;
+  }
   const wet = weather.wet;
 
   // floodlit is a property of the ground, not the weather — a wet day at
@@ -4476,6 +4483,16 @@ function buildOpts(){
     applyOpts(); buildOpts();
   };
   w.appendChild(g);
+  /* the same match, drawn by a different hand */
+  const art = document.createElement('button');
+  art.className='opt';
+  art.innerHTML = '<span class="optl"><b>Art style</b><i>Classic, or a screen-printed poster in flat ink</i></span>'+
+                  '<span class="optv">'+(opts.art==='ink'?'Semi-3D ink':'Classic')+'</span>';
+  art.onclick = ()=>{
+    opts.art = opts.art==='ink' ? 'classic' : 'ink';
+    saveOpts(); buildBackground(); buildOpts();
+  };
+  w.appendChild(art);
 }
 function openSettings(){ buildOpts(); $('ovSet').classList.remove('hidden'); }
 
@@ -5755,6 +5772,411 @@ function stepFlight(dt){
     if(flightT>5 && !crossed){ crossed=true; award('wide'); }
 }
 
+/* ==================================================================
+   THE INK RENDERER
+   ------------------------------------------------------------------
+   A second way of drawing the same match. Nothing below touches state:
+   it reads the identical ball, keeper, kicker, umpires and venue the
+   classic renderer reads, and projects through the identical prj(), so
+   a kick looks different and lands in exactly the same place.
+
+   The look is a screen-printed poster: real 3D boxes and limbs, a
+   painter's depth sort, and a lambert quantised to three hard steps so
+   every surface is one of three flat inks. No gradients, no blur — the
+   shading is the drawing.
+
+   Bodies are built in the camera's own frame (right = CAM.r, depth =
+   CAM.f), so they hold their shape when the view yaws round to a kick
+   from the wing.
+   ================================================================== */
+function inkTint(hex, k){
+  if(typeof hex !== 'string' || hex[0] !== '#') return hex;
+  let s = hex.slice(1);
+  if(s.length === 3) s = s[0]+s[0]+s[1]+s[1]+s[2]+s[2];
+  const n = parseInt(s,16);
+  const t = k < 0 ? 0 : 255, a = Math.abs(k);
+  const mix = v => Math.round(v + (t-v)*a);
+  return 'rgb('+mix((n>>16)&255)+','+mix((n>>8)&255)+','+mix(n&255)+')';
+}
+const inkRamp = (hex, d, l) => [inkTint(hex,d), hex, inkTint(hex,l)];
+const INK_L = (()=>{ const v=[-0.42,0.80,0.43], m=Math.hypot(v[0],v[1],v[2]);
+                     return [v[0]/m, v[1]/m, v[2]/m]; })();
+function inkShade(mat, nx, ny, nz){
+  const d = nx*INK_L[0] + ny*INK_L[1] + nz*INK_L[2];
+  return mat[d < 0.12 ? 0 : d < 0.62 ? 1 : 2];
+}
+const INK_SKIN  = inkRamp('#C89468', -0.34, 0.16);
+const INK_BONE  = inkRamp('#EDE6D6', -0.40, 0.06);
+const INK_DARK  = inkRamp('#1A2138', -0.24, 0.34);
+const INK_SOCK  = inkRamp('#243354', -0.30, 0.40);
+const INK_SHORT = inkRamp('#D8D2C2', -0.50, 0.04);
+
+/* ---- flat faces, depth-sorted ---- */
+let inkFaces = [];
+function inkPush(pts, fill, bias){
+  const q = []; let d = 0;
+  for(let i=0;i<pts.length;i++){
+    const p = prj(pts[i][0], pts[i][1], pts[i][2]);
+    q.push(p); d += p.d;
+  }
+  inkFaces.push({ q, fill, d: d/pts.length + (bias||0) });
+}
+/* the normal comes out of the geometry, so a body can be built in any
+   frame without anyone having to keep the normals in step with it */
+function inkQuad(a, b, c, e, mat, bias, ref){
+  const ux=b[0]-a[0], uy=b[1]-a[1], uz=b[2]-a[2];
+  const vx=e[0]-a[0], vy=e[1]-a[1], vz=e[2]-a[2];
+  let nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
+  /* Winding order decides which way a cross product points, and a body built
+     in a frame that yaws with the camera cannot keep its windings straight.
+     Given the solid's centre the answer is unambiguous: the normal points
+     away from it. Without this every second surface took the dark ink and
+     the whole ground came out muddy. */
+  if(ref){
+    const mx=(a[0]+c[0])/2-ref[0], my=(a[1]+c[1])/2-ref[1], mz=(a[2]+c[2])/2-ref[2];
+    if(nx*mx + ny*my + nz*mz < 0){ nx=-nx; ny=-ny; nz=-nz; }
+  }
+  const m = Math.hypot(nx,ny,nz) || 1;
+  inkPush([a,b,c,e], inkShade(mat, nx/m, ny/m, nz/m), bias);
+}
+function inkFlush(g){
+  g = g || ctx;
+  inkFaces.sort((a,b) => b.d - a.d);          // far first
+  for(const f of inkFaces){
+    g.beginPath();
+    for(let i=0;i<f.q.length;i++)
+      i ? g.lineTo(f.q[i].x, f.q[i].y) : g.moveTo(f.q[i].x, f.q[i].y);
+    g.closePath(); g.fillStyle = f.fill; g.fill();
+  }
+  inkFaces.length = 0;
+}
+/* a box in the camera's frame: w across the screen, h up, dp into it,
+   rolled about the view axis */
+function inkBox(cx, cy, cz, w, h, dp, mat, roll, bias){
+  const hx=w/2, hy=h/2, hz=dp/2;
+  const c=Math.cos(roll||0), s=Math.sin(roll||0);
+  const RX=CAM.rx, RZ=CAM.rz, FX=CAM.fx, FZ=CAM.fz;
+  const P=(sx,sy,sz)=>{
+    const x=sx*hx, y=sy*hy, X=x*c - y*s, Y=x*s + y*c;
+    return [cx + X*RX + sz*hz*FX, cy + Y, cz + X*RZ + sz*hz*FZ];
+  };
+  const C = [cx, cy, cz];
+  inkQuad(P(-1,1,-1),P(1,1,-1),P(1,-1,-1),P(-1,-1,-1), mat, bias, C);   // face
+  inkQuad(P(-1,1,1),P(-1,1,-1),P(-1,-1,-1),P(-1,-1,1), mat, bias, C);   // left
+  inkQuad(P(1,1,-1),P(1,1,1),P(1,-1,1),P(1,-1,-1), mat, bias, C);       // right
+  inkQuad(P(-1,1,1),P(1,1,1),P(1,1,-1),P(-1,1,-1), mat, bias, C);       // top
+}
+/* a limb hangs FROM its joint and swings about it */
+function inkLimb(jx, jy, jz, len, thick, mat, ang, bias){
+  const RX=CAM.rx, RZ=CAM.rz;
+  const dx = Math.sin(ang)*len/2, dy = -Math.cos(ang)*len/2;
+  inkBox(jx + dx*RX, jy + dy, jz + dx*RZ, thick, len, thick, mat, ang, bias);
+}
+function inkFoot(x, z, r, dark, g){
+  g = g || ctx;
+  const q = prj(x, 0.012, z);
+  if(q.d < DMIN) return;
+  g.fillStyle = 'rgba(12,17,32,'+(dark||0.34)+')';
+  g.beginPath(); g.ellipse(q.x, q.y, r*q.s, r*q.s*0.34, 0, 0, 6.283); g.fill();
+}
+
+/* ---- the terrace: rows of people, not a fog of dots ---- */
+const INK_HEADS = [[237,230,214],[169,163,149],[206,168,132],[228,87,46],[242,180,65]];
+let inkCrowd = [], inkCrowdFor = null;
+function inkBuildCrowd(){
+  inkCrowd = [];
+  const decks = venue.decks || [];
+  for(let di=0; di<decks.length; di++){
+    const n = di ? 1500 : 2600, rows = di ? 11 : 13;
+    for(let i=0;i<n;i++){
+      const x = rand(-38, 38);
+      let blocked = false;
+      for(let gx=-2; gx<=2; gx++) if(Math.abs(x - gx*13.5) < 0.7) blocked = true;
+      if(blocked) continue;
+      const p = Math.random();
+      const head = p<0.30 ? INK_HEADS[1] : p<0.52 ? INK_HEADS[0] : INK_HEADS[2];
+      const q = Math.random();
+      const body = q<0.34 ? INK_HEADS[3] : q<0.58 ? INK_HEADS[4]
+                 : q<0.80 ? INK_HEADS[0] : INK_HEADS[1];
+      const a = di ? 0.50 : 0.64;
+      inkCrowd.push({
+        deck:di, x, t:(Math.floor(Math.random()*rows) + 0.30 + Math.random()*0.34)/rows,
+        ph:Math.random()*7, loud:Math.random()<0.18, sz:0.070+Math.random()*0.026,
+        head:'rgba('+head+','+a.toFixed(2)+')',
+        headHot:'rgba('+head+','+Math.min(1,a+0.32).toFixed(2)+')',
+        body:'rgba('+body+','+(a*0.72).toFixed(2)+')',
+        bodyHot:'rgba('+body+','+Math.min(1,a*0.72+0.28).toFixed(2)+')',
+      });
+    }
+  }
+  inkCrowd.sort((a,b) => a.deck - b.deck || b.t - a.t);
+  inkCrowdFor = venue;
+}
+function inkCrowdPaint(g, loud, flare){
+  const decks = venue.decks || [];
+  for(let di=0; di<decks.length; di++){
+    const d = decks[di];
+    const hot = flare > 0.02;
+    for(const c of inkCrowd){
+      if(c.deck !== di || c.loud !== loud) continue;
+      const lift = hot ? Math.max(0, Math.sin(now*0.011 + c.ph))*0.30*flare : 0;
+      const q = prj(c.x, d.y0 + (d.y1-d.y0)*c.t + 0.4 + lift,
+                         d.z0 + (d.z1-d.z0)*c.t);
+      if(q.d < DMIN) continue;
+      const r = Math.max(0.6, c.sz*q.s);
+      g.fillStyle = hot ? c.bodyHot : c.body;
+      g.fillRect(q.x - r*1.15, q.y + r*0.30, r*2.3, r*2.7);
+      g.beginPath(); g.arc(q.x, q.y, r, 0, 6.283);
+      g.fillStyle = hot ? c.headHot : c.head; g.fill();
+    }
+  }
+}
+/* the perimeter boards, which is what a terrace stands on */
+function inkHoarding(g){
+  const decks = venue.decks || [];
+  if(!decks.length) return;
+  const hz = decks[0].z0 + 1.2, hh = 1.06;
+  const a = prj(-38, hh, hz), b = prj(38, 0, hz);
+  if(a.d < DMIN) return;
+  const x0 = Math.min(a.x,b.x), x1 = Math.max(a.x,b.x), h = b.y - a.y;
+  if(h <= 1) return;
+  g.save();
+  g.beginPath(); g.rect(x0, a.y, x1-x0, h); g.clip();
+  g.fillStyle = 'rgba(14,19,34,.90)'; g.fillRect(x0, a.y, x1-x0, h);
+  g.fillStyle = 'rgba(237,230,214,.20)';
+  g.fillRect(x0, a.y, x1-x0, Math.max(1, h*0.055));
+  g.font = '700 ' + Math.max(6, h*0.30).toFixed(1) + 'px system-ui, sans-serif';
+  g.textBaseline = 'middle';
+  g.fillStyle = 'rgba(237,230,214,.22)';
+  const word = 'MR CHEAP FLIGHTS';
+  const step = g.measureText(word).width * 1.55;
+  for(let x = x0 - step; x < x1 + step; x += step)
+    g.fillText(word, x + step*0.22, a.y + h*0.56);
+  g.restore();
+}
+
+/* ---- the plate: everything that does not move during a kick ---- */
+function inkBackground(g){
+  const night = venue.night, wet = weather.wet;
+  const sky = g.createLinearGradient(0,0,0,HZ*1.15);
+  sky.addColorStop(0, night ? '#0C1120' : wet>0.4 ? '#2A3646' : '#16233E');
+  sky.addColorStop(1, night ? '#1B2745' : wet>0.4 ? '#55646F' : '#3E5C7A');
+  g.fillStyle = sky; g.fillRect(0,0,W,HZ+2);
+
+  const grass = night ? '#2E7A56' : wet>0.4 ? '#37765C' : '#358761';
+  const GA = inkRamp(grass, -0.30, 0.05), GB = inkRamp(grass, -0.22, 0.13);
+  g.fillStyle = GA[0]; g.fillRect(0, HZ*0.995, W, H-HZ*0.995);
+
+  /* the terrace, its rake, its stairwells and everyone standing quietly */
+  const decks = venue.decks || [];
+  const DM = inkRamp(night ? '#1B2540' : '#2A3550', -0.28, 0.30);
+  for(const d of decks){
+    inkQuad([-38,d.y0,d.z0],[38,d.y0,d.z0],[38,d.y1,d.z1],[-38,d.y1,d.z1], DM, 400,
+            [0, (d.y0+d.y1)/2, (d.z0+d.z1)/2 + 6]);
+    for(let i=1;i<7;i++){
+      const t=i/7, y=d.y0+(d.y1-d.y0)*t, z=d.z0+(d.z1-d.z0)*t;
+      inkPush([[-38,y,z],[38,y,z],[38,y+0.06,z-0.04],[-38,y+0.06,z-0.04]],
+              'rgba(12,17,32,.34)', 398);
+    }
+    for(let gx=-2; gx<=2; gx++){
+      const x = gx*13.5;
+      inkPush([[x-0.6,d.y0,d.z0],[x+0.6,d.y0,d.z0],[x+0.6,d.y1,d.z1],[x-0.6,d.y1,d.z1]],
+              'rgba(12,17,32,.30)', 399);
+    }
+  }
+  /* mown bands, so the pitch has a direction */
+  for(let i=0;i<15;i++){
+    const z0 = -8 + i*2.2, z1 = z0 + 2.2;
+    inkQuad([-46,0,z0],[46,0,z0],[46,0,z1],[-46,0,z1], i%2 ? GA : GB, 0,
+             [0,-4,(z0+z1)/2]);
+  }
+  inkFlush(g);
+  inkCrowdPaint(g, false, 0);
+  inkHoarding(g);
+  drawMarkings(g);
+}
+
+/* ---- the goal ---- */
+function inkGoal(){
+  const P = inkRamp('#EDE6D6', -0.42, 0.05), r = CFG.POST_R;
+  for(const sx of [-HW, HW]){
+    inkBox(sx, CFG.UPRIGHT/2, 0, r*2, CFG.UPRIGHT, r*2, P, 0, -0.4);
+    inkFoot(sx, 0, 0.30, 0.30);
+  }
+  inkBox(0, CFG.BAR_H, 0, HW*2 + r*2, r*2, r*2, P, 0, -0.4);
+  inkFlush();
+}
+function inkNet(){
+  const D = CFG.NET_DEEP, cols = 15, rows = 7;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(237,230,214,.30)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  const M = (x,y,z) => { const q = prj(x,y,z); return q; };
+  for(let i=0;i<=cols;i++){                       // back panel, verticals
+    const x = -HW + (2*HW)*i/cols;
+    const a = M(x, 0, -D), b = M(x, CFG.BAR_H, -D);
+    ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
+  }
+  for(let j=0;j<=rows;j++){
+    const y = CFG.BAR_H*j/rows;
+    const a = M(-HW, y, -D), b = M(HW, y, -D);
+    ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
+  }
+  for(const sx of [-HW, HW]){                     // the two sides and the roof
+    for(let j=0;j<=rows;j++){
+      const y = CFG.BAR_H*j/rows;
+      const a = M(sx, y, 0), b = M(sx, y, -D);
+      ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
+    }
+  }
+  for(let i=0;i<=cols;i++){
+    const x = -HW + (2*HW)*i/cols;
+    const a = M(x, CFG.BAR_H, 0), b = M(x, CFG.BAR_H, -D);
+    ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+/* ---- the figures ---- */
+function inkUmpires(){
+  for(const u of umpires){
+    const z = u.wz;
+    inkFoot(u.wx, z, 0.28, 0.26);
+    inkBox(u.wx, 1.02, z, 0.38, 0.58, 0.22, INK_BONE);
+    inkBox(u.wx, 1.46, z, 0.22, 0.24, 0.22, INK_SKIN);
+    const lift = -0.2 - u.raise*2.5;
+    inkLimb(u.wx-0.22*CAM.rx, 1.24, z-0.22*CAM.rz, 0.48, 0.12, INK_BONE, lift);
+    inkLimb(u.wx+0.22*CAM.rx, 1.24, z+0.22*CAM.rz, 0.48, 0.12, INK_BONE, 0.2);
+    inkLimb(u.wx-0.10*CAM.rx, 0.74, z-0.10*CAM.rz, 0.72, 0.14, INK_DARK, 0.05);
+    inkLimb(u.wx+0.10*CAM.rx, 0.74, z+0.10*CAM.rz, 0.72, 0.14, INK_DARK, -0.05);
+    inkFlush();
+    if(u.raise > 0.02 && u.flag){
+      const hx = u.wx - 0.22*CAM.rx + Math.sin(lift)*0.48*CAM.rx;
+      const hy = 1.24 - Math.cos(lift)*0.48;
+      const q = prj(hx, hy, z);
+      ctx.save();
+      ctx.fillStyle = u.flag===2 ? '#2FA36B' : u.flag===3 ? '#F2B441' : '#EDE6D6';
+      ctx.fillRect(q.x - 0.02*q.s, q.y - 0.44*q.s, 0.42*q.s, 0.30*q.s);
+      ctx.strokeStyle = 'rgba(237,230,214,.5)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(q.x,q.y); ctx.lineTo(q.x, q.y-0.46*q.s); ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+function inkKeeper(k){
+  if(!k) return;
+  const e = ease(k.dive) * (1 - (k.recover||0)*0.86);
+  const st = ease(k.settle || 0);
+  const lean = k.side * e * 1.15;
+  const crouch = (1-e) * 0.14;
+  const z = k.wz, RX = CAM.rx, RZ = CAM.rz;
+  const gkKit = gkById(profile.gk);
+  const mine = k.co === CO_P;
+  const KIT  = inkRamp(mine ? gkKit.a : '#CFE83C', -0.40, 0.22);
+  /* his own body drops as he settles, exactly as the classic renderer has it */
+  const off = (lat, hgt) => [ k.wx + lat*RX, k.wy + hgt, k.wz + lat*RZ ];
+  inkFoot(k.wx, z, 0.40 + e*0.34, 0.30 - e*0.12);
+  const torso = off(0, 1.05 - crouch);
+  inkBox(torso[0], torso[1], torso[2], 0.46, 0.62, 0.28, KIT, lean);
+  const head = off(Math.sin(lean)*0.48, 1.05 - crouch + Math.cos(lean)*0.48);
+  inkBox(head[0], head[1], head[2], 0.24, 0.26, 0.24, INK_SKIN, lean);
+  /* the arm is drawn TO the hand the save is judged from, so a stop lands
+     in it instead of near it */
+  const hand = keeperHand(k);
+  for(const sgn of [-1,1]){
+    const sh = off(sgn*0.25, 1.30 - crouch);
+    if(sgn === k.side){
+      const dx = (hand.x - k.wx)*RX + (0)*RZ - sgn*0.25;
+      const dy = hand.y - (1.30 - crouch) - (k.wy);
+      const len = Math.max(0.42, Math.hypot(dx, dy));
+      inkLimb(sh[0], sh[1], sh[2] - 0.08*RZ, len, 0.15, KIT, Math.atan2(dx, -dy));
+    } else {
+      inkLimb(sh[0], sh[1], sh[2], 0.56, 0.15, KIT, lean + sgn*(1.55 - e*0.35));
+    }
+  }
+  for(const sgn of [-1,1]){
+    const hp = off(sgn*0.14, 0.78 - crouch*0.6);
+    const th = lean + sgn*(0.10 + e*0.42);
+    inkLimb(hp[0], hp[1], hp[2], 0.42, 0.17, INK_SOCK, th);
+    inkLimb(hp[0] + Math.sin(th)*0.42*RX, hp[1] - Math.cos(th)*0.42,
+            hp[2] + Math.sin(th)*0.42*RZ, 0.40, 0.15, INK_SOCK, th + sgn*e*0.30);
+  }
+  inkFlush();
+}
+function inkKicker(){
+  if(state===ST.TITLE || state===ST.REPLAY) return;
+  const kit = shooter==='p' ? activeKit() : {a:CO_C.a, b:CO_C.b};
+  const SHIRT = inkRamp(kit.a || '#E4572E', -0.38, 0.18);
+  const back = 0.35, side = 1.05;
+  const wx = spot.x + shotU.x*(-back) + shotR.x*(-side);
+  const wz = spot.z + shotU.z*(-back) + shotR.z*(-side);
+  if(depthOf(wx,wz) < 1.2) return;
+  const t = kicker.striking ? kicker.t : 0;
+  const sw = kicker.striking ? Math.sin(clamp(t*5.5, 0, Math.PI))*0.55 : 0;
+  const lunge = kicker.striking ? clamp(t*4.5,0,1)*Math.exp(-t*2.2) : 0;
+  const gx = wx + shotU.x*lunge*0.45, gz = wz + shotU.z*lunge*0.45;
+  const RX = CAM.rx, RZ = CAM.rz, lean = sw*0.16;
+  inkFoot(gx, gz, 0.34, 0.32);
+  inkBox(gx, 1.08, gz, 0.44, 0.62, 0.26, SHIRT, lean);
+  inkBox(gx, 1.54, gz, 0.24, 0.26, 0.24, INK_SKIN, lean);
+  inkLimb(gx-0.25*RX, 1.28, gz-0.25*RZ, 0.50, 0.12, INK_SKIN, -0.30 - sw*0.50);
+  inkLimb(gx+0.25*RX, 1.28, gz+0.25*RZ, 0.50, 0.12, INK_SKIN,  0.26 + sw*0.42);
+  const leg = (lat, ang, swing) => {
+    const hx = gx + lat*RX, hz = gz + lat*RZ;
+    inkLimb(hx, 0.80, hz, 0.36, 0.17, INK_SHORT, ang);
+    const kx = hx + Math.sin(ang)*0.36*RX, ky = 0.80 - Math.cos(ang)*0.36,
+          kz = hz + Math.sin(ang)*0.36*RZ;
+    inkLimb(kx, ky, kz, 0.44, 0.14, INK_SKIN, ang + swing);
+    const fx = kx + Math.sin(ang+swing)*0.44*RX, fy = ky - Math.cos(ang+swing)*0.44,
+          fz = kz + Math.sin(ang+swing)*0.44*RZ;
+    inkBox(fx, fy - 0.03, fz, 0.15, 0.09, 0.24, INK_SOCK, ang+swing);
+  };
+  leg( 0.13, 0.10, 0.02);
+  leg(-0.13, -0.14 + sw*1.18, sw*0.22);
+  inkFlush();
+}
+/* a faceted sphere, back faces dropped */
+const INK_SPH = (()=>{
+  const rows=6, cols=10, v=[];
+  for(let i=0;i<=rows;i++){
+    const th=Math.PI*i/rows, r=Math.sin(th), yy=Math.cos(th), ring=[];
+    for(let j=0;j<cols;j++){ const ph=2*Math.PI*j/cols;
+      ring.push([r*Math.cos(ph), yy, r*Math.sin(ph)]); }
+    v.push(ring);
+  }
+  const q=[];
+  for(let i=0;i<rows;i++) for(let j=0;j<cols;j++){
+    const j2=(j+1)%cols; q.push([v[i][j],v[i][j2],v[i+1][j2],v[i+1][j]]);
+  }
+  return q;
+})();
+function inkBall(){
+  if(!ball) return;
+  const b = ball, R = CFG.BALL_R;
+  const sh = prj(b.wx, 0.013, b.wz);
+  if(sh.d > DMIN){
+    const lift = clamp(b.wy/3.2, 0, 1);
+    ctx.save();
+    ctx.fillStyle = 'rgba(12,17,32,'+(0.44-lift*0.30)+')';
+    ctx.beginPath();
+    ctx.ellipse(sh.x, sh.y, R*sh.s*(1+lift*1.5), R*sh.s*0.42*(1+lift*1.2), 0,0,6.283);
+    ctx.fill(); ctx.restore();
+  }
+  const BALL = inkRamp('#EDE6D6', -0.40, 0.12);
+  for(const face of INK_SPH){
+    const n = [(face[0][0]+face[2][0])/2, (face[0][1]+face[2][1])/2,
+               (face[0][2]+face[2][2])/2];
+    const m = Math.hypot(n[0],n[1],n[2]) || 1;
+    const towards = (n[0]/m)*CAM.fx + (n[2]/m)*CAM.fz;
+    if(towards > 0.12) continue;                 // facing away from the camera
+    inkPush(face.map(p => [b.wx+p[0]*R, b.wy+p[1]*R, b.wz+p[2]*R]),
+            inkShade(BALL, n[0]/m, n[1]/m, n[2]/m));
+  }
+  inkFlush();
+}
+
 function render(){
   ctx.save();
   // camera shake, push-in, and a drift that tracks the ball
@@ -5763,6 +6185,30 @@ function render(){
   if(shake>0 && !reduceMotion) ctx.translate(rand(-shake,shake), rand(-shake,shake)*0.6);
 
   ctx.drawImage(bg, 0, 0, W, H);
+  if(opts.art === 'ink'){
+    /* Same scene, same order, different hand. The loud third of the crowd is
+       kept off the plate so a celebration can lift them without leaving their
+       own baked ghosts standing underneath. */
+    inkCrowdPaint(ctx, true, clamp(crowdT, 0, 1));
+    drawWindFlags();
+    inkUmpires();
+    const behind = ball && ball.wz < 0;      // a ball in the goal is BEHIND the mesh
+    if(behind) inkBall();
+    inkGoal();
+    inkNet();
+    inkKeeper(keeper);
+    drawKeeperSignal(keeper);
+    drawKeeperTell(keeper);
+    drawWall();
+    drawScuffs();
+    drawParts();
+    if(state===ST.AIM && aiming()){
+      if(opts.preview) drawAimPreview();
+      drawAimReticle();
+    }
+    if(!behind) inkBall();
+    inkKicker();
+  } else {
   drawCrowdFx();
   drawBloom();
   drawWindFlags();
@@ -5781,6 +6227,7 @@ function render(){
   }
   drawBall();
   drawKicker();
+  }
   ctx.restore();
 
   drawPressure();
