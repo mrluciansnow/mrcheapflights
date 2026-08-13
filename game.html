@@ -287,6 +287,11 @@ body.dragging .betbar,body.dragging .prompt,body.dragging .comm{pointer-events:n
 .keeplbl b.secs{display:inline-block;min-width:2.1em;color:#fff;opacity:1;
   font-variant-numeric:tabular-nums;letter-spacing:.02em}
 #shotbar.tight .secs,.keepbar.tight .secs{color:var(--hot-pink)}
+/* A kick with the match on it. The clock grows — after .show, so it wins the
+   transform, and both selectors carry two classes so nothing else has to. */
+#shotbar.press,.keepbar.press{transform:translate(-50%,0) scale(1.14)}
+#shotbar.press .keeptrack,.keepbar.press .keeptrack{height:7px;
+  box-shadow:0 0 14px rgba(255,45,140,.55)}
 #mpNameIn{display:block;margin:.2rem auto .7rem;padding:.5rem .7rem;width:min(240px,78%);
   text-align:center;font:900 .8rem/1 Nunito,sans-serif;letter-spacing:.06em;
   color:#fff;background:rgba(255,255,255,.08);
@@ -2607,7 +2612,7 @@ const MUSIC = {
 };
 const Music = {
   on: false, gain: null, bus: null, timer: null,
-  at: 0, step: 0, duck: 1, want: 0.14,
+  at: 0, step: 0, duck: 1, press: 1, want: 0.14,
 };
 const musicNote = i => MUSIC.root * Math.pow(2, MUSIC.steps[i % MUSIC.steps.length] / 12);
 
@@ -2652,7 +2657,7 @@ function musicStop(fade){
 function musicLevel(ramp){
   if(!Music.on || !Music.gain) return;
   const a = ac(); if(!a) return;
-  const target = (muted || !opts.music) ? 0 : Music.want * Music.duck;
+  const target = (muted || !opts.music) ? 0 : Music.want * Music.duck * Music.press;
   const g = Music.gain.gain, t = a.currentTime;
   g.cancelScheduledValues(t);
   g.setValueAtTime(g.value, t);
@@ -2667,6 +2672,18 @@ function musicLevel(ramp){
 function musicDuck(on){
   Music.duck = on ? 0.25 : 1;
   musicLevel(on ? 0.25 : 0.9);                 // down quickly, back up slowly
+}
+/* ---- and the other thing that takes the music down ----
+ * A ground does not play music over the kick that decides it. Under pressure
+ * the bed thins out and the crowd is left holding the moment on its own,
+ * which is the whole reason crowdHold exists above. Slow both ways: this is
+ * a room changing, not a fader being yanked.
+ */
+function musicPress(p){
+  const want = 1 - (Math.round(p*20)/20)*0.7;   // see the note in crowdHold
+  if(want === Music.press) return;
+  Music.press = want;
+  musicLevel(1.1);
 }
 
 /* Schedule whatever falls inside the next second. */
@@ -2722,14 +2739,35 @@ function musicApply(){
   else if(Music.on && (!opts.music || muted)) musicStop();
 }
 
+/* The level the crowd falls back to. Not a constant any more: a ground with
+   a match riding on one kick does not go back to the same murmur it had at
+   nil-all, and a swell that returned to the old floor would keep undoing the
+   hold below. */
+let ambPress = 0;
+const ambFloor = () => ambBase * (1 + ambPress*1.5);
 /* push the crowd up for a moment — 1 is a full roar */
 function crowdSwell(amount, hold){
   if(!ambGain || muted) return;
   const a=ac(), t=a.currentTime;
   ambGain.gain.cancelScheduledValues(t);
   ambGain.gain.setValueAtTime(ambGain.gain.value, t);
-  ambGain.gain.linearRampToValueAtTime(ambBase + amount*0.14, t+0.08);
-  ambGain.gain.linearRampToValueAtTime(ambBase, t+0.08+(hold||1.4));
+  ambGain.gain.linearRampToValueAtTime(ambFloor() + amount*0.14, t+0.08);
+  ambGain.gain.linearRampToValueAtTime(ambFloor(), t+0.08+(hold||1.4));
+}
+/* …and hold it there for the duration of a kick that matters. */
+function crowdHold(p){
+  /* Quantised rather than deadbanded. A deadband is fine on the way up and
+     wrong on the way down: it strands the level a hair short of rest, and a
+     ground that never quite settles after a match is a ground that is a
+     little louder every game. Twenty steps, and 0 and 1 are exact. */
+  p = Math.round(p*20)/20;
+  if(p === ambPress) return;
+  ambPress = p;
+  if(!ambGain || muted) return;
+  const a=ac(), t=a.currentTime;
+  ambGain.gain.cancelScheduledValues(t);
+  ambGain.gain.setValueAtTime(ambGain.gain.value, t);
+  ambGain.gain.linearRampToValueAtTime(ambFloor(), t + 1.1);
 }
 
 const SFX = {
@@ -2839,7 +2877,11 @@ function beginKeep(){
   keeper.ai = false;          // nobody dives on your behalf
   state = ST.KEEP;
   document.body.classList.add('keeping');
-  zoom = zoomTarget = 1; panX = panTarget = 0;   // identity, so the touch maps
+  /* Snapped, not eased: the keeper's window opens with the view already
+     where it belongs. Both the striker's drag and the keeper's are measured
+     as screen DELTAS, so the push-in changes what you see and not what a
+     swipe means. */
+  restCam(); zoom = zoomTarget; panX = panTarget = 0;
   keeper.wx0 = 0; keeper.wx = 0;                 // no free lean for your own man
   $('prompt').style.display = '';
   $('prompt').textContent = 'Set your line — flick to dive, any time';
@@ -3259,7 +3301,7 @@ function newShot(who){
   srcStriker = who==='p' ? 'local' : 'ai';
   srcKeeper  = 'ai';
   document.body.classList.remove('keeping');
-  $('keepbar').classList.remove('show', 'tight');
+  $('keepbar').classList.remove('show', 'tight', 'press');
   keepDone = false; keepDrag = false; keepIntent = null; keepPick = null;
   kbAim = false; document.body.classList.remove('dragging');
   crossed = false; outcome = null; flightT = 0;
@@ -3268,7 +3310,10 @@ function newShot(who){
   const defender = who==='p' ? CO_C : CO_P;
   keeper = newKeeper(defender,
       who==='p' ? difficulty : (mode==='duel' ? difficulty : OWN_KEEPER_TIER));
-  zoomTarget = 1; panTarget = 0;
+  restCam();
+  /* The ground finding its voice as the kick is placed. crowdHold carries the
+     bed for the rest of it; this is the rise into it. */
+  if(pressure() > 0.5) crowdSwell(pressure()*0.55, 2.4);
   shotStake = 0; strikeCurl = 0; strikeElev = 0.5;
   showBetBar(who==='p' && mode!=='duel' && mode!=='training');
   $('bSpot').style.display = mode==='training' ? 'block' : 'none';
@@ -3670,12 +3715,41 @@ function sayCommentary(kind){
 }
 
 /* Would a scoreless kick here put the match beyond reach? */
-function mustScore(){
+function mustScoreFor(who){
   if(!isShootout()) return false;
   if(sudden) return true;
-  const left = ROUNDS - P.r.length - 1;              // player kicks after this one
-  return total(C) - total(P) > 3*left;
+  const us = who==='c' ? C : P, them = who==='c' ? P : C;
+  const left = ROUNDS - us.r.length - 1;             // kicks after this one
+  return total(them) - total(us) > 3*left;
 }
+function mustScore(){ return mustScoreFor('p'); }
+
+/* ---- pressure ----
+   How much is riding on the kick in front of you: 0 for the first of five,
+   1 for sudden death. It moves the camera in, holds the crowd up, thins the
+   music out and turns the clock hot early.
+
+   Deliberately nothing else. A tense kick has to be a tense kick to TAKE —
+   the moment pressure reaches the ball it becomes a difficulty setting the
+   player never chose, and online it would be a different one at each end
+   because the two ends are not in the same position in the match. So this
+   feeds rendering and sound and stops there. */
+function pressure(){
+  if(mode==='training' || !isShootout() || state===ST.TITLE || state===ST.OVER) return 0;
+  if(sudden) return 1;
+  if(mustScoreFor(shooter)) return 1;
+  const left = Math.max(0, ROUNDS - Math.max(P.r.length, C.r.length));
+  if(left > 2) return 0;
+  // last two rounds. A goal either way changes the match: that is the tense one
+  const oneScoreIn = Math.abs(total(P) - total(C)) <= 3;
+  return left <= 1 ? (oneScoreIn ? 0.85 : 0.5) : (oneScoreIn ? 0.6 : 0.3);
+}
+/* what the camera and the vignette actually use — eased, so it arrives with
+   the kick rather than snapping on between frames */
+let pressNow = 0;
+/* Rest camera. Everything that puts the view back to neutral goes through
+   here, so the push-in cannot be forgotten at one of them. */
+function restCam(){ zoomTarget = 1 + pressure()*0.055; panTarget = 0; }
 /* A shootout stops the moment it cannot be changed — no dead rubbers. */
 function decided(){
   if(!isShootout()) return false;
@@ -3686,7 +3760,7 @@ function decided(){
 
 function advance(){
   $('res').classList.remove('show');
-  zoomTarget = 1; panTarget = 0;
+  restCam();
   // a promotion holds the game until it is acknowledged
   if(pendingRankUp) return showRankUp(advanceNow);
   advanceNow();
@@ -4143,7 +4217,7 @@ function toggleSound(){ opts.sound = !opts.sound; applyOpts(); }
 function applyOpts(){
   muted = !opts.sound;
   $('bMute').textContent = muted ? '\uD83D\uDD07' : '\uD83D\uDD0A';
-  if(ambGain) ambGain.gain.value = muted ? 0 : ambBase;
+  if(ambGain) ambGain.gain.value = muted ? 0 : ambFloor();
   musicApply();                      // one switch for sound, one for music
   document.body.classList.toggle('lefty', !!opts.lefty);
   saveOpts();
@@ -5033,10 +5107,14 @@ function netRemain(){
   return Math.max(0, Math.min(left, untilDeadline));
 }
 let shotT = 0;
+/* Debug only (?debug=1). Holds the shot clock where it is without pausing, so
+   a test can sit on one kick for longer than the five seconds a player gets. */
+let clockHeld = false;
 const clockRuns = () => state === ST.AIM && !paused && mode !== 'training' && !holding();
 /* One place decides what the bars say, so the two of them cannot drift. */
 function paintClock(el, secs, frac, tight){
   const bar = $(el === 'shot' ? 'shotbar' : 'keepbar');
+  bar.classList.toggle('press', pressNow > 0.5);
   $(el === 'shot' ? 'shotFill' : 'keepFill').style.width = clamp(frac,0,1)*100 + '%';
   $(el === 'shot' ? 'shotSecs' : 'keepSecs').textContent =
     secs === null ? '' : (secs < 10 ? secs.toFixed(1) : Math.ceil(secs)) + 's';
@@ -5053,7 +5131,7 @@ function startShotClock(){
      appears for that frame carrying no number — or worse, the last kick's. */
   paintClock('shot', shotT, shotT / (mode === 'online' ? netWindow() : SHOT_CLOCK), false);
 }
-function stopShotClock(){ $('shotbar').classList.remove('show', 'tight'); }
+function stopShotClock(){ $('shotbar').classList.remove('show', 'tight', 'press'); }
 /* Time up: he takes it on anyway, off balance and with no pace. The kick is
    still yours — the clock takes the strike, not the turn. */
 function rushShot(){
@@ -5144,6 +5222,25 @@ addEventListener('visibilitychange', () => {
    ================================================================== */
 function update(dt){
   now += dt*1000;
+  /* Pressure, eased. The step function underneath it is honest — a kick
+     either is the one that decides it or it is not — but a stadium that
+     changes character between two frames reads as a bug, so everything
+     downstream of it works off this instead. */
+  const wantP = pressure();
+  /* On slower than off. It should build as the kick is placed and be gone by
+     the time the next match starts — a ground that takes as long to let go as
+     it took to lean in is still leaning in over the following game. */
+  pressNow += (wantP - pressNow) * Math.min(1, dt*(wantP > pressNow ? 1.6 : 3.2));
+  if(Math.abs(wantP - pressNow) < 0.005) pressNow = wantP;
+  crowdHold(pressNow);
+  musicPress(pressNow);
+  /* The camera follows it every frame rather than being aimed once when the
+     kick opens: the standing changes when the OTHER end kicks, so the ground
+     has to lean in as that happens and not a kick later. Only in the states
+     that have no other claim on the camera — the strike and the flight own it
+     from the moment the ball is struck. */
+  if(state===ST.AIM || state===ST.KEEP || state===ST.CPU_WAIT)
+    zoomTarget = 1 + pressNow*0.055;
   zoom += (zoomTarget-zoom)*Math.min(1, dt*5);
   panX += (panTarget-panX)*Math.min(1, dt*4);
   if(timeHold > 0){
@@ -5167,9 +5264,11 @@ function update(dt){
        theirs. Offline it is the local shot clock it always was. */
     const online = mode === 'online' && Net.live && !Net.live.submitted;
     if(online){ kickT = netKickT(); shotT = netRemain(); netRead(); netKeeperTheatre(dt); }
-    else shotT -= dt;
+    else if(!clockHeld) shotT -= dt;
     const span = online ? netWindow() : SHOT_CLOCK;
-    paintClock('shot', shotT, shotT/span, shotT/span < 0.34);
+    /* The clock goes hot earlier when the kick matters — a third of the way
+       in normally, over half of it when there is a match on the end of it. */
+    paintClock('shot', shotT, shotT/span, shotT/span < 0.34 + pressNow*0.22);
     if(shotT <= 0) rushShot();
   }
   if(state===ST.KEEP){
@@ -5190,7 +5289,7 @@ function update(dt){
                       : (mode==='online' ? clamp(keepT/netWindow(), 0, 1) : 0);
     paintClock('keep', mode==='online' ? keepT
                      : cpuShot ? Math.max(0, cpuShot.strikeAt - kickT) : null,
-               untilStrike, untilStrike < 0.3);
+               untilStrike, untilStrike < 0.3 + pressNow*0.22);
     // he can see you leave until the moment he actually goes — and online we
     // now know when that was, so the eye comes off at the true instant
     $('keepbar').classList.toggle('watched', !keepDone && !netStruck() && untilStrike > 0.22);
@@ -5233,7 +5332,7 @@ function update(dt){
         $('keepFill').style.width = clamp(toLine/0.85, 0, 1)*100 + '%';
         $('keepbar').classList.add('tight');
       } else if(keepDone || crossed){
-        $('keepbar').classList.remove('show', 'tight');
+        $('keepbar').classList.remove('show', 'tight', 'press');
       }
     }
     const prevZ = ball.wz, prevX = ball.wx, prevY = ball.wy;
@@ -5330,12 +5429,39 @@ function render(){
   drawKicker();
   ctx.restore();
 
+  drawPressure();
   drawTelegraph();
   drawKeepPick();
   drawDragGesture();
   drawRain();
   if(flash>0){ ctx.fillStyle='rgba(255,255,240,'+(flash*0.4)+')'; ctx.fillRect(0,0,W,H); }
   if(state===ST.REPLAY) drawReplayFurniture();
+}
+
+/* ---------- pressure ----------
+   The ground narrowing around the kick. Drawn outside the camera transform,
+   so it stays put while the view pushes in — the two moving together would
+   read as one wobble instead of as the crowd closing in.
+
+   Deliberately dark rather than coloured: a tint reads as a filter and the
+   pitch has to stay the colour it was. */
+let pressGrad = null, pressGradW = 0, pressGradH = 0;
+function drawPressure(){
+  if(pressNow < 0.02 || !gfx().bloom) return;
+  if(!pressGrad || pressGradW !== W || pressGradH !== H){
+    // rebuilt only on resize — a gradient a frame is a gradient too many
+    pressGrad = ctx.createRadialGradient(W*0.5, H*0.42, Math.min(W,H)*0.26,
+                                         W*0.5, H*0.42, Math.max(W,H)*0.78);
+    pressGrad.addColorStop(0,    'rgba(0,0,0,0)');
+    pressGrad.addColorStop(0.55, 'rgba(0,0,0,.28)');
+    pressGrad.addColorStop(1,    'rgba(6,2,10,.86)');
+    pressGradW = W; pressGradH = H;
+  }
+  ctx.save();
+  ctx.globalAlpha = pressNow * 0.7;
+  ctx.fillStyle = pressGrad;
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
 }
 
 /* ---------- rain ---------- */
@@ -7175,6 +7301,23 @@ if(new URLSearchParams(location.search).has('debug')){
       advance();
       return pendingRankUp === null;
     },
+    /* Put the scoreboard where a test needs it. Pressure only exists in the
+       closing rounds of a shootout, and playing eight kicks through the UI to
+       reach one is eight chances for the test to end up about something else. */
+    setStanding(pR, cR, opt){
+      const fill = (side, list) => {
+        side.g = side.t = side.p = 0; side.r = (list || []).slice();
+        for(const k of side.r){
+          if(k === 'goal') side.g++;
+          else if(k === 'twopoint') side.t++;
+          else if(k === 'point') side.p++;
+        }
+      };
+      fill(P, pR); fill(C, cR);
+      if(opt && opt.sudden !== undefined) sudden = !!opt.sudden;
+      refreshHUD();
+      return {p: total(P), c: total(C), press: pressure()};
+    },
     get paused(){ return paused; },
     get canAim(){ return state === ST.AIM && !paused; },
     get canKeep(){ return keepLive(); },
@@ -7206,6 +7349,13 @@ if(new URLSearchParams(location.search).has('debug')){
     },
     get aimState(){ return {power:power, aimM:aimM, elev:elev, curl:curl}; },
     get shotClock(){ return +shotT.toFixed(3); },
+    holdClock(on){ clockHeld = !!on; },
+    /* pressure is rendering-only by design, so the way to prove it never
+       reaches the ball is to be able to read it beside the shot */
+    get pressure(){ return { want: pressure(), now: +pressNow.toFixed(3),
+                             zoom: +zoomTarget.toFixed(4),
+                             music: +Music.press.toFixed(3),
+                             crowd: +ambFloor().toFixed(5) }; },
     /* which panel of the goal is currently lit, so the preview can be
        asserted on rather than eyeballed in a screenshot */
     get litZone(){
