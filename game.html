@@ -6096,84 +6096,162 @@ function inkUmpires(){
     }
   }
 }
+/* ---- what a keeper is actually doing ----
+ *
+ * He does not have one movement with a dial on it. Which one he is in
+ * follows from where his own target is and how far he has to go, and each
+ * one has a different shape: he ducks with his knees, he jumps off both
+ * feet, he dives with a trailing leg, he sprawls almost flat. Posing all of
+ * them as "lean by e*1.15" produced a man tipping over rather than a keeper
+ * going somewhere.
+ *
+ * POSE comes from the action. POSITION does not — wx, wy and keeperHand
+ * belong to the simulation, and the drawn body hangs off them, so the
+ * picture and the verdict cannot drift apart. The leap reads as a leap
+ * because of the push-off shape, not because the drawing moved him.
+ */
+function keeperAction(k){
+  const dx = k.tx - k.wx0, dy = (k.ty === undefined ? 1.35 : k.ty) - 1.15;
+  const travel = Math.hypot(dx, dy), wide = Math.abs(dx);
+  const high = k.ty > 1.70, low = k.ty < 0.80;
+  if(travel < 0.38)            return 'SET';
+  if(wide < 0.55)              return high ? 'JUMP' : low ? 'DUCK' : 'STEP';
+  if(travel < 0.95)            return 'STEP';
+  if(low)                      return 'SPRAWL';
+  if(high)                     return 'LEAP';
+  return 'DIVE';
+}
+/* pitch: how far the spine goes over.  knee: how deep he sits before he goes.
+   armUp: where the off arm counterbalances.  trail: how far the back leg is
+   left behind, which is the whole read on a leap. */
+const ACTION = {
+  SET:    { pitch:0.10, knee:0.55, armUp:0.15, trail:0.05, split:0.16 },
+  STEP:   { pitch:0.34, knee:0.42, armUp:0.30, trail:0.18, split:0.42 },
+  DUCK:   { pitch:0.46, knee:1.00, armUp:0.05, trail:0.08, split:0.28 },
+  JUMP:   { pitch:0.16, knee:0.30, armUp:1.00, trail:0.40, split:0.20 },
+  DIVE:   { pitch:1.02, knee:0.20, armUp:0.62, trail:0.80, split:0.72 },
+  LEAP:   { pitch:0.80, knee:0.16, armUp:1.00, trail:0.95, split:0.88 },
+  SPRAWL: { pitch:1.34, knee:0.26, armUp:0.24, trail:0.88, split:0.60 },
+};
+/* Bones. These are the point of the whole exercise: they never change
+   length, and every joint is the end of the bone before it, so no part of
+   him can budge into any other part. */
+const BONE = { spine:0.42, neck:0.29, headR:0.13, shoulder:0.19, hip:0.13,
+               upper:0.34, fore:0.32, glove:0.08, thigh:0.42, shin:0.40 };
+const KEEPER_ARM = BONE.upper + BONE.fore + BONE.glove;   // 0.74
+
+/* Two bones to a target, solved rather than stretched. The target is pulled
+   into range first, so the elbow is always real and the arm is never longer
+   than an arm. */
+function ik2(sx, sy, tx, ty, l1, l2, bend){
+  let dx = tx-sx, dy = ty-sy;
+  let d = Math.hypot(dx, dy);
+  const hi = l1+l2, lo = Math.abs(l1-l2) + 0.02;
+  if(d > hi){ const f = hi/(d||1e-6); dx*=f; dy*=f; d = hi; }
+  else if(d < lo){ const f = lo/(d||1e-6); dx*=f; dy*=f; d = lo; }
+  const a = (d*d + l1*l1 - l2*l2)/(2*d);
+  const h = Math.sqrt(Math.max(0, l1*l1 - a*a));
+  const ux = dx/d, uy = dy/d;
+  return { j:[sx + ux*a - uy*h*bend, sy + uy*a + ux*h*bend], e:[sx+dx, sy+dy] };
+}
+
 function inkKeeper(k){
   if(!k) return;
   const e = ease(k.dive) * (1 - (k.recover||0)*0.86);
-  const st = ease(k.settle || 0);
-  const lean = k.side * e * 1.15;
-  const crouch = (1-e) * 0.14;
-  const z = k.wz, RX = CAM.rx, RZ = CAM.rz;
+  const RX = CAM.rx, RZ = CAM.rz, side = k.side || 1;
   const gkKit = gkById(profile.gk);
-  const mine = k.co === CO_P;
-  const KIT  = inkRamp(mine ? gkKit.a : '#CFE83C', -0.40, 0.22);
-  /* his own body drops as he settles, exactly as the classic renderer has it */
-  /* THE ARM IS DRAWN TO THE HAND THE SAVE IS JUDGED FROM, and it is a fixed
-     length while doing it. At full stretch the judged hand is further from
-     the shoulder than an arm reaches; growing the arm to meet it is a keeper
-     made of elastic, so the upper body leads instead — shoulder first, capped
-     — which is what a diving keeper does. wx, wy and keeperHand never move. */
-  /* HE GOES OVER FROM THE HIPS.
-     The torso box used to be ROLLED by the lean without being MOVED by it,
-     so a keeper at full stretch stood upright with his hand at ankle height
-     and the arm had to grow the best part of a foot to bridge the two. The
-     upper body is now built in a frame that turns about the pelvis, which is
-     where a dive actually pivots, and the gap closes on its own.
+  const KIT = inkRamp(k.co === CO_P ? gkKit.a : '#CFE83C', -0.40, 0.22);
+  const A = ACTION[keeperAction(k)] || ACTION.SET;
 
-     What is left after that, he leads with the shoulder — capped, so he
-     cannot dislocate himself either. The arm then holds ARM exactly and its
-     fingertips sit ON the hand the save is judged from, which is the whole
-     point: a stop lands in the glove instead of near it.
+  /* he sits into it before he goes, and unfolds out of it as he goes */
+  const sit   = A.knee * (1-e) * 0.26;
+  const pitch = side * e * A.pitch;
+  const cP = Math.cos(pitch), sP = Math.sin(pitch);
+  const up   = [ sP,  cP];                       // the spine, in his own plane
+  const rgt  = [ cP, -sP];                       // across his shoulders
 
-     All of this is how he is drawn. wx, wy and keeperHand are untouched, so
-     nothing the simulation reads has moved. */
-  const ARM = 0.74, PELVIS = 0.90, SHOULDER = 1.30 - crouch;
-  const cL = Math.cos(lean), sL = Math.sin(lean);
-  const pose = (lat, hgt) => {                    // about the pelvis, not the feet
-    const dh = hgt - PELVIS;
-    return [ lat*cL + dh*sL, PELVIS + dh*cL - lat*sL ];
-  };
+  /* the hand the save is judged from, in his own lateral/height axes */
   const hand = keeperHand(k);
-  const hl = (hand.x - k.wx)*RX;                  // hand, in his own lateral axis
-  const hv = hand.y - k.wy;
-  const shoulder0 = pose(k.side*0.25, SHOULDER);
+  const hl = (hand.x - k.wx)*RX, hv = hand.y - k.wy;
+
+  /* Pelvis. Its height is the leg pose; its lateral place is his, plus
+     whatever lead the shoulder needs so the arm can reach the hand without
+     growing. The lead moves the WHOLE chain, so he stays in one piece. */
+  const pelH = (BONE.thigh + BONE.shin) * (0.94 - sit) * (1 - e*0.30);
   let leadL = 0, leadV = 0;
   {
-    const dx = hl - shoulder0[0], dy = hv - shoulder0[1];
-    const reach = Math.hypot(dx, dy), over = reach - ARM;
+    const sh = [ up[0]*BONE.spine + rgt[0]*side*BONE.shoulder,
+                 pelH + up[1]*BONE.spine + rgt[1]*side*BONE.shoulder ];
+    const dx = hl - sh[0], dy = hv - sh[1];
+    const reach = Math.hypot(dx, dy), over = reach - KEEPER_ARM;
     if(over > 0 && reach > 0.001){
-      const f = Math.min(over, 0.40) / reach;
-      leadL = dx*f; leadV = dy*f;
+      const f = Math.min(over, 0.45)/reach; leadL = dx*f; leadV = dy*f;
     }
   }
-  const off = (lat, hgt) => {
-    const p = pose(lat, hgt);
-    return [ k.wx + (p[0]+leadL)*RX, k.wy + p[1] + leadV, k.wz + (p[0]+leadL)*RZ ];
+  const P  = [leadL, pelH + leadV];                                  // pelvis
+  const C  = [P[0] + up[0]*BONE.spine, P[1] + up[1]*BONE.spine];     // chest
+  const HD = [C[0] + up[0]*BONE.neck,  C[1] + up[1]*BONE.neck];      // head
+  const SH = s => [C[0] + rgt[0]*s*BONE.shoulder, C[1] + rgt[1]*s*BONE.shoulder];
+  const HP = s => [P[0] + rgt[0]*s*BONE.hip,      P[1] + rgt[1]*s*BONE.hip];
+
+  /* world, and a bone drawn between two joints of his */
+  const Wd = p => [ k.wx + p[0]*RX, k.wy + p[1], k.wz + p[0]*RZ ];
+  const bone = (a, b, thick, mat, dz) => {
+    const dx = b[0]-a[0], dy = b[1]-a[1];
+    const w = Wd(a);
+    inkLimb(w[0], w[1], w[2] + (dz||0), Math.hypot(dx,dy), thick, mat,
+            Math.atan2(dx, -dy));
   };
-  inkFoot(k.wx, z, 0.40 + e*0.34, 0.30 - e*0.12);
-  const torso = off(0, 1.05 - crouch);
-  inkBox(torso[0], torso[1], torso[2], 0.46, 0.62, 0.28, KIT, lean);
-  const head = off(0, 1.53 - crouch);
-  inkBox(head[0], head[1], head[2], 0.24, 0.26, 0.24, INK_SKIN, lean);
-  for(const sgn of [-1,1]){
-    const sh = off(sgn*0.25, SHOULDER);
-    const p  = pose(sgn*0.25, SHOULDER);
-    if(sgn === k.side){
-      const dx = hl - leadL - p[0], dy = hv - leadV - p[1];
-      const len = clamp(Math.hypot(dx, dy), 0.42, ARM);
-      inkLimb(sh[0], sh[1], sh[2] - 0.08*RZ, len, 0.15, KIT, Math.atan2(dx, -dy));
-    } else {
-      inkLimb(sh[0], sh[1], sh[2], 0.56, 0.15, KIT, lean + sgn*(1.55 - e*0.35));
-    }
+
+  inkFoot(k.wx, k.wz, 0.40 + e*0.34, 0.30 - e*0.12);
+
+  /* LEGS. The near one drives, the far one trails — that is what a leap
+     looks like from the front. Both are solved to a foot, so a knee can
+     never fold through a hip. */
+  for(const sgn of [-1, 1]){
+    const lead = sgn === side;
+    const swing = pitch + sgn*(0.26 + A.split*(lead ? 1.15 : 0.35))
+                        + (lead ? 0 : side*A.trail*0.85);
+    const span = (BONE.thigh + BONE.shin) * (lead ? 0.96 : 0.72 + A.trail*0.26);
+    const hip = HP(sgn);
+    const foot = [hip[0] + Math.sin(swing)*span, hip[1] - Math.cos(swing)*span];
+    const leg = ik2(hip[0], hip[1], foot[0], foot[1], BONE.thigh, BONE.shin, -sgn);
+    bone(hip, leg.j, 0.17, INK_SOCK);
+    bone(leg.j, leg.e, 0.145, INK_SOCK);
+    const bootA = Math.atan2(leg.e[0]-leg.j[0], -(leg.e[1]-leg.j[1]));
+    const w = Wd(leg.e);
+    inkBox(w[0], w[1] - 0.03, w[2] - 0.06, 0.16, 0.09, 0.24, INK_SOCK, bootA);
   }
-  for(const sgn of [-1,1]){
-    const hp = [ k.wx + sgn*0.14*RX, k.wy + 0.78 - crouch*0.6, k.wz + sgn*0.14*RZ ];
-    const th = lean + sgn*(0.10 + e*0.42);
-    inkLimb(hp[0], hp[1], hp[2], 0.42, 0.17, INK_SOCK, th);
-    inkLimb(hp[0] + Math.sin(th)*0.42*RX, hp[1] - Math.cos(th)*0.42,
-            hp[2] + Math.sin(th)*0.42*RZ, 0.40, 0.15, INK_SOCK, th + sgn*e*0.30);
+
+  /* TORSO last of the trunk, so it prints over the hips rather than under */
+  const tc = [(P[0]+C[0])/2, (P[1]+C[1])/2];
+  const tw = Wd(tc);
+  inkBox(tw[0], tw[1], tw[2], 0.46, BONE.spine + 0.20, 0.28, KIT, pitch);
+  const hw = Wd(HD);
+  inkBox(hw[0], hw[1], hw[2], 0.24, 0.26, 0.24, INK_SKIN, pitch);
+
+  /* ARMS. The leading one is solved to the hand the save is judged from —
+     so the glove sits ON it — and cannot exceed its own length getting
+     there. The off arm counterbalances, further up the harder he is going. */
+  for(const sgn of [-1, 1]){
+    const sh = SH(sgn);
+    let tgt;
+    if(sgn === side) tgt = [hl, hv];
+    else {
+      const a = pitch + sgn*(1.05 + A.armUp*0.95);
+      tgt = [sh[0] + Math.sin(a)*KEEPER_ARM*0.92,
+             sh[1] - Math.cos(a)*KEEPER_ARM*0.92];
+    }
+    const arm = ik2(sh[0], sh[1], tgt[0], tgt[1], BONE.upper, BONE.fore, sgn*side);
+    bone(sh, arm.j, 0.155, KIT, -0.08*RZ);
+    bone(arm.j, arm.e, 0.135, KIT, -0.08*RZ);
+    const gw = Wd(arm.e);
+    inkBox(gw[0], gw[1], gw[2] - 0.10*RZ, 0.17, 0.17, 0.14,
+           inkRamp('#FF8A1F', -0.36, 0.20), pitch);
   }
   inkFlush();
 }
+
 function inkKicker(){
   if(state===ST.TITLE || state===ST.REPLAY) return;
   const kit = shooter==='p' ? activeKit() : {a:CO_C.a, b:CO_C.b};

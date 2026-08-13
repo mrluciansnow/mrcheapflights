@@ -9,15 +9,26 @@
  * produce, the classic arm reached 1.87x its own length and the ink one
  * 2.07x, and a quarter of all poses needed some stretch.
  *
- * Two mechanisms fix it, and this test holds both:
+ * Worse, the ink keeper crumpled: his torso rotated about the pelvis while
+ * his hips and legs stayed where they were, so at full pitch the body folded
+ * through its own legs. Nothing held a bone to its length or a joint to the
+ * end of the bone before it.
  *
- *   THE PELVIS      The ink keeper's upper body used to be ROLLED by the lean
- *                   without being MOVED by it, so a man at full stretch stood
- *                   upright with his hand at ankle height. He now turns about
- *                   the pelvis, which is where a dive actually pivots.
+ * Three things fix it, and this test holds all three:
  *
- *   THE SHOULDER    Whatever gap survives that, he leads with the shoulder —
- *                   capped, so he cannot dislocate himself either.
+ *   THE CHAIN       He is built pelvis -> chest -> head, chest -> shoulders,
+ *                   pelvis -> hips, and every joint is the end of the bone
+ *                   before it. Nothing is placed independently, so no part of
+ *                   him can budge into any other part.
+ *
+ *   THE SOLVER      Arms and legs are SOLVED to a target by ik2(), which
+ *                   pulls the target into range first. A bone cannot exceed
+ *                   its length however far away the target is.
+ *
+ *   THE ACTION      A keeper has more than one movement. Which of SET, STEP,
+ *                   DUCK, JUMP, DIVE, LEAP or SPRAWL he is in follows from
+ *                   where his own target is, and each has its own shape.
+ *                   Pose comes from the action; position never does.
  *
  * The constants are read out of game.html rather than restated here, so
  * retuning them re-measures rather than lies.
@@ -40,18 +51,30 @@ const num = (re, what) => {
 console.log('\nTHE MECHANISMS ARE THERE');
 const ARM_C = num(/const ARM = ([\d.]+);\s*\/\/ shoulder to fingertip/, 'the classic arm length');
 const LEAD_C = num(/Math\.min\(over, ([\d.]+)\*s\) \/ reach/, 'the classic shoulder lead cap');
-const ARM_I = num(/const ARM = ([\d.]+), PELVIS = ([\d.]+)/, 'the ink arm length');
-const PELVIS = num(/const ARM = [\d.]+, PELVIS = ([\d.]+)/, 'the ink pelvis height');
-const LEAD_I = num(/Math\.min\(over, ([\d.]+)\) \/ reach/, 'the ink shoulder lead cap');
-ok('the ink keeper turns about the pelvis, not the feet',
-   /const pose = \(lat, hgt\) => \{\s*\/\/ about the pelvis/.test(src));
-ok('the ink arm is clamped to its own length',
-   /clamp\(Math\.hypot\(dx, dy\), 0\.42, ARM\)/.test(src));
-ok('and neither mechanism moved anything the simulation reads',
-   !/keeperHand\s*=\s*/.test(src.slice(src.indexOf('function inkKeeper'))) &&
-   /k\.wx, k\.wy and keeperHand are untouched|wx, wy and keeperHand never move/.test(src));
-console.log('  ARM ' + ARM_C + '/' + ARM_I + 'm   lead cap ' + LEAD_C + '/' + LEAD_I +
-            'm   pelvis ' + PELVIS + 'm');
+const UPPER = num(/upper:([\d.]+),/, 'the upper arm bone');
+const FORE  = num(/fore:([\d.]+),/, 'the forearm bone');
+const GLOVE = num(/glove:([\d.]+),/, 'the glove');
+const LEAD_I = num(/Math\.min\(over, ([\d.]+)\)\/reach/, 'the ink shoulder lead cap');
+const ARM_I = UPPER + FORE + GLOVE;
+ok('the ink keeper is a chain: every joint is the end of the bone before it',
+   /const C  = \[P\[0\] \+ up\[0\]\*BONE\.spine/.test(src) &&
+   /const HD = \[C\[0\] \+ up\[0\]\*BONE\.neck/.test(src) &&
+   /const SH = s => \[C\[0\]/.test(src) && /const HP = s => \[P\[0\]/.test(src));
+ok('his limbs are SOLVED to a target, not stretched to one',
+   /function ik2\(sx, sy, tx, ty, l1, l2, bend\)/.test(src) &&
+   /if\(d > hi\)\{ const f = hi\/\(d\|\|1e-6\)/.test(src));
+ok('so no bone can exceed its own length whatever the target',
+   /else if\(d < lo\)\{ const f = lo\/\(d\|\|1e-6\)/.test(src));
+ok('the shoulder lead moves the WHOLE chain, so he cannot come apart',
+   /The lead moves the WHOLE chain/.test(src));
+ok('he has more than one movement, chosen by where his target is',
+   /function keeperAction\(k\)/.test(src) &&
+   ['SET','STEP','DUCK','JUMP','DIVE','LEAP','SPRAWL']
+     .every(n => new RegExp('\\b' + n + ':').test(src)));
+ok('and none of it moved anything the simulation reads',
+   /POSE comes from the action\. POSITION does not/.test(src));
+console.log('  ARM ' + ARM_C + '/' + ARM_I.toFixed(2) + 'm   lead cap ' +
+            LEAD_C + '/' + LEAD_I + 'm');
 
 /* ---- the sweep: every pose a dive can put a hand in ---- */
 const lerp = (a,b,t)=>a+(b-a)*t, clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -67,14 +90,34 @@ function bodyAndHand(tx, ty, dive, wx0){
     hand: { x: lerp(wx0 + side*0.42, tx, e), y: lerp(1.42, ty, e) },
   };
 }
-/* how long the drawn arm has to be, as a multiple of a real one */
+/* The ink arm is solved, not stretched, so the question is not whether it
+   overshoots — ik2 pulls the target into range and it cannot — but how much
+   of the reach the SOLVER has to throw away, which is the same defect wearing
+   a different coat. A glove short of the hand is a save that lands near it. */
+const ACT = {
+  SET:{pitch:0.10,knee:0.55}, STEP:{pitch:0.34,knee:0.42}, DUCK:{pitch:0.46,knee:1.00},
+  JUMP:{pitch:0.16,knee:0.30}, DIVE:{pitch:1.02,knee:0.20}, LEAP:{pitch:0.80,knee:0.16},
+  SPRAWL:{pitch:1.34,knee:0.26},
+};
+function actionOf(tx, ty, wx0){
+  const dx = tx - wx0, travel = Math.hypot(dx, ty - 1.15), wide = Math.abs(dx);
+  const high = ty > 1.70, low = ty < 0.80;
+  if(travel < 0.38) return 'SET';
+  if(wide < 0.55)   return high ? 'JUMP' : low ? 'DUCK' : 'STEP';
+  if(travel < 0.95) return 'STEP';
+  if(low)  return 'SPRAWL';
+  if(high) return 'LEAP';
+  return 'DIVE';
+}
 function inkArm(tx, ty, dive, wx0){
   const { side, e, wx, wy, hand } = bodyAndHand(tx, ty, dive, wx0);
-  const lean = side*e*1.15, crouch = (1-e)*0.14;
-  const cL = Math.cos(lean), sL = Math.sin(lean);
-  const dh = (1.30 - crouch) - PELVIS;
-  const sh = [ side*0.25*cL + dh*sL, PELVIS + dh*cL - side*0.25*sL ];
-  let dx = (hand.x - wx) - sh[0], dy = (hand.y - wy) - sh[1];
+  const A = ACT[actionOf(tx, ty, wx0)];
+  const sit = A.knee*(1-e)*0.26, pitch = side*e*A.pitch;
+  const cP = Math.cos(pitch), sP = Math.sin(pitch);
+  const pelH = (0.42+0.40) * (0.94 - sit) * (1 - e*0.30);
+  const hl = hand.x - wx, hv = hand.y - wy;
+  const sh = [ sP*0.42 + cP*side*0.19, pelH + cP*0.42 - sP*side*0.19 ];
+  let dx = hl - sh[0], dy = hv - sh[1];
   const reach = Math.hypot(dx, dy), over = reach - ARM_I;
   if(over > 0 && reach > 0.001){
     const f = Math.min(over, LEAD_I)/reach; dx -= dx*f; dy -= dy*f;
@@ -115,10 +158,10 @@ for(const [name, f, sharps] of [['ink', inkArm, [0]],
   const r = sweep(f, sharps);
   console.log('  ' + name + ': worst ' + r.worst.toFixed(2) + ' x ARM over ' +
               r.n.toLocaleString() + ' poses, ' + r.pct.toFixed(1) + '% stretched');
-  ok(name + ' never draws an arm longer than an arm',
+  ok(name + ' never asks for an arm longer than an arm',
      r.worst <= 1.001, 'worst ' + r.worst.toFixed(3) + ' at ' + JSON.stringify(r.at));
-  ok(name + ' needs no stretch anywhere in the space',
-     r.pct === 0, r.pct.toFixed(2) + '%');
+  ok(name + ' reaches the judged hand everywhere in the space',
+     r.pct === 0, r.pct.toFixed(2) + '% short or stretched');
 }
 
 console.log('\n' + (fail ? 'LIMBS: ' + fail + ' FAILED' : 'LIMBS: ALL ' + pass + ' PASSED'));
