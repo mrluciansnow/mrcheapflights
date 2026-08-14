@@ -6148,15 +6148,18 @@ function keeperAction(k){
   if(high) return 'LEAP';
   return 'DIVE';
 }
+/* out/drop place the free hand as a POSITION rather than an angle, because a
+   keeper's hands are a posture in themselves: in the set they are up and in
+   front with the elbows bent, not hanging off the shoulders. */
 const ACTION = {
-  //        trunk limit  sit    off-arm  trailing leg  stance
-  SET:    { pitch:0.30, knee:0.55, armUp:0.15, trail:0.05, stance:0.10 },
-  STEP:   { pitch:0.55, knee:0.42, armUp:0.30, trail:0.20, stance:0.30 },
-  DUCK:   { pitch:0.95, knee:1.00, armUp:0.05, trail:0.10, stance:0.26 },
-  JUMP:   { pitch:0.40, knee:0.30, armUp:1.00, trail:0.45, stance:0.14 },
-  DIVE:   { pitch:1.15, knee:0.20, armUp:0.65, trail:0.85, stance:0.34 },
-  LEAP:   { pitch:1.00, knee:0.16, armUp:1.00, trail:1.00, stance:0.24 },
-  SPRAWL: { pitch:1.45, knee:0.26, armUp:0.25, trail:0.90, stance:0.30 },
+  //        trunk limit  sit    trailing leg  stance   free hand
+  SET:    { pitch:0.30, knee:0.85, trail:0.05, stance:0.32, out:0.44, drop:0.26 },
+  STEP:   { pitch:0.55, knee:0.62, trail:0.20, stance:0.36, out:0.50, drop:0.18 },
+  DUCK:   { pitch:0.95, knee:1.00, trail:0.10, stance:0.30, out:0.46, drop:0.62 },
+  JUMP:   { pitch:0.40, knee:0.30, trail:0.45, stance:0.16, out:0.34, drop:-0.58 },
+  DIVE:   { pitch:1.15, knee:0.20, trail:0.85, stance:0.34, out:0.52, drop:-0.10 },
+  LEAP:   { pitch:1.00, knee:0.16, trail:1.00, stance:0.26, out:0.40, drop:-0.46 },
+  SPRAWL: { pitch:1.45, knee:0.26, trail:0.90, stance:0.32, out:0.50, drop:0.30 },
 };
 
 /* Two bones to a target, solved rather than stretched. The target is pulled
@@ -6243,10 +6246,24 @@ function keeperPose(k){
     const sh = [C[0] + rgt[0]*sgn*ANAT.shoulderHalf,
                 C[1] + rgt[1]*sgn*ANAT.shoulderHalf];
     let tgt;
-    if(sgn === side) tgt = [hl, hv];                 // the hand he saves with
+    /* Before he commits there is no saving hand yet, so both go up into the
+       ready position rather than one being parked at the resting hand. This
+       is the pose that is on screen for most of a kick, and a keeper set for
+       a penalty has both hands out in front of him. */
+    /* The saving hand is ALWAYS the judged one — a save can be given before he
+       has committed, and the glove has to be there when it is. What makes it
+       read as a set position instead is the other hand: at rest it mirrors
+       the first, so he stands with both up and out, and only peels away into
+       its counterbalance once he is actually going. */
+    if(sgn === side) tgt = [hl, hv];
     else {
-      const a = pitch + sgn*(1.05 + A.armUp*0.95);
-      tgt = [sh[0] + Math.sin(a)*K_ARM*0.92, sh[1] - Math.cos(a)*K_ARM*0.92];
+      const mirror = clamp(1 - e/0.14, 0, 1);
+      /* the free hand, placed rather than pointed: out from the shoulder and
+         held at a height the action asks for, so the elbow bends the way a
+         keeper's does instead of the arm hanging straight */
+      const free = [sh[0] + rgt[0]*sgn*A.out - up[0]*A.drop,
+                    sh[1] + rgt[1]*sgn*A.out - up[1]*A.drop];
+      tgt = [lerp(free[0], -hl, mirror), lerp(free[1], hv, mirror)];
     }
     const arm = ik2(sh[0], sh[1], tgt[0], tgt[1], ANAT.upper,
                     ANAT.fore + ANAT.glove, sgn*side);

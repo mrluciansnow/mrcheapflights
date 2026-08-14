@@ -85,7 +85,10 @@ for(let tx=-2.45; tx<=2.4501; tx+=0.05)
 for(let ty=0.20; ty<=2.35001; ty+=0.05)
 for(let dv=0; dv<=1.0001; dv+=0.05)
 for(const wx0 of [-0.75, 0, 0.75])
-for(const settle of [0, 0.5, 1]){
+/* settle only ever rises AFTER the dive has finished — keeperStep gates it
+   on dt > dur + 0.17, which means dive is already 1 — so a half-settled
+   half-dived keeper is not a state the simulation can be in. */
+for(const settle of (dv > 0.999 ? [0, 0.5, 1] : [0])){
   const side = Math.sign(tx) || 1;
   const e = (dv<.5?2*dv*dv:1-((-2*dv+2)*(-2*dv+2))/2);
   const es = (settle<.5?2*settle*settle:1-((-2*settle+2)*(-2*settle+2))/2);
