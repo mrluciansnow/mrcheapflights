@@ -451,3 +451,126 @@ npm run test:duel     # 285 multiplayer checks, needs a local Pages server
 The pure-sim probes used for the survey are not committed — they are a few
 lines each against `functions/_lib/sim.js` and are quicker to rewrite for the
 question in front of you than to generalise.
+
+---
+
+# Sixth pass — twenty things worth fixing
+
+Four areas, five each. Everything in the aiming section is measured at 900
+kicks a cell through `functions/_lib/sim.js` at senior; everything else is
+read out of the source and cited, so it can be checked without running
+anything. Nothing here is fixed yet.
+
+## Physics
+
+**P1. The keeper is not interpolated to the instant the ball crosses.**
+`stepFlight` calls `keeperUpdate(keeper, kickT, ball)` for the whole step,
+then judges the crossing at the interpolated fraction `f` *inside* that step —
+but `evaluateAtPlane` reads `keeperHand(keeper)` at its end-of-step value. At
+full stretch the hand covers about 0.4m in a 1/60 step, so a save can be
+given, or refused, against a hand that is up to a whole step ahead of where it
+was when the ball actually arrived. The ball is snapped back to the crossing;
+the keeper is not. Fix is symmetrical: evaluate him at `kickT - dt*(1-f)`.
+Must land identically in `functions/_lib/sim.js`.
+
+**P2. The ball bounces off a plane 28cm above the grass.** `stepBall` tests
+the ground with `CFG.BALL_R`, which `CFG` itself documents as "drawn radius —
+exaggerated for on-screen readability" (0.28). Every *contact* test uses
+`CFG.BALL_PHYS` (0.11, "true size 5"). One ball, two radii, and the bigger one
+is the one the turf uses.
+
+**P3. Contact is tested with the ball's centre on the plane.** The trigger is
+`prevZ > 0 && ball.wz <= 0`. A real ball touches the frame and the gloves when
+its *surface* gets there, one radius earlier. Every woodwork and save call is
+systematically 11cm late — small, but it biases exactly the marginal calls
+players argue about.
+
+**P4. The body block is a circle where the body no longer is.**
+`dBody = dhyp2(bx-keeper.wx, by-(keeper.wy+1.0))` against a fixed 0.55m, but
+the drawn chest is now pelvis+spine with the pelvis dropping for a low ball
+and leading toward the hand. The two can be a third of a metre apart, so a
+ball can strike his drawn chest and be given a goal.
+
+**P5. No Magnus lift, and a ball that stops bouncing never stops rolling.**
+`curl` is applied along `shotR` only — purely lateral. Backspin floats a ball
+and topspin dips it, and neither exists: elevation is fixed at launch and only
+gravity and linear drag act after. Separately, once `Math.abs(b.vy)<0.7` zeroes
+the vertical there is no rolling friction, so the ball slides on at a constant
+speed forever.
+
+## Skeleton and movement
+
+**S1. He has no recovery.** `k.recover` is read into the pose but there is no
+get-up: he unwinds back along the path he dived, in reverse. A keeper pushes
+up off the near hand and reorganises his feet.
+
+**S2. His head never looks at the ball.** It is rigidly on the spine axis. A
+keeper's head is on the ball from before the strike and stays there through
+the dive; it is one of the strongest cues that he is a person and not a
+puppet.
+
+**S3. The feet slide on his line.** `k.wx` interpolates continuously and the
+planted foot is derived from the hip, so while he shuffles the feet translate
+without ever being picked up. The classic renderer already solves this with a
+`stepPh` cadence driven by distance travelled; the ink one has nothing.
+
+**S4. Nothing happens at contact.** On a save the ball stops dead at the hand.
+No glove recoil, no arm giving with it, no parry direction on a tip — the
+outcome changes but the body does not react to it.
+
+**S5. The kicker was never rebuilt.** `inkKicker` still poses limbs at
+hand-set angles with `limb()`: no chain, no IK, no phase structure, no ground
+constraint. It is the same class of defect the keeper had before this week,
+and it is in the foreground of every frame.
+
+## Aiming
+
+Measured, 900 kicks a cell, senior, power 0.75.
+
+**A1. Fifty-seven per cent of the aim range is a guaranteed save.** From 0.0m
+to 2.4m the goal share runs 0–8% and the save share 80–100%. There is exactly
+one band worth using, 2.4–3.0m.
+
+**A2. That band is a knife-edge, and the punishment is asymmetric.** 2.7m pays
+75% goals. 3.0m still pays 58% but adds 34% woodwork. 3.3m collapses to 11%
+goals and 67% woodwork. Missing inside costs you nothing you had; missing
+outside costs you the kick.
+
+**A3. Elevation above 0.65 is a free point, every single time.** 0.7 through
+1.0 return 100% point across 900 kicks each — no variance, no risk, no
+decision. Roughly a third of the elevation control pays a guaranteed score.
+
+**A4. Elevation below 0.5 does nothing at all.** 0.0, 0.1, 0.2, 0.3 and 0.4
+all land within noise of each other (7–15% goal, 68–80% save). Two fifths of
+the control changes nothing about the outcome.
+
+**A5. A point can only be scored by going over the bar.** At elev 0.25 the
+point share is 0% at every aim value tested. There is no placed point — no
+shot the keeper gets a hand to that goes over — which is most of how points
+are actually scored in the game this is modelling.
+
+## Goalie mode and the indicator system
+
+**G1. Offline keeper mode has no read whatsoever.** `drawTendency` returns
+early unless `netTendency()` exists and `drawReadCue` returns unless
+`mode === 'online'`. Against the AI you are guessing with no information at
+all, which is a coin toss dressed as a decision.
+
+**G2. Nothing arrives before the strike except the tendency.** The comment
+above `drawReadCue` is right that a post-strike cue cannot be dived on — but
+that leaves the pre-strike window carrying a single bar chart. A body-shape
+tell in the run-up is the obvious missing piece.
+
+**G3. The reach circle shows one of three save radii.** `drawKeepPick` draws
+`keeper.reach`, but `evaluateAtPlane` also saves on `dBody < 0.55` and tips
+out to `reach + 0.16`. Two thirds of the ways you can stop a ball are invisible
+on the indicator that exists to show you where you can stop one.
+
+**G4. The artifact's keeper mode charges no reaction cost.** `commitDive` sets
+`keeper.diveAt = 0` — you commit and go on contact. The AI keeper pays
+`react` of 0.19–0.27s. Human keeping is therefore strictly easier than the
+keeping the game models, and the two modes are not comparable.
+
+**G5. "Kept out" counts wides and woodwork as your save.** `saved++` fires on
+any outcome worth no points, so a shot that misses by two metres is credited
+to the keeper. The scoreline flatters, which makes it useless as feedback.
