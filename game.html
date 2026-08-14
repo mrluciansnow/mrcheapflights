@@ -6186,7 +6186,27 @@ function keeperPose(k){
   /* how far off the grass he is — the simulation already lifts him, so this
      is read, never invented */
   const air = clamp(k.wy / 0.45, 0, 1);
-  const sit = A.knee * (1-e) * 0.22;
+
+  /* THE PHASES OF A DIVE.
+     A keeper does not travel linearly out of his stance, and posing him as
+     though he does is why he read as a shape being dragged. He LOADS onto
+     the near leg, DRIVES off it, and only then flies — and his hands are out
+     in front of him from the first frame, because the arm is quicker than the
+     trunk and there is no time to do it the other way round.
+
+       drive   the push. Knees deep at first, then straightening hard, which
+               is what lifts him. Done well before the flight is.
+       trunk   the body, deliberately BEHIND the hand. keeperHand() is the
+               simulation's and travels on its own clock; holding the trunk
+               back for the first tenth of the dive is what puts the gloves
+               ahead of the shoulders instead of dragged along by them.
+       plant   the driving foot stays on the grass through the push and only
+               leaves once the leg is straight. A spring that lets go of the
+               ground first is not a spring. */
+  const sm = t => t*t*(3 - 2*t);
+  const drive = sm(clamp((e - 0.06)/0.34, 0, 1));
+  const trunk = sm(clamp((e - 0.10)/0.90, 0, 1));
+  const sit = A.knee * 0.26 * (1 - drive);
 
   /* HE DOES NOT STRETCH, HE DROPS.
      A keeper going down for a ball at his feet bends his knees; one going up
@@ -6198,7 +6218,7 @@ function keeperPose(k){
   let pelH = Math.min(ANAT.hip*(1 - sit), K_LEG*0.985);
   let pitch = 0, up, rgt;
   for(let pass = 0; pass < 4; pass++){
-    pitch = clamp(Math.atan2(hl, (hv - pelH) || 1e-6), -A.pitch, A.pitch) * e;
+    pitch = clamp(Math.atan2(hl, (hv - pelH) || 1e-6), -A.pitch, A.pitch) * trunk;
     up  = [Math.sin(pitch), Math.cos(pitch)];
     rgt = [Math.cos(pitch), -Math.sin(pitch)];
     const sh = [up[0]*ANAT.spine + rgt[0]*side*ANAT.shoulderHalf,
@@ -6246,13 +6266,17 @@ function keeperPose(k){
     /* Feet do not start leaving the grass the instant he does. They stay
        planted until he is genuinely off it, or a man barely airborne is
        already dangling. */
-    const lift  = clamp((air - 0.05)/0.35, 0, 1);
+    /* Feet do not start leaving the grass the instant he does, and the leg
+       he is driving off leaves last of all — not until the push is spent. */
+    const own   = sgn === side ? sm(clamp((drive - 0.72)/0.28, 0, 1))
+                               : sm(clamp((drive - 0.10)/0.55, 0, 1));
+    const lift  = Math.min(clamp((air - 0.05)/0.35, 0, 1), own);
     const foot  = [lerp(stand[0], fly[0], lift), lerp(stand[1], fly[1], lift)];
     if(lift < 0.02) foot[1] = 0.0;                     // planted is planted
     const leg = ik2(hip[0], hip[1], foot[0], foot[1], ANAT.thigh, ANAT.shin, -sgn);
     legs.push({ hip, knee:leg.j, foot:leg.e });
   }
-  return { P, C, HD, arms, legs, pitch, air, e, side,
+  return { P, C, HD, arms, legs, pitch, air, e, side, drive, trunk,
            action: keeperAction(k) };
 }
 
@@ -6280,6 +6304,7 @@ function inkKeeper(k){
   }
   const tc = [(p.P[0]+p.C[0])/2, (p.P[1]+p.C[1])/2], tw = Wd(tc);
   inkBox(tw[0], tw[1], tw[2], 0.46, ANAT.spine + 0.16, 0.28, KIT, p.pitch);
+  bone(p.C, p.HD, 0.15, INK_SKIN);            // a neck, or the head floats off
   const hw = Wd(p.HD);
   inkBox(hw[0], hw[1], hw[2], 0.23, ANAT.headR*2.1, 0.23, INK_SKIN, p.pitch);
   for(const a of p.arms){

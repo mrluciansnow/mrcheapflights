@@ -158,6 +158,48 @@ ok('his head is never below his hips',
    worst['head below the pelvis'].v <= 0.001,
    worst['head below the pelvis'].v.toFixed(3) + 'm');
 
+console.log('\nHANDS FIRST, AND OFF THE LEGS');
+/* Two things you can see in a real dive, asked of the model as questions
+   rather than asserted as intentions. Taken across every dive-shaped target
+   he can be given, at the moment the push is half spent. */
+{
+  let leadWins = 0, springWins = 0, cases = 0;
+  for(let tx=-2.3; tx<=2.3001; tx+=0.1){
+    if(Math.abs(tx) < 1.0) continue;                  // a dive, not a step
+    for(let ty=0.4; ty<=2.2001; ty+=0.2){
+      const side = Math.sign(tx) || 1, wx0 = 0;
+      const K = dv => {
+        const e = (dv<.5?2*dv*dv:1-((-2*dv+2)*(-2*dv+2))/2);
+        return keeperPose({ tx, ty, wx0, side, dive:dv, settle:0, recover:0,
+                            wx: wx0*0.56 + (tx*0.56 - wx0*0.56)*e,
+                            wy: Math.max(0, ty*0.52 - 0.14)*e });
+      };
+      const a0 = K(0), a1 = K(0.30), aN = K(1);
+      const lead0 = a0.arms.find(x=>x.lead), lead1 = a1.arms.find(x=>x.lead),
+            leadN = aN.arms.find(x=>x.lead);
+      /* how much of its journey has each part made a third of the way in? */
+      const gl = d(lead0.hand, leadN.hand) || 1e-6;
+      const sh = d(a0.arms.find(x=>x.lead).sh, aN.arms.find(x=>x.lead).sh) || 1e-6;
+      const glove    = d(lead0.hand, lead1.hand)/gl;
+      const shoulder = d(a0.arms.find(x=>x.lead).sh, a1.arms.find(x=>x.lead).sh)/sh;
+      cases++;
+      if(glove > shoulder + 0.02) leadWins++;
+      /* the spring: the driving foot still down while the hips have risen */
+      const foot = a1.legs[side > 0 ? 1 : 0];
+      if(a1.drive > 0.2 && Math.abs(foot.foot[1]) < 0.02 && a1.P[1] > a0.P[1] + 0.005)
+        springWins++;
+    }
+  }
+  console.log('  the glove is ahead of the shoulder in ' +
+              (100*leadWins/cases).toFixed(0) + '% of dives a third of the way in');
+  console.log('  the driving foot is still on the grass with the hips rising in ' +
+              (100*springWins/cases).toFixed(0) + '% of them');
+  ok('his hands go first', leadWins/cases > 0.85,
+     (100*leadWins/cases).toFixed(0) + '%');
+  ok('he springs off a planted leg', springWins/cases > 0.85,
+     (100*springWins/cases).toFixed(0) + '%');
+}
+
 console.log('\nAND HE HAS MORE THAN ONE MOVEMENT');
 const seen = new Set();
 for(let tx=-3; tx<=3.001; tx+=0.05)
