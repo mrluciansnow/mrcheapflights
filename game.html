@@ -6096,53 +6096,72 @@ function inkUmpires(){
     }
   }
 }
-/* ---- what a keeper is actually doing ----
- *
- * He does not have one movement with a dial on it. Which one he is in
- * follows from where his own target is and how far he has to go, and each
- * one has a different shape: he ducks with his knees, he jumps off both
- * feet, he dives with a trailing leg, he sprawls almost flat. Posing all of
- * them as "lean by e*1.15" produced a man tipping over rather than a keeper
- * going somewhere.
- *
- * POSE comes from the action. POSITION does not — wx, wy and keeperHand
- * belong to the simulation, and the drawn body hangs off them, so the
- * picture and the verdict cannot drift apart. The leap reads as a leap
- * because of the push-off shape, not because the drawing moved him.
- */
+/* ==================================================================
+   THE KEEPER'S SKELETON
+   ------------------------------------------------------------------
+   One pose function, shared by both renderers, returning joints in the
+   keeper's own plane: lateral across the goal, height off the grass.
+   Drawing is then only bones between joints, so the two renderers cannot
+   disagree about what he is doing.
+
+   ANATOMY, in metres, for a 1.83m goalkeeper. These are proportions off a
+   real body, not numbers that looked right: hip at 0.92, hip to shoulder
+   0.52, shoulder to fingertip 0.72, and an arm span (0.20+0.72)x2 = 1.84
+   that matches his height, the way a person's does.
+
+   Three rules do the work that tuning could not:
+
+     THE SPINE POINTS AT THE HAND.  Not at a per-action constant. A keeper
+     reaching for a ball turns his trunk toward it, and doing the same here
+     means the shoulder arrives near the hand on its own — so the arm has
+     almost nothing left to bridge, and nothing has to slide the body
+     sideways to help it.
+
+     THE PELVIS IS THE ROOT AND IT DOES NOT SWIM.  It sits at wx, wy plus a
+     hip height. Nothing shifts it laterally. Everything else hangs off it.
+
+     THE LEGS DO NOT INHERIT THE PITCH.  They are solved to a FOOT, and the
+     foot is on the ground while he is on the ground and trailing once he is
+     off it. Rotating the legs with the trunk is what had them ending up
+     above his head.
+   ================================================================== */
+const ANAT = {
+  hip:0.92, thigh:0.46, shin:0.46,      // hip height, and the leg that reaches it
+  spine:0.52, neck:0.16, headR:0.115,
+  shoulderHalf:0.20, hipHalf:0.15,
+  upper:0.33, fore:0.30, glove:0.09,
+};
+const K_ARM = ANAT.upper + ANAT.fore + ANAT.glove;    // 0.72
+const K_LEG = ANAT.thigh + ANAT.shin;                 // 0.92
+
+/* Which movement he is in follows from where his own target is and how far
+   he has to go for it. Each has a different shape, and pitch is a LIMIT on
+   how far the trunk may turn, not an amount it always turns. */
 function keeperAction(k){
   const dx = k.tx - k.wx0, dy = (k.ty === undefined ? 1.35 : k.ty) - 1.15;
   const travel = Math.hypot(dx, dy), wide = Math.abs(dx);
   const high = k.ty > 1.70, low = k.ty < 0.80;
-  if(travel < 0.38)            return 'SET';
-  if(wide < 0.55)              return high ? 'JUMP' : low ? 'DUCK' : 'STEP';
-  if(travel < 0.95)            return 'STEP';
-  if(low)                      return 'SPRAWL';
-  if(high)                     return 'LEAP';
+  if(travel < 0.38) return 'SET';
+  if(wide < 0.55)   return high ? 'JUMP' : low ? 'DUCK' : 'STEP';
+  if(travel < 0.95) return 'STEP';
+  if(low)  return 'SPRAWL';
+  if(high) return 'LEAP';
   return 'DIVE';
 }
-/* pitch: how far the spine goes over.  knee: how deep he sits before he goes.
-   armUp: where the off arm counterbalances.  trail: how far the back leg is
-   left behind, which is the whole read on a leap. */
 const ACTION = {
-  SET:    { pitch:0.10, knee:0.55, armUp:0.15, trail:0.05, split:0.16 },
-  STEP:   { pitch:0.34, knee:0.42, armUp:0.30, trail:0.18, split:0.42 },
-  DUCK:   { pitch:0.46, knee:1.00, armUp:0.05, trail:0.08, split:0.28 },
-  JUMP:   { pitch:0.16, knee:0.30, armUp:1.00, trail:0.40, split:0.20 },
-  DIVE:   { pitch:1.02, knee:0.20, armUp:0.62, trail:0.80, split:0.72 },
-  LEAP:   { pitch:0.80, knee:0.16, armUp:1.00, trail:0.95, split:0.88 },
-  SPRAWL: { pitch:1.34, knee:0.26, armUp:0.24, trail:0.88, split:0.60 },
+  //        trunk limit  sit    off-arm  trailing leg  stance
+  SET:    { pitch:0.30, knee:0.55, armUp:0.15, trail:0.05, stance:0.10 },
+  STEP:   { pitch:0.55, knee:0.42, armUp:0.30, trail:0.20, stance:0.30 },
+  DUCK:   { pitch:0.95, knee:1.00, armUp:0.05, trail:0.10, stance:0.26 },
+  JUMP:   { pitch:0.40, knee:0.30, armUp:1.00, trail:0.45, stance:0.14 },
+  DIVE:   { pitch:1.15, knee:0.20, armUp:0.65, trail:0.85, stance:0.34 },
+  LEAP:   { pitch:1.00, knee:0.16, armUp:1.00, trail:1.00, stance:0.24 },
+  SPRAWL: { pitch:1.45, knee:0.26, armUp:0.25, trail:0.90, stance:0.30 },
 };
-/* Bones. These are the point of the whole exercise: they never change
-   length, and every joint is the end of the bone before it, so no part of
-   him can budge into any other part. */
-const BONE = { spine:0.42, neck:0.29, headR:0.13, shoulder:0.19, hip:0.13,
-               upper:0.34, fore:0.32, glove:0.08, thigh:0.42, shin:0.40 };
-const KEEPER_ARM = BONE.upper + BONE.fore + BONE.glove;   // 0.74
 
 /* Two bones to a target, solved rather than stretched. The target is pulled
-   into range first, so the elbow is always real and the arm is never longer
-   than an arm. */
+   into range first, so the joint is always real and the limb is never longer
+   than a limb. bend fixes which way it folds, so a knee cannot invert. */
 function ik2(sx, sy, tx, ty, l1, l2, bend){
   let dx = tx-sx, dy = ty-sy;
   let d = Math.hypot(dx, dy);
@@ -6155,99 +6174,119 @@ function ik2(sx, sy, tx, ty, l1, l2, bend){
   return { j:[sx + ux*a - uy*h*bend, sy + uy*a + ux*h*bend], e:[sx+dx, sy+dy] };
 }
 
-function inkKeeper(k){
-  if(!k) return;
+/* Everything below is in HIS frame: [lateral, height], with the origin at
+   his feet on the goal line. Add wx and wy to get the world. */
+function keeperPose(k){
   const e = ease(k.dive) * (1 - (k.recover||0)*0.86);
-  const RX = CAM.rx, RZ = CAM.rz, side = k.side || 1;
-  const gkKit = gkById(profile.gk);
-  const KIT = inkRamp(k.co === CO_P ? gkKit.a : '#CFE83C', -0.40, 0.22);
+  const side = k.side || 1;
   const A = ACTION[keeperAction(k)] || ACTION.SET;
-
-  /* he sits into it before he goes, and unfolds out of it as he goes */
-  const sit   = A.knee * (1-e) * 0.26;
-  const pitch = side * e * A.pitch;
-  const cP = Math.cos(pitch), sP = Math.sin(pitch);
-  const up   = [ sP,  cP];                       // the spine, in his own plane
-  const rgt  = [ cP, -sP];                       // across his shoulders
-
-  /* the hand the save is judged from, in his own lateral/height axes */
   const hand = keeperHand(k);
-  const hl = (hand.x - k.wx)*RX, hv = hand.y - k.wy;
+  const hl = hand.x - k.wx, hv = hand.y - k.wy;
 
-  /* Pelvis. Its height is the leg pose; its lateral place is his, plus
-     whatever lead the shoulder needs so the arm can reach the hand without
-     growing. The lead moves the WHOLE chain, so he stays in one piece. */
-  const pelH = (BONE.thigh + BONE.shin) * (0.94 - sit) * (1 - e*0.30);
-  let leadL = 0, leadV = 0;
-  {
-    const sh = [ up[0]*BONE.spine + rgt[0]*side*BONE.shoulder,
-                 pelH + up[1]*BONE.spine + rgt[1]*side*BONE.shoulder ];
-    const dx = hl - sh[0], dy = hv - sh[1];
-    const reach = Math.hypot(dx, dy), over = reach - KEEPER_ARM;
-    if(over > 0 && reach > 0.001){
-      const f = Math.min(over, 0.45)/reach; leadL = dx*f; leadV = dy*f;
-    }
+  /* how far off the grass he is — the simulation already lifts him, so this
+     is read, never invented */
+  const air = clamp(k.wy / 0.45, 0, 1);
+  const sit = A.knee * (1-e) * 0.22;
+
+  /* HE DOES NOT STRETCH, HE DROPS.
+     A keeper going down for a ball at his feet bends his knees; one going up
+     stands tall. Solving the trunk angle alone left the shoulder over a foot
+     from a low ball with the arm expected to make up the difference. The hip
+     height is therefore settled first, against the same hand the arm will be
+     solved to — and it is bounded by a deep squat below and by what the legs
+     can reach the grass from above, hips included once the pelvis turns. */
+  let pelH = Math.min(ANAT.hip*(1 - sit), K_LEG*0.985);
+  let pitch = 0, up, rgt;
+  for(let pass = 0; pass < 4; pass++){
+    pitch = clamp(Math.atan2(hl, (hv - pelH) || 1e-6), -A.pitch, A.pitch) * e;
+    up  = [Math.sin(pitch), Math.cos(pitch)];
+    rgt = [Math.cos(pitch), -Math.sin(pitch)];
+    const sh = [up[0]*ANAT.spine + rgt[0]*side*ANAT.shoulderHalf,
+                pelH + up[1]*ANAT.spine + rgt[1]*side*ANAT.shoulderHalf];
+    const short = Math.hypot(hl - sh[0], hv - sh[1]) - K_ARM;
+    const hipLift = Math.abs(Math.sin(pitch*0.45))*ANAT.hipHalf;
+    const ceiling = Math.min(ANAT.hip*(1 - sit), K_LEG*0.985 - hipLift);
+    const next = clamp(pelH + (short > 0 ? Math.sign(hv - sh[1])*short : 0),
+                       0.30, ceiling);
+    if(Math.abs(next - pelH) < 0.0005){ pelH = next; break; }
+    pelH = next;
   }
-  const P  = [leadL, pelH + leadV];                                  // pelvis
-  const C  = [P[0] + up[0]*BONE.spine, P[1] + up[1]*BONE.spine];     // chest
-  const HD = [C[0] + up[0]*BONE.neck,  C[1] + up[1]*BONE.neck];      // head
-  const SH = s => [C[0] + rgt[0]*s*BONE.shoulder, C[1] + rgt[1]*s*BONE.shoulder];
-  const HP = s => [P[0] + rgt[0]*s*BONE.hip,      P[1] + rgt[1]*s*BONE.hip];
+  const P = [0, pelH];
+  const C  = [P[0] + up[0]*ANAT.spine, P[1] + up[1]*ANAT.spine];
+  const HD = [C[0] + up[0]*(ANAT.neck + ANAT.headR),
+              C[1] + up[1]*(ANAT.neck + ANAT.headR)];
 
-  /* world, and a bone drawn between two joints of his */
-  const Wd = p => [ k.wx + p[0]*RX, k.wy + p[1], k.wz + p[0]*RZ ];
-  const bone = (a, b, thick, mat, dz) => {
-    const dx = b[0]-a[0], dy = b[1]-a[1];
-    const w = Wd(a);
-    inkLimb(w[0], w[1], w[2] + (dz||0), Math.hypot(dx,dy), thick, mat,
-            Math.atan2(dx, -dy));
-  };
-
-  inkFoot(k.wx, k.wz, 0.40 + e*0.34, 0.30 - e*0.12);
-
-  /* LEGS. The near one drives, the far one trails — that is what a leap
-     looks like from the front. Both are solved to a foot, so a knee can
-     never fold through a hip. */
+  /* the pelvis follows the trunk only part way, so the hips stay under him */
+  const pr = pitch*0.45, pc = Math.cos(pr), ps = Math.sin(pr);
+  const arms = [], legs = [];
   for(const sgn of [-1, 1]){
-    const lead = sgn === side;
-    const swing = pitch + sgn*(0.26 + A.split*(lead ? 1.15 : 0.35))
-                        + (lead ? 0 : side*A.trail*0.85);
-    const span = (BONE.thigh + BONE.shin) * (lead ? 0.96 : 0.72 + A.trail*0.26);
-    const hip = HP(sgn);
-    const foot = [hip[0] + Math.sin(swing)*span, hip[1] - Math.cos(swing)*span];
-    const leg = ik2(hip[0], hip[1], foot[0], foot[1], BONE.thigh, BONE.shin, -sgn);
-    bone(hip, leg.j, 0.17, INK_SOCK);
-    bone(leg.j, leg.e, 0.145, INK_SOCK);
-    const bootA = Math.atan2(leg.e[0]-leg.j[0], -(leg.e[1]-leg.j[1]));
-    const w = Wd(leg.e);
-    inkBox(w[0], w[1] - 0.03, w[2] - 0.06, 0.16, 0.09, 0.24, INK_SOCK, bootA);
-  }
-
-  /* TORSO last of the trunk, so it prints over the hips rather than under */
-  const tc = [(P[0]+C[0])/2, (P[1]+C[1])/2];
-  const tw = Wd(tc);
-  inkBox(tw[0], tw[1], tw[2], 0.46, BONE.spine + 0.20, 0.28, KIT, pitch);
-  const hw = Wd(HD);
-  inkBox(hw[0], hw[1], hw[2], 0.24, 0.26, 0.24, INK_SKIN, pitch);
-
-  /* ARMS. The leading one is solved to the hand the save is judged from —
-     so the glove sits ON it — and cannot exceed its own length getting
-     there. The off arm counterbalances, further up the harder he is going. */
-  for(const sgn of [-1, 1]){
-    const sh = SH(sgn);
+    const sh = [C[0] + rgt[0]*sgn*ANAT.shoulderHalf,
+                C[1] + rgt[1]*sgn*ANAT.shoulderHalf];
     let tgt;
-    if(sgn === side) tgt = [hl, hv];
+    if(sgn === side) tgt = [hl, hv];                 // the hand he saves with
     else {
       const a = pitch + sgn*(1.05 + A.armUp*0.95);
-      tgt = [sh[0] + Math.sin(a)*KEEPER_ARM*0.92,
-             sh[1] - Math.cos(a)*KEEPER_ARM*0.92];
+      tgt = [sh[0] + Math.sin(a)*K_ARM*0.92, sh[1] - Math.cos(a)*K_ARM*0.92];
     }
-    const arm = ik2(sh[0], sh[1], tgt[0], tgt[1], BONE.upper, BONE.fore, sgn*side);
-    bone(sh, arm.j, 0.155, KIT, -0.08*RZ);
-    bone(arm.j, arm.e, 0.135, KIT, -0.08*RZ);
-    const gw = Wd(arm.e);
-    inkBox(gw[0], gw[1], gw[2] - 0.10*RZ, 0.17, 0.17, 0.14,
-           inkRamp('#FF8A1F', -0.36, 0.20), pitch);
+    const arm = ik2(sh[0], sh[1], tgt[0], tgt[1], ANAT.upper,
+                    ANAT.fore + ANAT.glove, sgn*side);
+    arms.push({ sh, elbow:arm.j, hand:arm.e, lead: sgn === side });
+
+    const hip = [P[0] + pc*sgn*ANAT.hipHalf, P[1] - ps*sgn*ANAT.hipHalf];
+    /* PLANTED while he is on the grass, TRAILING once he is off it.
+       The stance is capped by what the leg can actually reach from where
+       the hip is: a man cannot stand wider than his legs are long, and
+       asking him to lifted his feet off the grass to try. */
+    const span0 = Math.sqrt(Math.max(0, (K_LEG*0.985)*(K_LEG*0.985) - hip[1]*hip[1]));
+    const stand = [hip[0] + sgn*Math.min(A.stance, span0), 0.0];
+    const back  = pitch + sgn*0.22 - side*(0.55 + A.trail*0.85)
+                                   * (sgn === side ? 0.55 : 1);
+    const span  = K_LEG * (sgn === side ? 0.96 : 0.88);
+    const fly   = [hip[0] + Math.sin(back)*span, hip[1] - Math.cos(back)*span];
+    /* Feet do not start leaving the grass the instant he does. They stay
+       planted until he is genuinely off it, or a man barely airborne is
+       already dangling. */
+    const lift  = clamp((air - 0.05)/0.35, 0, 1);
+    const foot  = [lerp(stand[0], fly[0], lift), lerp(stand[1], fly[1], lift)];
+    if(lift < 0.02) foot[1] = 0.0;                     // planted is planted
+    const leg = ik2(hip[0], hip[1], foot[0], foot[1], ANAT.thigh, ANAT.shin, -sgn);
+    legs.push({ hip, knee:leg.j, foot:leg.e });
+  }
+  return { P, C, HD, arms, legs, pitch, air, e, side,
+           action: keeperAction(k) };
+}
+
+function inkKeeper(k){
+  if(!k) return;
+  const p = keeperPose(k);
+  const RX = CAM.rx, RZ = CAM.rz;
+  const gkKit = gkById(profile.gk);
+  const KIT = inkRamp(k.co === CO_P ? gkKit.a : '#CFE83C', -0.40, 0.22);
+  const GLOVE = inkRamp('#FF8A1F', -0.36, 0.20);
+  const Wd = a => [ k.wx + a[0]*RX, k.wy + a[1], k.wz + a[0]*RZ ];
+  const bone = (a, b, thick, mat, dz) => {
+    const w = Wd(a);
+    inkLimb(w[0], w[1], w[2] + (dz||0),
+            Math.hypot(b[0]-a[0], b[1]-a[1]), thick, mat,
+            Math.atan2(b[0]-a[0], -(b[1]-a[1])));
+  };
+  inkFoot(k.wx, k.wz, 0.40 + p.e*0.34, 0.30 - p.e*0.12);
+  for(const L of p.legs){
+    bone(L.hip, L.knee, 0.18, INK_SOCK);
+    bone(L.knee, L.foot, 0.15, INK_SOCK);
+    const w = Wd(L.foot);
+    inkBox(w[0], w[1] - 0.03, w[2] - 0.06, 0.17, 0.09, 0.25, INK_SOCK,
+           Math.atan2(L.foot[0]-L.knee[0], -(L.foot[1]-L.knee[1])));
+  }
+  const tc = [(p.P[0]+p.C[0])/2, (p.P[1]+p.C[1])/2], tw = Wd(tc);
+  inkBox(tw[0], tw[1], tw[2], 0.46, ANAT.spine + 0.16, 0.28, KIT, p.pitch);
+  const hw = Wd(p.HD);
+  inkBox(hw[0], hw[1], hw[2], 0.23, ANAT.headR*2.1, 0.23, INK_SKIN, p.pitch);
+  for(const a of p.arms){
+    bone(a.sh, a.elbow, 0.16, KIT, -0.08*RZ);
+    bone(a.elbow, a.hand, 0.14, KIT, -0.08*RZ);
+    const gw = Wd(a.hand);
+    inkBox(gw[0], gw[1], gw[2] - 0.10*RZ, 0.17, 0.17, 0.14, GLOVE, p.pitch);
   }
   inkFlush();
 }

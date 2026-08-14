@@ -1,37 +1,26 @@
-/* An arm is a fixed length.
+/* Is the keeper an animal with bones, or a set of shapes that happen to be
+ * near each other?
  *
  *   node tests/limbs.mjs
  *
- * keeperHand() belongs to the simulation: it is where a save is judged from,
- * and at full stretch it sits further from the shoulder than any arm reaches.
- * Both renderers used to close that gap the cheap way — by drawing a longer
- * arm — which is a keeper made of elastic. Swept over every pose a dive can
- * produce, the classic arm reached 1.87x its own length and the ink one
- * 2.07x, and a quarter of all poses needed some stretch.
+ * He was the second thing. keeperHand() belongs to the simulation — it is
+ * where a save is judged from — and the drawing closed the gap to it by
+ * growing the arm, up to 2.07x its own length on a fifth of all poses. Worse,
+ * the trunk rotated while the hips stayed put, so at full pitch the body
+ * folded through its own legs, and a lead offset slid the whole figure
+ * around to help the arm reach.
  *
- * Worse, the ink keeper crumpled: his torso rotated about the pelvis while
- * his hips and legs stayed where they were, so at full pitch the body folded
- * through its own legs. Nothing held a bone to its length or a joint to the
- * end of the bone before it.
+ * This test does not restate the maths. It LIFTS the real pose function out
+ * of game.html and runs it, so what is checked is what ships:
  *
- * Three things fix it, and this test holds all three:
- *
- *   THE CHAIN       He is built pelvis -> chest -> head, chest -> shoulders,
- *                   pelvis -> hips, and every joint is the end of the bone
- *                   before it. Nothing is placed independently, so no part of
- *                   him can budge into any other part.
- *
- *   THE SOLVER      Arms and legs are SOLVED to a target by ik2(), which
- *                   pulls the target into range first. A bone cannot exceed
- *                   its length however far away the target is.
- *
- *   THE ACTION      A keeper has more than one movement. Which of SET, STEP,
- *                   DUCK, JUMP, DIVE, LEAP or SPRAWL he is in follows from
- *                   where his own target is, and each has its own shape.
- *                   Pose comes from the action; position never does.
- *
- * The constants are read out of game.html rather than restated here, so
- * retuning them re-measures rather than lies.
+ *   BONES     Every segment holds its length to the millimetre across every
+ *             pose a dive can produce. A bone that changes length is not a
+ *             bone.
+ *   REACH     The hand the arm is solved to is the hand the save is judged
+ *             from, so the glove lands on it and not near it.
+ *   GROUND    Feet stay on the grass while he is on the grass, and no joint
+ *             goes under it.
+ *   SANITY    He stays the right way up and his head stays on his neck.
  */
 import { readFileSync } from 'node:fs';
 
@@ -42,127 +31,142 @@ const ok = (name, cond, extra = '') => {
   if (cond) { pass++; console.log('  ok   ' + name); }
   else { fail++; console.log('  FAIL ' + name + (extra ? '  ' + extra : '')); }
 };
-const num = (re, what) => {
-  const m = re.exec(src);
-  if (!m) { fail++; console.log('  FAIL could not find ' + what); return null; }
-  return parseFloat(m[1]);
+
+/* ---- lift the real thing out of the file ---- */
+function grab(startMark, endMark){
+  const i = src.indexOf(startMark);
+  if(i < 0) throw new Error('could not find ' + startMark);
+  const j = src.indexOf(endMark, i);
+  return src.slice(i, j < 0 ? undefined : j);
+}
+const lifted = grab('const ANAT = {', 'function inkKeeper(');
+const shim = `
+  const lerp=(a,b,t)=>a+(b-a)*t, clamp=(v,a,b)=>v<a?a:v>b?b:v;
+  const ease=t=>t<.5?2*t*t:1-((-2*t+2)*(-2*t+2))/2;
+  /* the simulation's, verbatim from game.html */
+  function keeperHand(k){
+    const e = ease(k.dive), st = ease(k.settle || 0);
+    const y = lerp(1.42, k.ty, e);
+    return { x: lerp(k.wx0 + k.side*0.42, k.tx, e),
+             y: lerp(y, y < 0.60 ? y : 0.60, st) };
+  }
+`;
+let keeperPose, ANAT, K_ARM, K_LEG, ACTION;
+try {
+  ({ keeperPose, ANAT, K_ARM, K_LEG, ACTION } =
+    new Function(shim + lifted +
+      '\nreturn {keeperPose, ANAT, K_ARM, K_LEG, ACTION};')());
+  pass++; console.log('\nTHE REAL POSE FUNCTION LOADS');
+  console.log('  ok   lifted keeperPose out of game.html and it runs');
+} catch(e){
+  fail++; console.log('\n  FAIL could not lift the pose function: ' + e.message);
+  process.exit(1);
+}
+console.log('  a ' + (ANAT.hip + ANAT.spine + ANAT.neck + ANAT.headR*2).toFixed(2) +
+            'm keeper: arm ' + K_ARM.toFixed(2) + 'm, leg ' + K_LEG.toFixed(2) +
+            'm, span ' + (2*(ANAT.shoulderHalf + K_ARM)).toFixed(2) + 'm');
+ok('his arm span matches his height, the way a person\'s does',
+   Math.abs(2*(ANAT.shoulderHalf + K_ARM) -
+            (ANAT.hip + ANAT.spine + ANAT.neck + ANAT.headR*2)) < 0.12,
+   'span ' + (2*(ANAT.shoulderHalf+K_ARM)).toFixed(2));
+
+/* ---- and now put him through everything a dive can ask of him ---- */
+const d = (a,b) => Math.hypot(b[0]-a[0], b[1]-a[1]);
+const worst = {};
+const note = (what, v, at) => {
+  if(!worst[what] || v > worst[what].v) worst[what] = { v, at };
 };
+let n = 0;
+/* DIFF.range clamps the keeper's own target to +/-2.32 in every difficulty
+   and DIFF.ty to [0.20, 2.25], so that — not the width of the goal — is the
+   space he can actually be asked to cover. A little past it on both, to
+   catch anything that only breaks at the edge. */
+for(let tx=-2.45; tx<=2.4501; tx+=0.05)
+for(let ty=0.20; ty<=2.35001; ty+=0.05)
+for(let dv=0; dv<=1.0001; dv+=0.05)
+for(const wx0 of [-0.75, 0, 0.75])
+for(const settle of [0, 0.5, 1]){
+  const side = Math.sign(tx) || 1;
+  const e = (dv<.5?2*dv*dv:1-((-2*dv+2)*(-2*dv+2))/2);
+  const es = (settle<.5?2*settle*settle:1-((-2*settle+2)*(-2*settle+2))/2);
+  const k = { tx, ty, wx0, side, dive:dv, settle, recover:0,
+              wx: wx0*0.56 + (tx*0.56 - wx0*0.56)*e,
+              /* he comes back down as he settles, exactly as keeperStep has it */
+              wy: (Math.max(0, ty*0.52 - 0.14))*e * (1 - es) };
+  const p = keeperPose(k);
+  const at = {tx:+tx.toFixed(1), ty:+ty.toFixed(2), dive:+dv.toFixed(2), wx0, settle};
+  n++;
 
-console.log('\nTHE MECHANISMS ARE THERE');
-const ARM_C = num(/const ARM = ([\d.]+);\s*\/\/ shoulder to fingertip/, 'the classic arm length');
-const LEAD_C = num(/Math\.min\(over, ([\d.]+)\*s\) \/ reach/, 'the classic shoulder lead cap');
-const UPPER = num(/upper:([\d.]+),/, 'the upper arm bone');
-const FORE  = num(/fore:([\d.]+),/, 'the forearm bone');
-const GLOVE = num(/glove:([\d.]+),/, 'the glove');
-const LEAD_I = num(/Math\.min\(over, ([\d.]+)\)\/reach/, 'the ink shoulder lead cap');
-const ARM_I = UPPER + FORE + GLOVE;
-ok('the ink keeper is a chain: every joint is the end of the bone before it',
-   /const C  = \[P\[0\] \+ up\[0\]\*BONE\.spine/.test(src) &&
-   /const HD = \[C\[0\] \+ up\[0\]\*BONE\.neck/.test(src) &&
-   /const SH = s => \[C\[0\]/.test(src) && /const HP = s => \[P\[0\]/.test(src));
-ok('his limbs are SOLVED to a target, not stretched to one',
-   /function ik2\(sx, sy, tx, ty, l1, l2, bend\)/.test(src) &&
-   /if\(d > hi\)\{ const f = hi\/\(d\|\|1e-6\)/.test(src));
-ok('so no bone can exceed its own length whatever the target',
-   /else if\(d < lo\)\{ const f = lo\/\(d\|\|1e-6\)/.test(src));
-ok('the shoulder lead moves the WHOLE chain, so he cannot come apart',
-   /The lead moves the WHOLE chain/.test(src));
-ok('he has more than one movement, chosen by where his target is',
-   /function keeperAction\(k\)/.test(src) &&
-   ['SET','STEP','DUCK','JUMP','DIVE','LEAP','SPRAWL']
-     .every(n => new RegExp('\\b' + n + ':').test(src)));
-ok('and none of it moved anything the simulation reads',
-   /POSE comes from the action\. POSITION does not/.test(src));
-console.log('  ARM ' + ARM_C + '/' + ARM_I.toFixed(2) + 'm   lead cap ' +
-            LEAD_C + '/' + LEAD_I + 'm');
-
-/* ---- the sweep: every pose a dive can put a hand in ---- */
-const lerp = (a,b,t)=>a+(b-a)*t, clamp=(v,a,b)=>v<a?a:v>b?b:v;
-const ease = t=>t<.5?2*t*t:1-((-2*t+2)*(-2*t+2))/2;
-
-/* the shared part: where the body and the judged hand end up */
-function bodyAndHand(tx, ty, dive, wx0){
-  const side = Math.sign(tx) || 1, e = ease(dive);
-  return {
-    side, e,
-    wx: lerp(wx0*0.56, tx*0.56, e),
-    wy: lerp(0, Math.max(0, ty*0.52 - 0.14), e),
-    hand: { x: lerp(wx0 + side*0.42, tx, e), y: lerp(1.42, ty, e) },
-  };
-}
-/* The ink arm is solved, not stretched, so the question is not whether it
-   overshoots — ik2 pulls the target into range and it cannot — but how much
-   of the reach the SOLVER has to throw away, which is the same defect wearing
-   a different coat. A glove short of the hand is a save that lands near it. */
-const ACT = {
-  SET:{pitch:0.10,knee:0.55}, STEP:{pitch:0.34,knee:0.42}, DUCK:{pitch:0.46,knee:1.00},
-  JUMP:{pitch:0.16,knee:0.30}, DIVE:{pitch:1.02,knee:0.20}, LEAP:{pitch:0.80,knee:0.16},
-  SPRAWL:{pitch:1.34,knee:0.26},
-};
-function actionOf(tx, ty, wx0){
-  const dx = tx - wx0, travel = Math.hypot(dx, ty - 1.15), wide = Math.abs(dx);
-  const high = ty > 1.70, low = ty < 0.80;
-  if(travel < 0.38) return 'SET';
-  if(wide < 0.55)   return high ? 'JUMP' : low ? 'DUCK' : 'STEP';
-  if(travel < 0.95) return 'STEP';
-  if(low)  return 'SPRAWL';
-  if(high) return 'LEAP';
-  return 'DIVE';
-}
-function inkArm(tx, ty, dive, wx0){
-  const { side, e, wx, wy, hand } = bodyAndHand(tx, ty, dive, wx0);
-  const A = ACT[actionOf(tx, ty, wx0)];
-  const sit = A.knee*(1-e)*0.26, pitch = side*e*A.pitch;
-  const cP = Math.cos(pitch), sP = Math.sin(pitch);
-  const pelH = (0.42+0.40) * (0.94 - sit) * (1 - e*0.30);
-  const hl = hand.x - wx, hv = hand.y - wy;
-  const sh = [ sP*0.42 + cP*side*0.19, pelH + cP*0.42 - sP*side*0.19 ];
-  let dx = hl - sh[0], dy = hv - sh[1];
-  const reach = Math.hypot(dx, dy), over = reach - ARM_I;
-  if(over > 0 && reach > 0.001){
-    const f = Math.min(over, LEAD_I)/reach; dx -= dx*f; dy -= dy*f;
+  // BONES — every segment its own length, always
+  note('spine',  Math.abs(d(p.P, p.C) - ANAT.spine), at);
+  note('neck',   Math.abs(d(p.C, p.HD) - (ANAT.neck + ANAT.headR)), at);
+  for(const a of p.arms){
+    note('upper arm', Math.abs(d(a.sh, a.elbow) - ANAT.upper), at);
+    note('forearm',   Math.abs(d(a.elbow, a.hand) - (ANAT.fore + ANAT.glove)), at);
   }
-  return Math.hypot(dx, dy)/ARM_I;
-}
-function classicArm(tx, ty, dive, wx0, sharp){
-  const { side, e, wx, wy, hand } = bodyAndHand(tx, ty, dive, wx0);
-  const ang = side*e*(1.05 + clamp(Math.abs(tx)/2.4,0,1)*0.42);
-  const ux=Math.sin(ang), uy=Math.cos(ang), rx=Math.cos(ang), ry=-Math.sin(ang);
-  const h = 1.28 - (1-e)*(0.05 + sharp*0.13), lat = 0.21;
-  const shx = wx + lat*rx + h*ux, shy = wy + h*uy - lat*ry;
-  let dx = hand.x - shx, dy = hand.y - shy;
-  const reach = Math.hypot(dx, dy), over = reach - ARM_C;
-  if(over > 0 && reach > 0.001){
-    const f = Math.min(over, LEAD_C)/reach; dx -= dx*f; dy -= dy*f;
+  for(const L of p.legs){
+    note('thigh', Math.abs(d(L.hip, L.knee) - ANAT.thigh), at);
+    note('shin',  Math.abs(d(L.knee, L.foot) - ANAT.shin), at);
   }
-  return Math.hypot(dx, dy)/ARM_C;
-}
-function sweep(f, sharps){
-  let worst = 0, at = null, n = 0, over = 0;
-  for(let tx=-3.0; tx<=3.0001; tx+=0.1)
-  for(let ty=0.20; ty<=2.40001; ty+=0.05)
-  for(let d=0; d<=1.0001; d+=0.05)
-  for(const wx0 of [-0.75, 0, 0.75])
-  for(const sharp of sharps){
-    const r = f(tx, ty, d, wx0, sharp);
-    n++; if(r > 1.001) over++;
-    if(r > worst){ worst = r;
-      at = {tx:+tx.toFixed(1), ty:+ty.toFixed(2), dive:+d.toFixed(2), wx0, sharp}; }
+  // REACH — the glove on the hand the save is judged from
+  const hand = { x: (wx0 + side*0.42) + (tx - (wx0 + side*0.42))*e,
+                 y: 0 };
+  const yy = 1.42 + (ty - 1.42)*e;
+  const st = (settle<.5?2*settle*settle:1-((-2*settle+2)*(-2*settle+2))/2);
+  hand.y = yy + ((yy < 0.60 ? yy : 0.60) - yy)*st;
+  const lead = p.arms.find(a => a.lead);
+  note('glove off the judged hand',
+       d(lead.hand, [hand.x - k.wx, hand.y - k.wy]), at);
+  // GROUND — nothing under the turf, and feet planted while he is planted
+  for(const L of p.legs){
+    note('joint under the turf', Math.max(0, -(k.wy + L.foot[1])), at);
+    if(p.air < 0.05) note('planted foot off the grass',
+                          Math.abs(k.wy + L.foot[1]), at);
   }
-  return { worst, at, pct: 100*over/n, n };
+  // SANITY — head above hips, and the right way up
+  note('head below the pelvis', Math.max(0, p.P[1] - p.HD[1]), at);
 }
 
-console.log('\nAND NO POSE ASKS FOR MORE ARM THAN HE HAS');
-for(const [name, f, sharps] of [['ink', inkArm, [0]],
-                                ['classic', classicArm, [0, 0.5, 1]]]){
-  const r = sweep(f, sharps);
-  console.log('  ' + name + ': worst ' + r.worst.toFixed(2) + ' x ARM over ' +
-              r.n.toLocaleString() + ' poses, ' + r.pct.toFixed(1) + '% stretched');
-  ok(name + ' never asks for an arm longer than an arm',
-     r.worst <= 1.001, 'worst ' + r.worst.toFixed(3) + ' at ' + JSON.stringify(r.at));
-  ok(name + ' reaches the judged hand everywhere in the space',
-     r.pct === 0, r.pct.toFixed(2) + '% short or stretched');
+console.log('\nEVERY POSE A DIVE CAN PRODUCE  (' + n.toLocaleString() + ' of them)');
+/* A bone is exact. The glove is allowed to sit inside the ball's own
+   physical radius of the judged hand — CFG.BALL_PHYS is 0.11m, so at 0.09
+   the ball and the glove always overlap on screen and a save is always seen
+   to be made. The residual is a mid-dive transient: the arm extends before
+   the trunk goes over, which is what a person does. */
+const BONE_TOL = 0.001, REACH_TOL = 0.09, GROUND_TOL = 0.03;
+for(const [what, tol] of [['spine',BONE_TOL], ['neck',BONE_TOL],
+                          ['upper arm',BONE_TOL], ['forearm',BONE_TOL],
+                          ['thigh',BONE_TOL], ['shin',BONE_TOL]]){
+  const w = worst[what];
+  ok(what + ' never changes length', w.v <= tol,
+     'off by ' + (w.v*1000).toFixed(1) + 'mm at ' + JSON.stringify(w.at));
 }
+const g = worst['glove off the judged hand'];
+console.log('  glove sits ' + (g.v*1000).toFixed(0) + 'mm from the judged hand at worst');
+ok('the glove lands ON the hand the save is judged from', g.v <= REACH_TOL,
+   (g.v*1000).toFixed(0) + 'mm at ' + JSON.stringify(g.at));
+ok('no joint ever goes under the turf',
+   worst['joint under the turf'].v <= GROUND_TOL,
+   (worst['joint under the turf'].v*1000).toFixed(0) + 'mm at ' +
+   JSON.stringify(worst['joint under the turf'].at));
+if(worst['planted foot off the grass'])
+  ok('his feet are ON the grass while he is on the grass',
+     worst['planted foot off the grass'].v <= GROUND_TOL,
+     (worst['planted foot off the grass'].v*1000).toFixed(0) + 'mm at ' +
+     JSON.stringify(worst['planted foot off the grass'].at));
+ok('his head is never below his hips',
+   worst['head below the pelvis'].v <= 0.001,
+   worst['head below the pelvis'].v.toFixed(3) + 'm');
+
+console.log('\nAND HE HAS MORE THAN ONE MOVEMENT');
+const seen = new Set();
+for(let tx=-3; tx<=3.001; tx+=0.05)
+for(let ty=0.2; ty<=2.4001; ty+=0.05)
+  seen.add(keeperPose({tx, ty, wx0:0, side:Math.sign(tx)||1, dive:1, settle:0,
+                       wx:tx*0.56, wy:Math.max(0,ty*0.52-0.14)}).action);
+console.log('  reachable: ' + [...seen].sort().join(', '));
+for(const a of Object.keys(ACTION))
+  ok(a + ' is reachable from somewhere in the goal', seen.has(a));
 
 console.log('\n' + (fail ? 'LIMBS: ' + fail + ' FAILED' : 'LIMBS: ALL ' + pass + ' PASSED'));
 process.exit(fail ? 1 : 0);
